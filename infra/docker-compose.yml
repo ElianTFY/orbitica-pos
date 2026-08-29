@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orbitica_pos_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword2026
+      POSTGRES_DB: orbitica_pos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orbitica_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile
+    container_name: orbitica_pos_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword2026@postgres:5432/orbitica_pos
+      SYNC_DATABASE_URL: postgresql://postgres:postgrespassword2026@postgres:5432/orbitica_pos
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-production_secret_key_needs_override}
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
