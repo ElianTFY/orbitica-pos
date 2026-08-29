@@ -15,9 +15,11 @@ import {
   DollarSign,
   FileText,
   BarChart3,
-  UserCog,
+  Building,
+  Sparkles,
   Settings,
   ShieldCheck,
+  PackagePlus,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
@@ -28,12 +30,15 @@ const NAV_ITEMS = [
   { name: "Ventas", href: "/sales", icon: Receipt, perm: "pos:read" },
   { name: "Productos", href: "/products", icon: Package, perm: "catalog:read" },
   { name: "Inventario", href: "/inventory", icon: Boxes, perm: "inventory:read" },
+  { name: "Compras / Stock", href: "/purchases", icon: PackagePlus, perm: "inventory:adjust" },
+  { name: "Proveedores", href: "/suppliers", icon: Truck, perm: "inventory:read" },
   { name: "Clientes", href: "/customers", icon: Users, perm: "pos:read" },
-  { name: "Proveedores", href: "/suppliers", icon: Truck, perm: "catalog:read" },
-  { name: "Caja", href: "/cash-register", icon: DollarSign, perm: "cash:open" },
-  { name: "Facturación", href: "/invoicing", icon: FileText, perm: "invoicing:read" },
+  { name: "Caja y Turnos", href: "/cash-register", icon: DollarSign, perm: "cash:open" },
+  { name: "Facturación Electrónica", href: "/invoices", icon: FileText, perm: "invoicing:read" },
   { name: "Reportes", href: "/reports", icon: BarChart3, perm: "reports:read" },
-  { name: "Empleados", href: "/employees", icon: UserCog, perm: "user:read" },
+  { name: "Auditoría", href: "/audit", icon: ShieldCheck, perm: "audit:read" },
+  { name: "Sucursales", href: "/branches", icon: Building, perm: "branch:read" },
+  { name: "Suscripción", href: "/subscription", icon: Sparkles, perm: "org:read" },
   { name: "Configuración", href: "/settings", icon: Settings, perm: "org:update" },
 ];
 
@@ -68,7 +73,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all duration-150 group",
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group",
                 isActive
                   ? "bg-[#0EA5FF]/10 text-[#0EA5FF] font-semibold border border-[#0EA5FF]/20"
                   : "text-[#CFCFD4] hover:bg-[#1A1B1F] hover:text-white",
@@ -100,27 +105,29 @@ export function Sidebar() {
             <Link
               href="/superadmin"
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 mt-1 rounded-lg text-xs font-medium transition-all",
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 group mt-1",
                 pathname === "/superadmin"
-                  ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                  ? "bg-[#0EA5FF]/10 text-[#0EA5FF] font-semibold border border-[#0EA5FF]/20"
                   : "text-[#CFCFD4] hover:bg-[#1A1B1F] hover:text-white"
               )}
             >
-              <ShieldCheck className="w-4 h-4 text-purple-400" />
-              <span>Superadmin Orbítica</span>
+              <ShieldCheck className="w-4 h-4 text-[#0EA5FF]" />
+              <span className="flex-1 truncate">Gestión SaaS Superadmin</span>
             </Link>
           </div>
         )}
       </nav>
 
-      {/* Footer Info */}
-      <div className="p-4 border-t border-[#26282E] bg-[#101114]">
-        <div className="flex items-center justify-between text-[11px] text-[#6C707E]">
-          <span>Orbítica POS v1.0</span>
-          <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            Online
-          </span>
+      {/* User Footer */}
+      <div className="p-4 border-t border-[#26282E] flex items-center justify-between">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="w-8 h-8 rounded-full bg-[#1A1B1F] border border-[#26282E] flex items-center justify-center font-bold text-xs text-[#0EA5FF]">
+            {user?.full_name?.charAt(0) || "U"}
+          </div>
+          <div className="flex flex-col truncate">
+            <span className="text-xs font-medium text-white truncate">{user?.full_name}</span>
+            <span className="text-[10px] text-[#8E929E] capitalize">{user?.role}</span>
+          </div>
         </div>
       </div>
     </aside>
