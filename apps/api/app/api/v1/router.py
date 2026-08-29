@@ -13,7 +13,10 @@ from app.api.v1 import (
     sales,
     cash_registers,
     customers,
-    invoices
+    invoices,
+    reports,
+    audit,
+    subscription
 )
 
 api_v1_router = APIRouter()
@@ -32,3 +35,6 @@ api_v1_router.include_router(sales.router)
 api_v1_router.include_router(cash_registers.router)
 api_v1_router.include_router(customers.router)
 api_v1_router.include_router(invoices.router)
+api_v1_router.include_router(reports.router)
+api_v1_router.include_router(audit.router)
+api_v1_router.include_router(subscription.router)
