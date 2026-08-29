@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0A0A0A;
+  --foreground: #E5E6EA;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-geist-sans), Inter, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #26282E;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3D46;
+}
+
+/* Glassmorphism & Glow Tokens */
+.orbitica-glass {
+  background: rgba(20, 21, 24, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.orbitica-card {
+  background: #141518;
+  border: 1px solid #26282E;
+  border-radius: 0.75rem;
+}
+
+.orbitica-glow {
+  box-shadow: 0 0 25px rgba(14, 165, 255, 0.12);
+}
