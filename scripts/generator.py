@@ -1,4 +1,4 @@
-﻿import os
+import os
 import base64
 
 ROOT = r"C:\Users\elian\.gemini\antigravity\scratch\orbitica-pos"
