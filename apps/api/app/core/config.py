@@ -23,11 +23,11 @@ class Settings(BaseSettings):
     ]
     
     DATABASE_URL: str = Field(
-        default="sqlite+aiosqlite:///./orbitica_pos.db",
+        default="sqlite+aiosqlite:///C:/Users/elian/.gemini/antigravity/scratch/orbitica-pos/apps/api/orbitica_pos.db",
         alias="DATABASE_URL"
     )
     SYNC_DATABASE_URL: str = Field(
-        default="sqlite:///./orbitica_pos.db",
+        default="sqlite:///C:/Users/elian/.gemini/antigravity/scratch/orbitica-pos/apps/api/orbitica_pos.db",
         alias="SYNC_DATABASE_URL"
     )
     

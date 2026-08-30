@@ -1,21 +1,57 @@
 "use client";
 
 import React, { useState } from "react";
-import { Settings as SettingsIcon, Save, ShieldCheck, KeyRound, FileCode, CheckCircle } from "lucide-react";
+import { Settings as SettingsIcon, Save, ShieldCheck, KeyRound, FileCode, CheckCircle, RefreshCw, AlertCircle } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api-client";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"general" | "hacienda">("general");
   const [saved, setSaved] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Form states for Hacienda
+  const [env, setEnv] = useState("STAGING");
+  const [atvUser, setAtvUser] = useState("cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr");
+  const [atvPass, setAtvPass] = useState("SuperPasswordHacienda123!");
+  const [pin, setPin] = useState("1234");
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionResult(null);
+    try {
+      const res = await api.request<{ success: boolean; message: string }>("/hacienda/test-connection", {
+        method: "POST",
+        body: JSON.stringify({
+          environment: env,
+          atv_username: atvUser,
+          atv_password: atvPass,
+          pin: pin
+        })
+      });
+      setConnectionResult({
+        success: res.data.success,
+        message: res.data.message
+      });
+    } catch (err: any) {
+      setConnectionResult({
+        success: false,
+        message: err.message || "Error al conectar con los servidores de Hacienda"
+      });
+    } finally {
+      setTestingConnection(false);
+    }
   };
 
   return (
@@ -89,17 +125,21 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <span className="text-xs font-bold text-white block">Estado de Conexión con Hacienda</span>
-                  <span className="text-[10px] text-[#8E929E]">Firma digital XAdES-BES & API ATV</span>
+                  <span className="text-xs font-bold text-white block">Firmador Digital XAdES-BES & API ATV</span>
+                  <span className="text-[10px] text-[#8E929E]">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda</span>
                 </div>
               </div>
-              <Badge variant="success">CERTIFICADO ACTIVO</Badge>
+              <Badge variant="success">FIRMADO XAdES-BES ACTIVO</Badge>
             </div>
 
             <form onSubmit={handleSave} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-[#CFCFD4]">Ambiente de Envío de Hacienda</label>
-                <select className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]">
+                <select
+                  value={env}
+                  onChange={(e) => setEnv(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                >
                   <option value="STAGING">Sandbox / Pruebas (api-sandbox.comprobanteselectronicos.go.cr)</option>
                   <option value="PRODUCTION">Producción Oficial (api.comprobanteselectronicos.go.cr)</option>
                 </select>
@@ -119,7 +159,13 @@ export default function SettingsPage() {
                       className="w-full text-xs text-[#8E929E] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#1A1B1F] file:text-white hover:file:bg-[#26282E] cursor-pointer"
                     />
                   </div>
-                  <Input label="PIN de Llave Criptográfica (4 dígitos)" type="password" defaultValue="1234" maxLength={4} />
+                  <Input
+                    label="PIN de Llave Criptográfica (4 dígitos)"
+                    type="password"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    maxLength={4}
+                  />
                 </div>
               </div>
 
@@ -129,17 +175,50 @@ export default function SettingsPage() {
                   <span className="text-xs font-bold text-white">Credenciales API ATV (Ministerio de Hacienda)</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input label="Usuario ATV (cpf-...)" defaultValue="cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr" />
-                  <Input label="Contraseña API ATV" type="password" defaultValue="SuperPasswordHacienda123!" />
+                  <Input
+                    label="Usuario ATV (cpf-...)"
+                    value={atvUser}
+                    onChange={(e) => setAtvUser(e.target.value)}
+                  />
+                  <Input
+                    label="Contraseña API ATV"
+                    type="password"
+                    value={atvPass}
+                    onChange={(e) => setAtvPass(e.target.value)}
+                  />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#26282E] flex items-center justify-between">
-                {saved && <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Credenciales guardadas y verificadas</span>}
+              {connectionResult && (
+                <div className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
+                  connectionResult.success
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                    : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                }`}>
+                  {connectionResult.success ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  <span>{connectionResult.message}</span>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-[#26282E] flex items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                >
+                  {testingConnection ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin text-[#0EA5FF]" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4 mr-2 text-emerald-400" />
+                  )}
+                  {testingConnection ? "Probando Conexión..." : "Validar Conexión con Hacienda"}
+                </Button>
+
                 <div className="ml-auto">
                   <Button type="submit" variant="primary">
                     <Save className="w-4 h-4 mr-2" />
-                    Guardar Credenciales de Hacienda
+                    Guardar Credenciales
                   </Button>
                 </div>
               </div>

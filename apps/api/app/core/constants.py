@@ -58,7 +58,7 @@ ROLE_PERMISSIONS: Dict[UserRole, List[str]] = {
         "cash:open", "cash:close", "cash:view_all", "cash:adjust", "cash:manage",
         "customers:read", "customers:create", "customers:update", "customers:delete",
         "reports:read", "reports:export",
-        "invoicing:read", "invoicing:manage",
+        "invoicing:read", "invoicing:create", "invoicing:manage",
         "audit:read"
     ],
     UserRole.MANAGER: [
