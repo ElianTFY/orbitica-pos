@@ -13,6 +13,9 @@ import {
   Banknote,
   Receipt,
   Printer,
+  ShoppingBag,
+  Grid,
+  ArrowRight,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Button } from "@/components/ui/button";
@@ -35,6 +38,7 @@ const SAMPLE_CATALOG: Product[] = [
 export default function POSPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [activeMobileTab, setActiveMobileTab] = useState<"catalog" | "cart">("catalog");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"CASH_CRC" | "SINPE" | "CARD" | "MIXED">("CASH_CRC");
@@ -120,6 +124,7 @@ export default function POSPage() {
     return acc + itemSub * (item.product.tax_rate / 100);
   }, 0);
   const total = subtotal + totalTax;
+  const totalItemCount = cart.reduce((acc, it) => acc + it.quantity, 0);
 
   const numCash = parseFloat(cashReceived) || 0;
   const change = Math.max(0, numCash - total);
@@ -194,153 +199,225 @@ export default function POSPage() {
 
   return (
     <OwnerLayout>
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-7rem)]">
-        {/* Left Side: Product Search & Quick Catalog */}
-        <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+      <div className="space-y-4">
+        {/* Mobile View Switcher Tabs (< lg) */}
+        <div className="flex lg:hidden bg-[#141518] p-1 rounded-xl border border-[#26282E]">
+          <button
+            onClick={() => setActiveMobileTab("catalog")}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeMobileTab === "catalog" ? "bg-[#0EA5FF] text-white shadow-md" : "text-[#8E929E] hover:text-white"
+            }`}
+          >
+            <Grid className="w-4 h-4" />
+            Catálogo
+          </button>
+          <button
+            onClick={() => setActiveMobileTab("cart")}
+            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeMobileTab === "cart" ? "bg-[#0EA5FF] text-white shadow-md" : "text-[#8E929E] hover:text-white"
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Ticket ({totalItemCount})</span>
+            {cart.length > 0 && (
+              <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black">
+                {formatCRC(total)}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Main Grid: Dual Column on Desktop, Tabbed on Mobile */}
+        <div className="flex flex-col lg:flex-row gap-6 min-h-[calc(100vh-12rem)] lg:h-[calc(100vh-7.5rem)]">
+          {/* Left Side: Product Search & Quick Catalog */}
+          <div
+            className={`flex-1 flex-col space-y-4 overflow-hidden ${
+              activeMobileTab === "catalog" ? "flex" : "hidden lg:flex"
+            }`}
+          >
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E929E]" />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Buscar por nombre, SKU o escanear código de barras (F2)..."
+                placeholder="Buscar por nombre, SKU o escanear código (F2)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-12 py-2.5 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF] transition-colors"
-                autoFocus
+                className="w-full pl-10 pr-12 py-3 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF] transition-colors"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 <Barcode className="w-4 h-4 text-[#8E929E]" />
-                <span className="text-[10px] text-[#6C707E] font-mono bg-[#1A1B1F] px-1.5 py-0.5 rounded border border-[#26282E]">
+                <span className="hidden sm:inline-block text-[10px] text-[#6C707E] font-mono bg-[#1A1B1F] px-1.5 py-0.5 rounded border border-[#26282E]">
                   F2
                 </span>
               </div>
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3">
-              {filteredProducts.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className="p-3.5 bg-[#141518] border border-[#26282E] rounded-xl hover:border-[#0EA5FF]/50 hover:bg-[#1A1B1F] transition-all text-left flex flex-col justify-between group active:scale-[0.98]"
-                >
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-start gap-1">
-                      <span className="text-[10px] font-mono text-[#8E929E] uppercase tracking-wider">{p.category_name}</span>
-                      <span className="text-[10px] font-bold text-emerald-400">IVA {p.tax_rate}%</span>
+            {/* Product Cards Grid */}
+            <div className="flex-1 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-2.5 sm:gap-3.5">
+                {filteredProducts.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => addToCart(p)}
+                    className="p-3 sm:p-4 bg-[#141518] border border-[#26282E] rounded-2xl hover:border-[#0EA5FF]/50 hover:bg-[#1A1B1F] transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[110px]"
+                  >
+                    <div className="space-y-1 w-full">
+                      <div className="flex justify-between items-start gap-1">
+                        <span className="text-[9px] sm:text-[10px] font-mono text-[#8E929E] uppercase tracking-wider truncate">
+                          {p.category_name}
+                        </span>
+                        <span className="text-[9px] sm:text-[10px] font-bold text-emerald-400 flex-shrink-0">
+                          {p.tax_rate}%
+                        </span>
+                      </div>
+                      <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-[#0EA5FF] transition-colors line-clamp-2">
+                        {p.name}
+                      </h3>
                     </div>
-                    <h3 className="text-xs font-semibold text-white group-hover:text-[#0EA5FF] transition-colors line-clamp-2">
-                      {p.name}
-                    </h3>
-                  </div>
 
-                  <div className="mt-3 flex items-baseline justify-between pt-2 border-t border-[#26282E]/50">
-                    <span className="text-sm font-bold text-white font-mono">{formatCRC(p.sale_price)}</span>
-                    <span className="text-[10px] text-[#8E929E] font-mono">Stock: {p.stock}</span>
-                  </div>
+                    <div className="mt-2.5 flex items-baseline justify-between pt-2 border-t border-[#26282E]/50 w-full">
+                      <span className="text-sm sm:text-base font-black text-white font-mono">{formatCRC(p.sale_price)}</span>
+                      <span className="text-[9px] sm:text-[10px] text-[#8E929E] font-mono">Stock: {p.stock}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Side: Cart Summary & Checkout */}
+          <div
+            className={`w-full lg:w-96 bg-[#141518] border border-[#26282E] rounded-2xl flex-col overflow-hidden shadow-2xl ${
+              activeMobileTab === "cart" ? "flex min-h-[450px]" : "hidden lg:flex"
+            }`}
+          >
+            <div className="p-4 border-b border-[#26282E] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-[#0EA5FF]" />
+                <h2 className="text-xs font-bold text-white uppercase tracking-wider">
+                  Detalle de Venta ({totalItemCount})
+                </h2>
+              </div>
+              {cart.length > 0 && (
+                <button
+                  onClick={clearCart}
+                  className="text-[11px] text-rose-400 hover:underline flex items-center gap-1 font-medium"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Vaciar
                 </button>
-              ))}
+              )}
             </div>
-          </div>
-        </div>
 
-        {/* Right Side: Cart Summary & Checkout Bar */}
-        <div className="w-full lg:w-96 bg-[#141518] border border-[#26282E] rounded-2xl flex flex-col h-full overflow-hidden shadow-2xl">
-          <div className="p-4 border-b border-[#26282E] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-[#0EA5FF]" />
-              <h2 className="text-xs font-bold text-white uppercase tracking-wider">Detalle de Venta</h2>
-            </div>
-            {cart.length > 0 && (
-              <button
-                onClick={clearCart}
-                className="text-[11px] text-[#FF453A] hover:underline flex items-center gap-1 font-medium"
-              >
-                <Trash2 className="w-3 h-3" />
-                Vaciar
-              </button>
-            )}
-          </div>
-
-          {/* Cart Items List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-[#26282E]/40">
-            {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-2 text-[#8E929E]">
-                <Barcode className="w-8 h-8 opacity-40" />
-                <p className="text-xs">Escanea un producto o selecciona del catálogo para iniciar la venta.</p>
-              </div>
-            ) : (
-              cart.map((item) => (
-                <div key={item.product.id} className="pt-3 first:pt-0 flex items-center justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-semibold text-white truncate">{item.product.name}</h4>
-                    <span className="text-[11px] text-[#8E929E] font-mono">
-                      {formatCRC(item.product.sale_price)} c/u
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 bg-[#1A1B1F] p-1 rounded-lg border border-[#26282E]">
-                    <button
-                      onClick={() => updateQuantity(item.product.id, -1)}
-                      className="p-1 hover:bg-[#26282E] rounded text-[#CFCFD4] hover:text-white"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="text-xs font-bold text-white px-1.5 font-mono">{item.quantity}</span>
-                    <button
-                      onClick={() => updateQuantity(item.product.id, 1)}
-                      className="p-1 hover:bg-[#26282E] rounded text-[#CFCFD4] hover:text-white"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-white font-mono block">
-                      {formatCRC(item.product.sale_price * item.quantity)}
-                    </span>
-                  </div>
+            {/* Cart Items List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-[#26282E]/40">
+              {cart.length === 0 ? (
+                <div className="h-full py-12 flex flex-col items-center justify-center text-center space-y-2 text-[#8E929E]">
+                  <ShoppingBag className="w-8 h-8 opacity-40" />
+                  <p className="text-xs">El ticket está vacío. Toca un producto del catálogo para agregarlo.</p>
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                cart.map((item) => (
+                  <div key={item.product.id} className="pt-3 first:pt-0 flex items-center justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-xs font-semibold text-white truncate">{item.product.name}</h4>
+                      <span className="text-[11px] text-[#8E929E] font-mono">
+                        {formatCRC(item.product.sale_price)} c/u
+                      </span>
+                    </div>
 
-          {/* Totals & Checkout Button */}
-          <div className="p-4 bg-[#1A1B1F] border-t border-[#26282E] space-y-3">
-            <div className="space-y-1.5 text-xs text-[#8E929E]">
-              <div className="flex justify-between">
-                <span>Subtotal Gravado:</span>
-                <span className="font-mono text-white">{formatCRC(subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>IVA Costa Rica:</span>
-                <span className="font-mono text-white">{formatCRC(totalTax)}</span>
-              </div>
-              <div className="flex justify-between text-base font-black text-white pt-2 border-t border-[#26282E]">
-                <span>TOTAL A COBRAR:</span>
-                <span className="font-mono text-[#0EA5FF]">{formatCRC(total)}</span>
-              </div>
+                    <div className="flex items-center gap-1.5 bg-[#1A1B1F] p-1 rounded-xl border border-[#26282E]">
+                      <button
+                        onClick={() => updateQuantity(item.product.id, -1)}
+                        className="p-1.5 hover:bg-[#26282E] rounded-lg text-[#CFCFD4] hover:text-white touch-manipulation"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-xs font-bold text-white px-2 font-mono">{item.quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.product.id, 1)}
+                        className="p-1.5 hover:bg-[#26282E] rounded-lg text-[#CFCFD4] hover:text-white touch-manipulation"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="text-right min-w-[70px]">
+                      <span className="text-xs font-bold text-white font-mono block">
+                        {formatCRC(item.product.sale_price * item.quantity)}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={() => setIsPaymentModalOpen(true)}
-              disabled={cart.length === 0}
-              className="w-full py-3.5 text-sm font-bold shadow-lg shadow-[#0EA5FF]/20"
-            >
-              Cobrar (F4 / Espacio)
-            </Button>
+            {/* Totals & Checkout Button */}
+            <div className="p-4 bg-[#1A1B1F] border-t border-[#26282E] space-y-3">
+              <div className="space-y-1.5 text-xs text-[#8E929E]">
+                <div className="flex justify-between">
+                  <span>Subtotal Gravado:</span>
+                  <span className="font-mono text-white">{formatCRC(subtotal)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>IVA Costa Rica:</span>
+                  <span className="font-mono text-white">{formatCRC(totalTax)}</span>
+                </div>
+                <div className="flex justify-between text-base font-black text-white pt-2 border-t border-[#26282E]">
+                  <span>TOTAL A COBRAR:</span>
+                  <span className="font-mono text-[#0EA5FF] text-lg">{formatCRC(total)}</span>
+                </div>
+              </div>
+
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => setIsPaymentModalOpen(true)}
+                disabled={cart.length === 0}
+                className="w-full py-4 text-sm font-bold shadow-lg shadow-[#0EA5FF]/25 touch-manipulation"
+              >
+                Cobrar Venta ({formatCRC(total)})
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Mobile Sticky Quick-Checkout Floating Bar (< lg) */}
+        {cart.length > 0 && activeMobileTab === "catalog" && (
+          <div className="fixed bottom-14 left-0 right-0 p-3 bg-[#141518]/95 border-t border-[#26282E] lg:hidden z-20 backdrop-blur-md flex items-center justify-between shadow-2xl">
+            <div>
+              <span className="text-[10px] text-[#8E929E] uppercase font-bold block">{totalItemCount} productos</span>
+              <span className="text-lg font-black text-[#0EA5FF] font-mono">{formatCRC(total)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setActiveMobileTab("cart")}
+              >
+                Ver Ticket
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsPaymentModalOpen(true)}
+                className="font-bold bg-[#0EA5FF]"
+              >
+                Cobrar
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Payment Modal */}
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Cobro de Venta (Terminal POS)" maxWidth="md">
         <div className="space-y-5">
-          <div className="p-4 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-center">
+          <div className="p-4 bg-[#1A1B1F] border border-[#26282E] rounded-2xl text-center">
             <span className="text-xs text-[#8E929E] uppercase tracking-wider font-semibold">Total a Pagar</span>
             <h2 className="text-3xl font-black text-[#0EA5FF] font-mono mt-1">{formatCRC(total)}</h2>
           </div>
@@ -351,33 +428,33 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CASH_CRC")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
+                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
                   paymentMethod === "CASH_CRC"
                     ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
                     : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
                 }`}
               >
                 <Banknote className="w-5 h-5" />
-                <span>Efectivo CRC</span>
+                <span>Efectivo</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setPaymentMethod("SINPE")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
+                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
                   paymentMethod === "SINPE"
                     ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
                     : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
                 }`}
               >
                 <Smartphone className="w-5 h-5" />
-                <span>SINPE Móvil</span>
+                <span>SINPE</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CARD")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold ${
+                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
                   paymentMethod === "CARD"
                     ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
                     : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
@@ -399,6 +476,39 @@ export default function POSPage() {
                 onChange={(e) => setCashReceived(e.target.value)}
                 autoFocus
               />
+
+              {/* Quick Cash Bills Buttons */}
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCashReceived(total.toString())}
+                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-white font-mono font-bold"
+                >
+                  Exacto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashReceived("2000")}
+                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                >
+                  ₡2,000
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashReceived("5000")}
+                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                >
+                  ₡5,000
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashReceived("10000")}
+                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                >
+                  ₡10,000
+                </button>
+              </div>
+
               {numCash > 0 && (
                 <div className="p-3 bg-[#1A1B1F] border border-[#26282E] rounded-xl flex items-center justify-between">
                   <span className="text-xs font-semibold text-[#CFCFD4]">Vuelto a Entregar:</span>
@@ -424,7 +534,7 @@ export default function POSPage() {
             size="lg"
             onClick={completeSale}
             disabled={paymentMethod === "CASH_CRC" && numCash < total}
-            className="w-full py-3 font-bold text-sm"
+            className="w-full py-3.5 font-bold text-sm bg-[#0EA5FF]"
           >
             Completar Venta e Imprimir Comprobante
           </Button>
