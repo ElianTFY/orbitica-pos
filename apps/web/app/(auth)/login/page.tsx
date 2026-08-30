@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { Lock, Mail, ArrowRight, ShieldCheck, Store, UserCheck } from "lucide-react";
+import Link from "next/link";
+import { Lock, Mail, ArrowRight, ShieldCheck, Store, UserCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +90,15 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {/* Self Service Registration Link */}
+          <div className="p-3 bg-[#1A1B1F] border border-[#26282E] rounded-xl flex items-center justify-between text-xs">
+            <span className="text-[#8E929E]">¿Tienes un negocio nuevo?</span>
+            <Link href="/register" className="text-[#0EA5FF] font-semibold hover:underline flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" />
+              Registrar Negocio
+            </Link>
+          </div>
 
           <div className="pt-4 border-t border-[#26282E] space-y-2">
             <span className="text-[10px] uppercase font-bold text-[#6C707E] tracking-wider block">
