@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import {
   Building2,
   Mail,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/ui/brand-logo";
 import { api } from "@/lib/api-client";
 
 export default function RegisterPage() {
@@ -80,16 +80,8 @@ export default function RegisterPage() {
       <div className="w-full max-w-xl z-10 space-y-6 my-8">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="relative w-64 h-20 mx-auto flex items-center justify-center">
-            <Image
-              src="/brand/top_logo.png"
-              alt="Orbítica POS"
-              fill
-              className="object-contain drop-shadow-[0_0_25px_rgba(14,165,255,0.2)]"
-              priority
-            />
-          </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">
+          <BrandLogo size="xl" showSubtitle={true} />
+          <h1 className="text-lg font-bold text-white tracking-tight mt-2">
             Aprovisionar Negocio en <span className="text-[#0EA5FF]">ORBÍTICA POS</span>
           </h1>
           <p className="text-xs text-[#8E929E] max-w-md">

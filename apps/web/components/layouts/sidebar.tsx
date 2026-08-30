@@ -42,6 +42,8 @@ const NAV_ITEMS = [
   { name: "Configuración", href: "/settings", icon: Settings, perm: "org:update" },
 ];
 
+import { BrandIcon } from "@/components/ui/brand-logo";
+
 export function Sidebar() {
   const pathname = usePathname();
   const { user, hasPermission } = useAuth();
@@ -50,13 +52,18 @@ export function Sidebar() {
     <aside className="w-64 bg-[#141518] border-r border-[#26282E] flex flex-col h-screen fixed left-0 top-0 z-30">
       {/* Brand Header */}
       <div className="h-16 px-4 flex items-center gap-3 border-b border-[#26282E] bg-[#141518]">
-        <div className="relative w-9 h-9 flex-shrink-0 bg-[#1A1B1F] border border-[#26282E] rounded-xl p-1 shadow-sm flex items-center justify-center">
-          <Image src="/brand/icon.png" alt="Orbítica Icon" width={26} height={26} className="object-contain" priority />
+        <div className="flex-shrink-0">
+          <BrandIcon size={34} />
         </div>
         <div className="flex flex-col min-w-0">
-          <span className="font-extrabold text-sm text-white tracking-wider truncate">ORBÍTICA POS</span>
-          <span className="text-[9px] text-[#0EA5FF] font-bold uppercase font-mono tracking-widest truncate">
-            {user?.role === "superadmin" ? "SUPERADMIN" : user?.organization_name || "STUDIO"}
+          <div className="flex items-center gap-1.5">
+            <span className="font-extrabold text-sm text-white tracking-wider truncate">ORBÍTICA</span>
+            <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#0EA5FF]/20 text-[#0EA5FF] border border-[#0EA5FF]/40">
+              POS
+            </span>
+          </div>
+          <span className="text-[9px] text-[#8E929E] font-medium uppercase font-mono tracking-wider truncate">
+            {user?.role === "superadmin" ? "SUPERADMIN PLATFORM" : user?.organization_name || "STUDIO"}
           </span>
         </div>
       </div>

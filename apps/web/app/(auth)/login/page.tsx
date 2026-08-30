@@ -1,12 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { Lock, Mail, ArrowRight, ShieldCheck, Store, UserCheck, Sparkles } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -37,20 +37,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex flex-col justify-center items-center p-4 relative overflow-hidden selection:bg-[#0EA5FF] selection:text-white">
       {/* Background ambient lighting */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-[#0EA5FF]/10 blur-[140px] rounded-full pointer-events-none" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[350px] bg-[#0EA5FF]/10 blur-[150px] rounded-full pointer-events-none" />
 
       <div className="w-full max-w-md z-10 space-y-6">
         {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="relative w-64 h-20 mx-auto flex items-center justify-center">
-            <Image
-              src="/brand/top_logo.png"
-              alt="Orbítica POS"
-              fill
-              className="object-contain drop-shadow-[0_0_25px_rgba(14,165,255,0.2)]"
-              priority
-            />
-          </div>
+        <div className="flex flex-col items-center text-center space-y-3">
+          <BrandLogo size="xl" showSubtitle={true} />
           <p className="text-[11px] text-[#8E929E] tracking-widest uppercase font-mono font-medium">
             Plataforma SaaS Punto de Venta • Costa Rica
           </p>
