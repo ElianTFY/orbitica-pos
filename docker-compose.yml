@@ -1,0 +1,48 @@
+﻿version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orbitica_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: orbitica
+      POSTGRES_PASSWORD: OrbiticaSecurePass2026!
+      POSTGRES_DB: orbitica_pos
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: orbitica_api
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://orbitica:OrbiticaSecurePass2026!@postgres:5432/orbitica_pos
+      JWT_SECRET: super_secure_production_secret_key_orbitica_pos_2026
+      CORS_ORIGINS: '["http://localhost:3000", "https://app.orbiticapos.com"]'
+    ports:
+      - "8000:8000"
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: orbitica_web
+    restart: always
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://api:8000/api/v1
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
