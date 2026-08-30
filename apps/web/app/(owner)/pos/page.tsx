@@ -201,20 +201,34 @@ export default function POSPage() {
     <OwnerLayout>
       <div className="space-y-4">
         {/* Mobile View Switcher Tabs (< lg) */}
-        <div className="flex lg:hidden bg-[#141518] p-1 rounded-xl border border-[#26282E]">
+        <div
+          role="tablist"
+          aria-label="Vistas del punto de venta móvil"
+          className="flex lg:hidden bg-surface-secondary p-1 rounded-2xl border border-border"
+        >
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeMobileTab === "catalog"}
             onClick={() => setActiveMobileTab("catalog")}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeMobileTab === "catalog" ? "bg-[#0EA5FF] text-white shadow-md" : "text-[#8E929E] hover:text-white"
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-primary ${
+              activeMobileTab === "catalog"
+                ? "bg-primary text-white shadow-sm"
+                : "text-text-muted hover:text-text-main"
             }`}
           >
             <Grid className="w-4 h-4" />
             Catálogo
           </button>
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeMobileTab === "cart"}
             onClick={() => setActiveMobileTab("cart")}
-            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-              activeMobileTab === "cart" ? "bg-[#0EA5FF] text-white shadow-md" : "text-[#8E929E] hover:text-white"
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 focus-visible:ring-2 focus-visible:ring-primary ${
+              activeMobileTab === "cart"
+                ? "bg-primary text-white shadow-sm"
+                : "text-text-muted hover:text-text-main"
             }`}
           >
             <ShoppingBag className="w-4 h-4" />
@@ -237,18 +251,19 @@ export default function POSPage() {
           >
             {/* Search Input */}
             <div className="relative">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
               <input
                 ref={searchInputRef}
                 type="text"
+                aria-label="Buscar producto por nombre, SKU o código de barras"
                 placeholder="Buscar por nombre, SKU o escanear código (F2)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-12 py-3 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF] transition-colors"
+                className="w-full pl-10 pr-12 py-3 bg-surface-input border border-border rounded-2xl text-xs sm:text-sm text-text-main placeholder-text-muted focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary transition-colors shadow-sm"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <Barcode className="w-4 h-4 text-[#8E929E]" />
-                <span className="hidden sm:inline-block text-[10px] text-[#6C707E] font-mono bg-[#1A1B1F] px-1.5 py-0.5 rounded border border-[#26282E]">
+                <Barcode className="w-4 h-4 text-text-muted" />
+                <span className="hidden sm:inline-block text-[10px] text-text-muted font-mono bg-surface-secondary px-1.5 py-0.5 rounded-lg border border-border">
                   F2
                 </span>
               </div>
@@ -260,26 +275,27 @@ export default function POSPage() {
                 {filteredProducts.map((p) => (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => addToCart(p)}
-                    className="p-3 sm:p-4 bg-[#141518] border border-[#26282E] rounded-2xl hover:border-[#0EA5FF]/50 hover:bg-[#1A1B1F] transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[110px]"
+                    className="p-3 sm:p-4 bg-surface border border-border rounded-2xl hover:border-primary hover:bg-surface-hover transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[110px] shadow-sm focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <div className="space-y-1 w-full">
                       <div className="flex justify-between items-start gap-1">
-                        <span className="text-[9px] sm:text-[10px] font-mono text-[#8E929E] uppercase tracking-wider truncate">
+                        <span className="text-[9px] sm:text-[10px] font-mono text-text-muted uppercase tracking-wider truncate">
                           {p.category_name}
                         </span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-emerald-400 flex-shrink-0">
+                        <span className="text-[9px] sm:text-[10px] font-bold text-emerald-500 flex-shrink-0">
                           {p.tax_rate}%
                         </span>
                       </div>
-                      <h3 className="text-xs sm:text-sm font-semibold text-white group-hover:text-[#0EA5FF] transition-colors line-clamp-2">
+                      <h3 className="text-xs sm:text-sm font-bold text-text-main group-hover:text-primary transition-colors line-clamp-2">
                         {p.name}
                       </h3>
                     </div>
 
-                    <div className="mt-2.5 flex items-baseline justify-between pt-2 border-t border-[#26282E]/50 w-full">
-                      <span className="text-sm sm:text-base font-black text-white font-mono">{formatCRC(p.sale_price)}</span>
-                      <span className="text-[9px] sm:text-[10px] text-[#8E929E] font-mono">Stock: {p.stock}</span>
+                    <div className="mt-2.5 flex items-baseline justify-between pt-2 border-t border-border w-full">
+                      <span className="text-sm sm:text-base font-black text-text-main font-mono">{formatCRC(p.sale_price)}</span>
+                      <span className="text-[9px] sm:text-[10px] text-text-muted font-mono">Stock: {p.stock}</span>
                     </div>
                   </button>
                 ))}
@@ -289,32 +305,34 @@ export default function POSPage() {
 
           {/* Right Side: Cart Summary & Checkout */}
           <div
-            className={`w-full lg:w-96 bg-[#141518] border border-[#26282E] rounded-2xl flex-col overflow-hidden shadow-2xl ${
+            className={`w-full lg:w-96 bg-surface border border-border rounded-3xl flex-col overflow-hidden shadow-card ${
               activeMobileTab === "cart" ? "flex min-h-[450px]" : "hidden lg:flex"
             }`}
           >
-            <div className="p-4 border-b border-[#26282E] flex items-center justify-between">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-surface">
               <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-[#0EA5FF]" />
-                <h2 className="text-xs font-bold text-white uppercase tracking-wider">
+                <Receipt className="w-4 h-4 text-primary" />
+                <h2 className="text-xs font-bold text-text-main uppercase tracking-wider">
                   Detalle de Venta ({totalItemCount})
                 </h2>
               </div>
               {cart.length > 0 && (
                 <button
+                  type="button"
                   onClick={clearCart}
-                  className="text-[11px] text-rose-400 hover:underline flex items-center gap-1 font-medium"
+                  aria-label="Vaciar todo el carrito"
+                  className="text-[11px] text-semantic-danger-text hover:underline flex items-center gap-1 font-bold focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
                 >
-                  <Trash2 className="w-3 h-3" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   Vaciar
                 </button>
               )}
             </div>
 
             {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-[#26282E]/40">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-border">
               {cart.length === 0 ? (
-                <div className="h-full py-12 flex flex-col items-center justify-center text-center space-y-2 text-[#8E929E]">
+                <div className="h-full py-12 flex flex-col items-center justify-center text-center space-y-2 text-text-muted">
                   <ShoppingBag className="w-8 h-8 opacity-40" />
                   <p className="text-xs">El ticket está vacío. Toca un producto del catálogo para agregarlo.</p>
                 </div>
@@ -322,30 +340,34 @@ export default function POSPage() {
                 cart.map((item) => (
                   <div key={item.product.id} className="pt-3 first:pt-0 flex items-center justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-semibold text-white truncate">{item.product.name}</h4>
-                      <span className="text-[11px] text-[#8E929E] font-mono">
+                      <h4 className="text-xs font-bold text-text-main truncate">{item.product.name}</h4>
+                      <span className="text-[11px] text-text-muted font-mono">
                         {formatCRC(item.product.sale_price)} c/u
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 bg-[#1A1B1F] p-1 rounded-xl border border-[#26282E]">
+                    <div className="flex items-center gap-1.5 bg-surface-secondary p-1 rounded-xl border border-border">
                       <button
+                        type="button"
                         onClick={() => updateQuantity(item.product.id, -1)}
-                        className="p-1.5 hover:bg-[#26282E] rounded-lg text-[#CFCFD4] hover:text-white touch-manipulation"
+                        aria-label={`Disminuir cantidad de ${item.product.name}`}
+                        className="p-1.5 hover:bg-surface-hover rounded-lg text-text-secondary hover:text-text-main touch-manipulation focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="text-xs font-bold text-white px-2 font-mono">{item.quantity}</span>
+                      <span className="text-xs font-bold text-text-main px-2 font-mono">{item.quantity}</span>
                       <button
+                        type="button"
                         onClick={() => updateQuantity(item.product.id, 1)}
-                        className="p-1.5 hover:bg-[#26282E] rounded-lg text-[#CFCFD4] hover:text-white touch-manipulation"
+                        aria-label={`Aumentar cantidad de ${item.product.name}`}
+                        className="p-1.5 hover:bg-surface-hover rounded-lg text-text-secondary hover:text-text-main touch-manipulation focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
                     <div className="text-right min-w-[70px]">
-                      <span className="text-xs font-bold text-white font-mono block">
+                      <span className="text-xs font-black text-text-main font-mono block">
                         {formatCRC(item.product.sale_price * item.quantity)}
                       </span>
                     </div>
@@ -355,19 +377,19 @@ export default function POSPage() {
             </div>
 
             {/* Totals & Checkout Button */}
-            <div className="p-4 bg-[#1A1B1F] border-t border-[#26282E] space-y-3">
-              <div className="space-y-1.5 text-xs text-[#8E929E]">
+            <div className="p-4 bg-surface-secondary border-t border-border space-y-3">
+              <div className="space-y-1.5 text-xs text-text-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal Gravado:</span>
-                  <span className="font-mono text-white">{formatCRC(subtotal)}</span>
+                  <span className="font-mono font-bold text-text-main">{formatCRC(subtotal)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>IVA Costa Rica:</span>
-                  <span className="font-mono text-white">{formatCRC(totalTax)}</span>
+                  <span className="font-mono font-bold text-text-main">{formatCRC(totalTax)}</span>
                 </div>
-                <div className="flex justify-between text-base font-black text-white pt-2 border-t border-[#26282E]">
+                <div className="flex justify-between text-base font-black text-text-main pt-2 border-t border-border">
                   <span>TOTAL A COBRAR:</span>
-                  <span className="font-mono text-[#0EA5FF] text-lg">{formatCRC(total)}</span>
+                  <span className="font-mono text-primary text-lg">{formatCRC(total)}</span>
                 </div>
               </div>
 
@@ -376,7 +398,7 @@ export default function POSPage() {
                 size="lg"
                 onClick={() => setIsPaymentModalOpen(true)}
                 disabled={cart.length === 0}
-                className="w-full py-4 text-sm font-bold shadow-lg shadow-[#0EA5FF]/25 touch-manipulation"
+                className="w-full py-4 text-sm font-bold shadow-sm touch-manipulation"
               >
                 Cobrar Venta ({formatCRC(total)})
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -387,10 +409,10 @@ export default function POSPage() {
 
         {/* Mobile Sticky Quick-Checkout Floating Bar (< lg) */}
         {cart.length > 0 && activeMobileTab === "catalog" && (
-          <div className="fixed bottom-14 left-0 right-0 p-3 bg-[#141518]/95 border-t border-[#26282E] lg:hidden z-20 backdrop-blur-md flex items-center justify-between shadow-2xl">
+          <div className="fixed bottom-14 left-0 right-0 p-3 bg-surface/95 border-t border-border lg:hidden z-20 backdrop-blur-md flex items-center justify-between shadow-card">
             <div>
-              <span className="text-[10px] text-[#8E929E] uppercase font-bold block">{totalItemCount} productos</span>
-              <span className="text-lg font-black text-[#0EA5FF] font-mono">{formatCRC(total)}</span>
+              <span className="text-[10px] text-text-muted uppercase font-bold block">{totalItemCount} productos</span>
+              <span className="text-lg font-black text-primary font-mono">{formatCRC(total)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -404,7 +426,7 @@ export default function POSPage() {
                 variant="primary"
                 size="sm"
                 onClick={() => setIsPaymentModalOpen(true)}
-                className="font-bold bg-[#0EA5FF]"
+                className="font-bold"
               >
                 Cobrar
                 <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -417,21 +439,21 @@ export default function POSPage() {
       {/* Payment Modal */}
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Cobro de Venta (Terminal POS)" maxWidth="md">
         <div className="space-y-5">
-          <div className="p-4 bg-[#1A1B1F] border border-[#26282E] rounded-2xl text-center">
-            <span className="text-xs text-[#8E929E] uppercase tracking-wider font-semibold">Total a Pagar</span>
-            <h2 className="text-3xl font-black text-[#0EA5FF] font-mono mt-1">{formatCRC(total)}</h2>
+          <div className="p-4 bg-surface-secondary border border-border rounded-2xl text-center">
+            <span className="text-xs text-text-muted uppercase tracking-wider font-bold">Total a Pagar</span>
+            <h2 className="text-3xl font-black text-primary font-mono mt-1">{formatCRC(total)}</h2>
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-[#CFCFD4] uppercase tracking-wider">Forma de Pago</label>
+            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Forma de Pago</label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CASH_CRC")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
+                className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                   paymentMethod === "CASH_CRC"
-                    ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
-                    : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
+                    ? "bg-primary-subtle border-primary text-primary shadow-sm"
+                    : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
                 <Banknote className="w-5 h-5" />
@@ -441,10 +463,10 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("SINPE")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
+                className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                   paymentMethod === "SINPE"
-                    ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
-                    : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
+                    ? "bg-primary-subtle border-primary text-primary shadow-sm"
+                    : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
                 <Smartphone className="w-5 h-5" />
@@ -454,10 +476,10 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setPaymentMethod("CARD")}
-                className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all text-xs font-semibold touch-manipulation ${
+                className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                   paymentMethod === "CARD"
-                    ? "bg-[#0EA5FF]/10 border-[#0EA5FF] text-[#0EA5FF]"
-                    : "bg-[#1A1B1F] border-[#26282E] text-[#CFCFD4] hover:bg-[#222328]"
+                    ? "bg-primary-subtle border-primary text-primary shadow-sm"
+                    : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
                 <CreditCard className="w-5 h-5" />
@@ -482,37 +504,37 @@ export default function POSPage() {
                 <button
                   type="button"
                   onClick={() => setCashReceived(total.toString())}
-                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-white font-mono font-bold"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-text-main font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   Exacto
                 </button>
                 <button
                   type="button"
                   onClick={() => setCashReceived("2000")}
-                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡2,000
                 </button>
                 <button
                   type="button"
                   onClick={() => setCashReceived("5000")}
-                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡5,000
                 </button>
                 <button
                   type="button"
                   onClick={() => setCashReceived("10000")}
-                  className="py-1.5 px-2 bg-[#1A1B1F] hover:bg-[#26282E] border border-[#26282E] rounded-lg text-[10px] text-[#0EA5FF] font-mono font-bold"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡10,000
                 </button>
               </div>
 
               {numCash > 0 && (
-                <div className="p-3 bg-[#1A1B1F] border border-[#26282E] rounded-xl flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[#CFCFD4]">Vuelto a Entregar:</span>
-                  <span className="text-lg font-bold text-emerald-400 font-mono">{formatCRC(change)}</span>
+                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between">
+                  <span className="text-xs font-bold text-text-secondary">Vuelto a Entregar:</span>
+                  <span className="text-lg font-black text-emerald-500 font-mono">{formatCRC(change)}</span>
                 </div>
               )}
             </div>
@@ -534,7 +556,7 @@ export default function POSPage() {
             size="lg"
             onClick={completeSale}
             disabled={paymentMethod === "CASH_CRC" && numCash < total}
-            className="w-full py-3.5 font-bold text-sm bg-[#0EA5FF]"
+            className="w-full py-4 font-bold text-sm"
           >
             Completar Venta e Imprimir Comprobante
           </Button>

@@ -5,18 +5,23 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: "default" | "success" | "warning" | "danger" | "blue";
 }
 
-export function Badge({ className, variant = "default", children, ...props }: BadgeProps) {
+export function Badge({ className, variant = "default", ...props }: BadgeProps) {
   const variants = {
-    default: "bg-[#1A1B1F] text-[#CFCFD4] border border-[#26282E]",
-    success: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
-    warning: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
-    danger: "bg-red-500/10 text-red-400 border border-red-500/20",
-    blue: "bg-[#0EA5FF]/10 text-[#0EA5FF] border border-[#0EA5FF]/20",
+    default: "bg-surface-secondary text-text-secondary border-border",
+    success: "bg-semantic-success-bg text-semantic-success-text border-semantic-success-border",
+    warning: "bg-semantic-warning-bg text-semantic-warning-text border-semantic-warning-border",
+    danger: "bg-semantic-danger-bg text-semantic-danger-text border-semantic-danger-border",
+    blue: "bg-primary-subtle text-primary border-primary/30",
   };
 
   return (
-    <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium tracking-wide", variants[variant], className)} {...props}>
-      {children}
-    </span>
+    <span
+      className={cn(
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-bold border tracking-wide uppercase font-mono select-none",
+        variants[variant],
+        className
+      )}
+      {...props}
+    />
   );
 }

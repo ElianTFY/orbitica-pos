@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -111,18 +111,18 @@ export default function SalesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Historial de Ventas y Comprobantes</h1>
-            <p className="text-xs text-[#8E929E]">Registro de transacciones POS, reimpresión de tiquetes y reembolsos</p>
+            <p className="text-xs text-text-muted">Registro de transacciones POS, reimpresión de tiquetes y reembolsos</p>
           </div>
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por número de venta o nombre de cliente..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+            className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
           />
         </div>
 
@@ -130,7 +130,7 @@ export default function SalesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Nº Venta</th>
                   <th className="pb-3">Fecha / Hora</th>
                   <th className="pb-3">Cliente</th>
@@ -144,15 +144,15 @@ export default function SalesPage() {
               </thead>
               <tbody className="divide-y divide-[#26282E]">
                 {filteredSales.map((s) => (
-                  <tr key={s.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
-                    <td className="py-3 font-mono font-bold text-[#0EA5FF]">{s.sale_number}</td>
-                    <td className="py-3 font-mono text-[#8E929E]">{s.created_at}</td>
+                  <tr key={s.id} className="hover:bg-surface-secondary/50 transition-colors">
+                    <td className="py-3 font-mono font-bold text-primary">{s.sale_number}</td>
+                    <td className="py-3 font-mono text-text-muted">{s.created_at}</td>
                     <td className="py-3 font-semibold text-white">{s.customer_name}</td>
                     <td className="py-3">
                       <Badge variant="blue">{s.payment_method}</Badge>
                     </td>
-                    <td className="py-3 text-right font-mono text-[#8E929E]">{formatCRC(s.subtotal)}</td>
-                    <td className="py-3 text-right font-mono text-[#8E929E]">{formatCRC(s.tax)}</td>
+                    <td className="py-3 text-right font-mono text-text-muted">{formatCRC(s.subtotal)}</td>
+                    <td className="py-3 text-right font-mono text-text-muted">{formatCRC(s.tax)}</td>
                     <td className="py-3 text-right font-mono font-bold text-white">{formatCRC(s.total)}</td>
                     <td className="py-3 text-center">
                       <Badge variant={s.status === "COMPLETED" ? "success" : "danger"}>
@@ -196,7 +196,7 @@ export default function SalesPage() {
           maxWidth="sm"
         >
           <form onSubmit={handleRefund} className="space-y-4">
-            <p className="text-xs text-[#8E929E]">
+            <p className="text-xs text-text-muted">
               Al confirmar el reembolso, las unidades vendidas se reintegrarán automáticamente al stock en el Libro Mayor de Inventario.
             </p>
             <Input

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import { Truck, Plus, Search } from "lucide-react";
@@ -71,7 +71,7 @@ export default function SuppliersPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Directorio de Proveedores</h1>
-            <p className="text-xs text-[#8E929E]">Gestión de proveedores comerciales y órdenes de suministro</p>
+            <p className="text-xs text-text-muted">Gestión de proveedores comerciales y órdenes de suministro</p>
           </div>
           <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -80,13 +80,13 @@ export default function SuppliersPage() {
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por nombre de empresa o cédula jurídica..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+            className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
           />
         </div>
 
@@ -94,7 +94,7 @@ export default function SuppliersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Empresa / Razón Social</th>
                   <th className="pb-3">Cédula Jurídica</th>
                   <th className="pb-3">Contacto Comercial</th>
@@ -105,13 +105,13 @@ export default function SuppliersPage() {
               </thead>
               <tbody className="divide-y divide-[#26282E]">
                 {filteredSuppliers.map((s) => (
-                  <tr key={s.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
+                  <tr key={s.id} className="hover:bg-surface-secondary/50 transition-colors">
                     <td className="py-3 font-semibold text-white">{s.name}</td>
-                    <td className="py-3 font-mono font-bold text-[#0EA5FF]">{s.legal_id}</td>
-                    <td className="py-3 text-[#CFCFD4]">{s.contact_person || "-"}</td>
-                    <td className="py-3 font-mono text-[#8E929E]">{s.phone || "-"}</td>
-                    <td className="py-3 text-[#8E929E]">{s.email || "-"}</td>
-                    <td className="py-3 text-[#8E929E] max-w-xs truncate">{s.address || "-"}</td>
+                    <td className="py-3 font-mono font-bold text-primary">{s.legal_id}</td>
+                    <td className="py-3 text-text-secondary">{s.contact_person || "-"}</td>
+                    <td className="py-3 font-mono text-text-muted">{s.phone || "-"}</td>
+                    <td className="py-3 text-text-muted">{s.email || "-"}</td>
+                    <td className="py-3 text-text-muted max-w-xs truncate">{s.address || "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -170,7 +170,7 @@ export default function SuppliersPage() {
             onChange={(e) => setAddress(e.target.value)}
           />
 
-          <div className="pt-3 border-t border-[#26282E] flex justify-end gap-2">
+          <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>

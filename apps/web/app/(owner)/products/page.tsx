@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -84,7 +84,7 @@ export default function ProductsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Catálogo de Productos</h1>
-            <p className="text-xs text-[#8E929E]">Administración de artículos, precios e impuestos IVA de Costa Rica</p>
+            <p className="text-xs text-text-muted">Administración de artículos, precios e impuestos IVA de Costa Rica</p>
           </div>
           <Button variant="primary" onClick={() => setIsNewProductModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -94,13 +94,13 @@ export default function ProductsPage() {
 
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
               placeholder="Buscar por nombre, SKU o código de barras..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+              className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
             />
           </div>
 
@@ -112,7 +112,7 @@ export default function ProductsPage() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
                   selectedCategory === cat
                     ? "bg-[#0EA5FF] text-white"
-                    : "bg-[#141518] border border-[#26282E] text-[#8E929E] hover:text-white"
+                    : "bg-surface border border-border text-text-muted hover:text-white"
                 }`}
               >
                 {cat === "ALL" ? "Todas las Categorías" : cat}
@@ -125,7 +125,7 @@ export default function ProductsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Producto / Descripción</th>
                   <th className="pb-3">Categoría</th>
                   <th className="pb-3">SKU / Código</th>
@@ -140,31 +140,31 @@ export default function ProductsPage() {
                 {filteredProducts.map((p) => {
                   const isLow = (p.stock || 0) <= p.min_stock_alert;
                   return (
-                    <tr key={p.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
+                    <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
                       <td className="py-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="p-2 bg-[#1A1B1F] rounded-lg border border-[#26282E]">
-                            <Package className="w-4 h-4 text-[#0EA5FF]" />
+                          <div className="p-2 bg-surface-secondary rounded-lg border border-border">
+                            <Package className="w-4 h-4 text-primary" />
                           </div>
                           <div>
                             <span className="font-semibold text-white block">{p.name}</span>
-                            <span className="text-[10px] text-[#6C707E]">Mín. Alerta: {p.min_stock_alert} uds</span>
+                            <span className="text-[10px] text-text-muted">Mín. Alerta: {p.min_stock_alert} uds</span>
                           </div>
                         </div>
                       </td>
                       <td className="py-3">
                         <Badge variant="blue">{p.category_name}</Badge>
                       </td>
-                      <td className="py-3 font-mono text-[11px] text-[#8E929E]">
+                      <td className="py-3 font-mono text-[11px] text-text-muted">
                         <div>{p.sku || "-"}</div>
-                        {p.barcode && <div className="text-[10px] text-[#6C707E]">{p.barcode}</div>}
+                        {p.barcode && <div className="text-[10px] text-text-muted">{p.barcode}</div>}
                       </td>
                       <td className="py-3">
                         <Badge variant={p.tax_rate === 13 ? "default" : p.tax_rate === 1 ? "success" : "warning"}>
                           IVA {p.tax_rate}%
                         </Badge>
                       </td>
-                      <td className="py-3 text-right font-mono text-[#8E929E]">{formatCRC(p.cost_price)}</td>
+                      <td className="py-3 text-right font-mono text-text-muted">{formatCRC(p.cost_price)}</td>
                       <td className="py-3 text-right font-mono font-bold text-white">{formatCRC(p.sale_price)}</td>
                       <td className="py-3 text-center">
                         <Badge variant={isLow ? "danger" : "success"}>
@@ -172,7 +172,7 @@ export default function ProductsPage() {
                         </Badge>
                       </td>
                       <td className="py-3 text-right">
-                        <button className="p-1.5 hover:bg-[#26282E] text-[#8E929E] hover:text-white rounded-lg transition-colors">
+                        <button className="p-1.5 hover:bg-[#26282E] text-text-muted hover:text-white rounded-lg transition-colors">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
@@ -213,11 +213,11 @@ export default function ProductsPage() {
             />
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#CFCFD4]">Categoría</label>
+              <label className="text-xs font-semibold text-text-secondary">Categoría</label>
               <select
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
               >
                 <option value="Abarrotes">Abarrotes</option>
                 <option value="Bebidas">Bebidas</option>
@@ -228,11 +228,11 @@ export default function ProductsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#CFCFD4]">Impuesto IVA (Costa Rica)</label>
+              <label className="text-xs font-semibold text-text-secondary">Impuesto IVA (Costa Rica)</label>
               <select
                 value={taxRate}
                 onChange={(e) => setTaxRate(e.target.value)}
-                className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
               >
                 <option value="13">13% - General (Código 01)</option>
                 <option value="4">4% - Reducido Medicamentos (Código 02)</option>
@@ -269,7 +269,7 @@ export default function ProductsPage() {
             />
           </div>
 
-          <div className="pt-3 border-t border-[#26282E] flex justify-end gap-2">
+          <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsNewProductModalOpen(false)}>
               Cancelar
             </Button>

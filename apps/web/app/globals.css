@@ -1,51 +1,240 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #0A0A0A;
-  --foreground: #E5E6EA;
+/* ==========================================================================
+   ORBÍTICA POS - DESIGN TOKENS & ACCESSIBILITY SYSTEM (WCAG 2.2 AA)
+   ========================================================================== */
+
+:root,
+[data-theme="light"],
+.light {
+  /* Surfaces & Backgrounds */
+  --bg-main: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-secondary: #F1F5F9;
+  --bg-surface-hover: #E2E8F0;
+  --bg-surface-active: #CBD5E1;
+  --bg-input: #FFFFFF;
+  
+  /* Text & Typography (Minimum 4.5:1 for body, 7:1 for headings) */
+  --text-main: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --text-inverse: #FFFFFF;
+  
+  /* Borders & Dividers */
+  --border-subtle: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-focus: #0284C7;
+  
+  /* Brand Accent Colors */
+  --primary: #0284C7;
+  --primary-hover: #0369A1;
+  --primary-active: #075985;
+  --primary-text: #FFFFFF;
+  --primary-glow: rgba(2, 132, 199, 0.18);
+  --primary-subtle: #E0F2FE;
+  
+  /* Semantic Status States */
+  --success-bg: #ECFDF5;
+  --success-border: #6EE7B7;
+  --success-text: #065F46;
+  --success-badge: #047857;
+
+  --warning-bg: #FFFBEB;
+  --warning-border: #FCD34D;
+  --warning-text: #92400E;
+  --warning-badge: #B45309;
+
+  --danger-bg: #FEF2F2;
+  --danger-border: #FCA5A5;
+  --danger-text: #991B1B;
+  --danger-badge: #B91C1C;
+
+  --info-bg: #F0F9FF;
+  --info-border: #BAE6FD;
+  --info-text: #075985;
+
+  /* Shadows & Elevation */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --backdrop-overlay: rgba(15, 23, 42, 0.55);
+
+  /* Scrollbars */
+  --scrollbar-track: #F1F5F9;
+  --scrollbar-thumb: #CBD5E1;
+  --scrollbar-thumb-hover: #94A3B8;
 }
 
+.dark,
+[data-theme="dark"] {
+  /* Surfaces & Backgrounds */
+  --bg-main: #0A0A0A;
+  --bg-surface: #141518;
+  --bg-surface-secondary: #1A1B1F;
+  --bg-surface-hover: #222328;
+  --bg-surface-active: #2A2C33;
+  --bg-input: #141518;
+  
+  /* Text & Typography */
+  --text-main: #F8FAFC;
+  --text-secondary: #CFCFD4;
+  --text-muted: #94A3B8;
+  --text-inverse: #0A0A0A;
+  
+  /* Borders & Dividers */
+  --border-subtle: #26282E;
+  --border-strong: #3A3D46;
+  --border-focus: #0EA5FF;
+  
+  /* Brand Accent Colors */
+  --primary: #0EA5FF;
+  --primary-hover: #0284C7;
+  --primary-active: #0369A1;
+  --primary-text: #FFFFFF;
+  --primary-glow: rgba(14, 165, 255, 0.22);
+  --primary-subtle: rgba(14, 165, 255, 0.15);
+  
+  /* Semantic Status States */
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --success-border: rgba(16, 185, 129, 0.35);
+  --success-text: #34D399;
+  --success-badge: #10B981;
+
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-border: rgba(245, 158, 11, 0.35);
+  --warning-text: #FBBF24;
+  --warning-badge: #F59E0B;
+
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --danger-border: rgba(239, 68, 68, 0.35);
+  --danger-text: #F87171;
+  --danger-badge: #EF4444;
+
+  --info-bg: rgba(14, 165, 255, 0.12);
+  --info-border: rgba(14, 165, 255, 0.35);
+  --info-text: #38BDF8;
+
+  /* Shadows & Elevation */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 25px 50px -12px rgba(0, 0, 0, 0.85);
+  --backdrop-overlay: rgba(0, 0, 0, 0.8);
+
+  /* Scrollbars */
+  --scrollbar-track: #0A0A0A;
+  --scrollbar-thumb: #26282E;
+  --scrollbar-thumb-hover: #3A3D46;
+}
+
+/* ==========================================================================
+   HIGH CONTRAST MODE (WCAG AAA ENHANCEMENT)
+   ========================================================================== */
+[data-contrast="high"] {
+  --border-subtle: #000000 !important;
+  --border-strong: #000000 !important;
+  --text-muted: #000000 !important;
+  --text-secondary: #000000 !important;
+  --shadow-card: 0 0 0 2px #000000 !important;
+}
+
+.dark[data-contrast="high"],
+[data-theme="dark"][data-contrast="high"] {
+  --border-subtle: #FFFFFF !important;
+  --border-strong: #FFFFFF !important;
+  --text-muted: #FFFFFF !important;
+  --text-secondary: #FFFFFF !important;
+  --shadow-card: 0 0 0 2px #FFFFFF !important;
+}
+
+/* ==========================================================================
+   TEXT SCALING SYSTEM
+   ========================================================================== */
+html[data-text-size="normal"] {
+  font-size: 16px;
+}
+html[data-text-size="large"] {
+  font-size: 18px;
+}
+html[data-text-size="xlarge"] {
+  font-size: 20px;
+}
+
+/* ==========================================================================
+   REDUCED MOTION MODE
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-reduced-motion="true"] *,
+html[data-reduced-motion="true"] ::before,
+html[data-reduced-motion="true"] ::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ==========================================================================
+   ACCESSIBLE BASE ELEMENTS & FOCUS RINGS
+   ========================================================================== */
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-geist-sans), Inter, sans-serif;
+  color: var(--text-main);
+  background: var(--bg-main);
+  font-family: var(--font-geist-sans), Inter, system-ui, -apple-system, sans-serif;
   overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Custom Scrollbars */
+/* Clear visible focus outlines for keyboard navigation (WCAG 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--border-focus) !important;
+  outline-offset: 2px !important;
+}
+
+/* Skip link for screen readers and keyboard navigation (WCAG 2.4.1) */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1.25rem;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 700;
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-modal);
+  transition: top 0.15s ease-in-out;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Custom Accessible Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0A0A0A;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #26282E;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3A3D46;
-}
-
-/* Glassmorphism & Glow Tokens */
-.orbitica-glass {
-  background: rgba(20, 21, 24, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.orbitica-card {
-  background: #141518;
-  border: 1px solid #26282E;
-  border-radius: 0.75rem;
-}
-
-.orbitica-glow {
-  box-shadow: 0 0 25px rgba(14, 165, 255, 0.12);
+  background: var(--scrollbar-thumb-hover);
 }

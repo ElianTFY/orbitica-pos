@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BrandLogo } from "@/components/ui/brand-logo";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { api } from "@/lib/api-client";
 
 export default function RegisterPage() {
@@ -73,48 +74,53 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col justify-center items-center p-4 selection:bg-[#0EA5FF] selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4 relative overflow-hidden transition-colors">
+      {/* Top Bar with Accessible Theme Switcher */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[400px] bg-[#0EA5FF]/10 blur-[150px] rounded-full pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[400px] bg-primary/10 blur-[150px] rounded-full pointer-events-none" />
 
       <div className="w-full max-w-xl z-10 space-y-6 my-8">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
           <BrandLogo size="xl" showSubtitle={true} />
-          <h1 className="text-lg font-bold text-white tracking-tight mt-2">
-            Aprovisionar Negocio en <span className="text-[#0EA5FF]">ORBÍTICA POS</span>
+          <h1 className="text-xl font-bold text-text-main tracking-tight mt-2">
+            Aprovisionar Negocio en <span className="text-primary">ORBÍTICA POS</span>
           </h1>
-          <p className="text-xs text-[#8E929E] max-w-md">
+          <p className="text-xs text-text-muted max-w-md">
             Comienza tu prueba gratuita de 14 días con Punto de Venta, Inventario y Facturación Electrónica de Costa Rica.
           </p>
         </div>
 
         {/* Form Card */}
-        <div className="bg-[#141518] border border-[#26282E] rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 backdrop-blur-sm">
+        <div className="bg-surface border border-border rounded-3xl p-6 sm:p-8 shadow-card space-y-6 backdrop-blur-sm transition-colors">
           {success ? (
-            <div className="py-12 text-center space-y-4">
-              <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-400">
+            <div className="py-12 text-center space-y-4" role="status" aria-live="polite">
+              <div className="w-16 h-16 bg-semantic-success-bg border border-semantic-success-border rounded-full flex items-center justify-center mx-auto text-semantic-success-text">
                 <CheckCircle2 className="w-10 h-10 animate-bounce" />
               </div>
-              <h2 className="text-lg font-bold text-white">¡Negocio Registrado Exitosamente!</h2>
-              <p className="text-xs text-[#8E929E]">
+              <h2 className="text-lg font-bold text-text-main">¡Negocio Registrado Exitosamente!</h2>
+              <p className="text-xs text-text-muted">
                 Tu organización, sucursal inicial y tarifas de IVA de Costa Rica han sido aprovisionadas. Redirigiendo al login...
               </p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-2 text-xs text-rose-400">
+                <div role="alert" className="p-3.5 bg-semantic-danger-bg border border-semantic-danger-border rounded-2xl flex items-center gap-2 text-xs text-semantic-danger-text">
                   <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
               {/* Section 1: Business info */}
-              <div className="space-y-3">
-                <span className="text-[10px] uppercase font-bold text-[#8E929E] tracking-wider block">
+              <fieldset className="space-y-3">
+                <legend className="text-[10px] uppercase font-bold text-text-muted tracking-wider block mb-2">
                   1. Datos de la Empresa (Costa Rica)
-                </span>
+                </legend>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
@@ -136,11 +142,13 @@ export default function RegisterPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#CFCFD4]">Tipo de Cédula</label>
+                    <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                      Tipo de Cédula
+                    </label>
                     <select
                       value={idType}
                       onChange={(e) => setIdType(e.target.value as any)}
-                      className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                      className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <option value="JURIDICA">Persona Jurídica (10 dígitos)</option>
                       <option value="FISICA">Persona Física (9 dígitos)</option>
@@ -170,13 +178,13 @@ export default function RegisterPage() {
                     onChange={(e) => setBranchName(e.target.value)}
                   />
                 </div>
-              </div>
+              </fieldset>
 
               {/* Section 2: Owner User Account */}
-              <div className="space-y-3 pt-3 border-t border-[#26282E]">
-                <span className="text-[10px] uppercase font-bold text-[#8E929E] tracking-wider block">
+              <fieldset className="space-y-3 pt-3 border-t border-border">
+                <legend className="text-[10px] uppercase font-bold text-text-muted tracking-wider block mb-2">
                   2. Cuenta del Administrador / Propietario
-                </span>
+                </legend>
 
                 <Input
                   label="Nombre Completo del Propietario"
@@ -194,6 +202,7 @@ export default function RegisterPage() {
                     value={ownerEmail}
                     onChange={(e) => setOwnerEmail(e.target.value)}
                     required
+                    autoComplete="email"
                   />
                   <Input
                     label="Contraseña Segura"
@@ -202,13 +211,14 @@ export default function RegisterPage() {
                     value={ownerPassword}
                     onChange={(e) => setOwnerPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                   />
                 </div>
-              </div>
+              </fieldset>
 
               {/* Perks */}
-              <div className="p-3 bg-[#1A1B1F] border border-[#26282E] rounded-xl flex items-center justify-between text-[11px] text-[#8E929E]">
-                <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+              <div className="p-3 bg-surface-secondary border border-border rounded-xl flex items-center justify-between text-[11px] text-text-muted">
+                <span className="flex items-center gap-1.5 text-emerald-500 font-bold">
                   <ShieldCheck className="w-4 h-4" /> 14 Días de Prueba Gratis
                 </span>
                 <span>Sin tarjeta de crédito requerida</span>
@@ -219,7 +229,7 @@ export default function RegisterPage() {
                 variant="primary"
                 size="lg"
                 disabled={isLoading}
-                className="w-full py-3 text-xs font-bold uppercase tracking-wider bg-[#0EA5FF] hover:bg-[#0284C7] text-white"
+                className="w-full py-3.5 text-xs font-bold uppercase tracking-wider"
               >
                 {isLoading ? "Aprovisionando Negocio..." : "Crear mi Negocio y Comenzar"}
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -227,18 +237,17 @@ export default function RegisterPage() {
             </form>
           )}
 
-          <div className="text-center pt-2 border-t border-[#26282E]">
-            <p className="text-xs text-[#8E929E]">
+          <div className="text-center pt-2 border-t border-border">
+            <p className="text-xs text-text-muted">
               ¿Ya tienes una cuenta registrada?{" "}
-              <Link href="/login" className="text-[#0EA5FF] font-semibold hover:underline">
+              <Link href="/login" className="text-primary font-bold hover:underline focus-visible:ring-2 focus-visible:ring-primary rounded px-1">
                 Iniciar Sesión
               </Link>
             </p>
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-[10px] text-[#6C707E]">
+        <p className="text-center text-[10px] text-text-muted">
           ORBÍTICA POS © 2026 • Una plataforma de ORBÍTICA STUDIO • Costa Rica
         </p>
       </div>

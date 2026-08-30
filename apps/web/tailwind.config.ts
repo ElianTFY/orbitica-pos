@@ -1,7 +1,7 @@
-import type { Config } from "tailwindcss";
+﻿import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -11,28 +11,63 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#0A0A0A",
+        background: "var(--bg-main)",
         surface: {
-          DEFAULT: "#141518",
-          secondary: "#1A1B1F",
-          hover: "#222328",
+          DEFAULT: "var(--bg-surface)",
+          secondary: "var(--bg-surface-secondary)",
+          hover: "var(--bg-surface-hover)",
+          active: "var(--bg-surface-active)",
+          input: "var(--bg-input)",
         },
         border: {
-          DEFAULT: "#26282E",
-          focus: "#3A3D46",
+          DEFAULT: "var(--border-subtle)",
+          strong: "var(--border-strong)",
+          focus: "var(--border-focus)",
+        },
+        text: {
+          main: "var(--text-main)",
+          secondary: "var(--text-secondary)",
+          muted: "var(--text-muted)",
+          inverse: "var(--text-inverse)",
+        },
+        primary: {
+          DEFAULT: "var(--primary)",
+          hover: "var(--primary-hover)",
+          active: "var(--primary-active)",
+          text: "var(--primary-text)",
+          subtle: "var(--primary-subtle)",
+        },
+        semantic: {
+          "success-bg": "var(--success-bg)",
+          "success-border": "var(--success-border)",
+          "success-text": "var(--success-text)",
+          "warning-bg": "var(--warning-bg)",
+          "warning-border": "var(--warning-border)",
+          "warning-text": "var(--warning-text)",
+          "danger-bg": "var(--danger-bg)",
+          "danger-border": "var(--danger-border)",
+          "danger-text": "var(--danger-text)",
+          "info-bg": "var(--info-bg)",
+          "info-border": "var(--info-border)",
+          "info-text": "var(--info-text)",
         },
         orbitica: {
-          blue: "#0EA5FF",
-          "blue-hover": "#0284C7",
-          "blue-glow": "rgba(14, 165, 255, 0.15)",
-          silver: "#CFCFD4",
-          light: "#E5E6EA",
-          dark: "#0A0A0A",
+          blue: "var(--primary)",
+          "blue-hover": "var(--primary-hover)",
+          "blue-glow": "var(--primary-glow)",
+          silver: "var(--text-secondary)",
+          light: "var(--text-main)",
+          dark: "var(--bg-main)",
         },
       },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        modal: "var(--shadow-modal)",
+        glow: "0 0 25px var(--primary-glow)",
+      },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "Inter", "sans-serif"],
-        mono: ["var(--font-geist-mono)", "monospace"],
+        sans: ["var(--font-geist-sans)", "Inter", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
       },
     },
   },

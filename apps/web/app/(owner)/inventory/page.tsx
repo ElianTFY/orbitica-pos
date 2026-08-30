@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -89,7 +89,7 @@ export default function InventoryPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Libro Mayor de Inventario (Ledger)</h1>
-            <p className="text-xs text-[#8E929E]">Historial inmutable de movimientos, compras, ventas y mermas</p>
+            <p className="text-xs text-text-muted">Historial inmutable de movimientos, compras, ventas y mermas</p>
           </div>
           <Button variant="primary" onClick={() => setIsAdjustModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -100,34 +100,34 @@ export default function InventoryPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-[#0EA5FF]">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Movimientos Registrados</span>
-              <Boxes className="w-4 h-4 text-[#0EA5FF]" />
+              <span className="text-xs text-text-muted font-medium uppercase">Movimientos Registrados</span>
+              <Boxes className="w-4 h-4 text-primary" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-white">{movements.length}</span>
-              <span className="text-[11px] text-[#8E929E] block">Trazabilidad en tiempo real</span>
+              <span className="text-[11px] text-text-muted block">Trazabilidad en tiempo real</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-amber-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Artículos Bajo Mínimo</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Artículos Bajo Mínimo</span>
               <AlertTriangle className="w-4 h-4 text-amber-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-amber-400">1 Producto</span>
-              <span className="text-[11px] text-[#8E929E] block">Galletas Chiky (5 uds restantes)</span>
+              <span className="text-[11px] text-text-muted block">Galletas Chiky (5 uds restantes)</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-emerald-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Integridad del Ledger</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Integridad del Ledger</span>
               <FileText className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-emerald-400">100% Auditado</span>
-              <span className="text-[11px] text-[#8E929E] block">Cero registros destructivos</span>
+              <span className="text-[11px] text-text-muted block">Cero registros destructivos</span>
             </div>
           </Card>
         </div>
@@ -140,7 +140,7 @@ export default function InventoryPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Fecha / Hora</th>
                   <th className="pb-3">Producto</th>
                   <th className="pb-3">Tipo de Movimiento</th>
@@ -153,8 +153,8 @@ export default function InventoryPage() {
               </thead>
               <tbody className="divide-y divide-[#26282E]">
                 {movements.map((m) => (
-                  <tr key={m.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
-                    <td className="py-3 font-mono text-[#8E929E]">{m.created_at}</td>
+                  <tr key={m.id} className="hover:bg-surface-secondary/50 transition-colors">
+                    <td className="py-3 font-mono text-text-muted">{m.created_at}</td>
                     <td className="py-3 font-semibold text-white">{m.product_name}</td>
                     <td className="py-3">{getMovementBadge(m.movement_type)}</td>
                     <td className="py-3 text-right font-mono font-bold">
@@ -162,10 +162,10 @@ export default function InventoryPage() {
                         {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
                       </span>
                     </td>
-                    <td className="py-3 text-right font-mono text-[#8E929E]">{m.previous_quantity}</td>
+                    <td className="py-3 text-right font-mono text-text-muted">{m.previous_quantity}</td>
                     <td className="py-3 text-right font-mono font-bold text-white">{m.new_quantity}</td>
-                    <td className="py-3 text-[#CFCFD4]">{m.actor_name}</td>
-                    <td className="py-3 text-[11px] text-[#8E929E] italic">{m.reason || "-"}</td>
+                    <td className="py-3 text-text-secondary">{m.actor_name}</td>
+                    <td className="py-3 text-[11px] text-text-muted italic">{m.reason || "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -177,11 +177,11 @@ export default function InventoryPage() {
       <Modal isOpen={isAdjustModalOpen} onClose={() => setIsAdjustModalOpen(false)} title="Registrar Movimiento de Inventario" maxWidth="md">
         <form onSubmit={handleCreateAdjustment} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#CFCFD4]">Producto</label>
+            <label className="text-xs font-semibold text-text-secondary">Producto</label>
             <select
               value={adjProduct}
               onChange={(e) => setAdjProduct(e.target.value)}
-              className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+              className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
             >
               <option value="Coca-Cola 600ml Descartable">Coca-Cola 600ml Descartable</option>
               <option value="Cerveza Imperial 350ml Lata">Cerveza Imperial 350ml Lata</option>
@@ -192,11 +192,11 @@ export default function InventoryPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#CFCFD4]">Tipo de Movimiento</label>
+            <label className="text-xs font-semibold text-text-secondary">Tipo de Movimiento</label>
             <select
               value={adjType}
               onChange={(e) => setAdjType(e.target.value)}
-              className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+              className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
             >
               <option value="IN_PURCHASE">Entrada por Compra / Factura Proveedor (+)</option>
               <option value="ADJUSTMENT_IN">Ajuste Positivo / Conteo (+)</option>
@@ -222,7 +222,7 @@ export default function InventoryPage() {
             required
           />
 
-          <div className="pt-3 border-t border-[#26282E] flex justify-end gap-2">
+          <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsAdjustModalOpen(false)}>
               Cancelar
             </Button>

@@ -40,7 +40,7 @@ const DEMO_INVOICES: InvoiceRecord[] = [
     created_at: "2026-08-30 08:30",
     status: "ACCEPTED",
     hacienda_message: "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.3",
-    xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<TiqueteElectronico xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/tiqueteElectronico">\n  <Clave>50629082600310188899900100001040000000012112345678</Clave>\n  <NumeroConsecutivo>00100001040000000012</NumeroConsecutivo>\n  <FechaEmision>2026-08-30T08:30:00-06:00</FechaEmision>\n  <Emisor>\n    <Nombre>Comercial San José S.A.</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>3101888999</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda>CRC</CodigoTipoMoneda>\n    <TotalComprobante>2400.00</TotalComprobante>\n  </ResumenFactura>\n  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="Signature-d78a1f">\n    <ds:SignedInfo>\n      <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>\n      <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>\n      <ds:Reference URI=""><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>nK3...=</ds:DigestValue></ds:Reference>\n    </ds:SignedInfo>\n    <ds:SignatureValue>aW89...==</ds:SignatureValue>\n  </ds:Signature>\n</TiqueteElectronico>`
+    xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<TiqueteElectronico xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/tiqueteElectronico">\n  <Clave>50629082600310188899900100001040000000012112345678</Clave>\n  <NumeroConsecutivo>00100001040000000012</NumeroConsecutivo>\n  <FechaEmision>2026-08-30T08:30:00-06:00</FechaEmision>\n  <Emisor>\n    <Nombre>Comercial San José S.A.</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>3101888999</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda>CRC</CodigoTipoMoneda>\n    <TotalComprobante>2400.00</TotalComprobante>\n  </ResumenFactura>\n  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="Signature-d78a1f">\n    <ds:SignedInfo>\n      <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>\n      <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>\n      <ds:Reference URI=""><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>nK3...=</ds:DigestValue></ds:Reference>\n    </ds:SignedInfo>\n    <ds:SignatureValue>aW89...==</ds:SignatureValue>\n  </ds:Signature>\n</TiqueteElectronico>`,
   },
   {
     id: "2",
@@ -51,7 +51,7 @@ const DEMO_INVOICES: InvoiceRecord[] = [
     created_at: "2026-08-30 08:15",
     status: "ACCEPTED",
     hacienda_message: "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.3",
-    xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<FacturaElectronica xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/facturaElectronica">\n  <Clave>50629082600310188899900100001010000000008187654321</Clave>\n  <NumeroConsecutivo>00100001010000000008</NumeroConsecutivo>\n  <Emisor><Nombre>Comercial San José S.A.</Nombre></Emisor>\n</FacturaElectronica>`
+    xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<FacturaElectronica xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/facturaElectronica">\n  <Clave>50629082600310188899900100001010000000008187654321</Clave>\n  <NumeroConsecutivo>00100001010000000008</NumeroConsecutivo>\n  <Emisor><Nombre>Comercial San José S.A.</Nombre></Emisor>\n</FacturaElectronica>`,
   },
   {
     id: "3",
@@ -107,8 +107,8 @@ export default function InvoicesPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Facturación Electrónica Hacienda (v4.3)</h1>
-            <p className="text-xs text-[#8E929E]">Firma digital XAdES-BES, transmisión y monitoreo de acuses con el Ministerio de Hacienda</p>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">Facturación Electrónica Hacienda (v4.3)</h1>
+            <p className="text-xs text-text-muted">Firma digital XAdES-BES, transmisión y monitoreo de acuses con el Ministerio de Hacienda</p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="success" className="py-1 px-3">
@@ -121,73 +121,74 @@ export default function InvoicesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-emerald-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Aceptadas por Hacienda</span>
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs text-text-muted font-bold uppercase">Aceptadas por Hacienda</span>
+              <CheckCircle className="w-4 h-4 text-emerald-500" />
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-bold text-emerald-400">
+              <span className="text-2xl font-black text-emerald-500 font-mono">
                 {invoices.filter((i) => i.status === "ACCEPTED").length}
               </span>
-              <span className="text-[11px] text-[#8E929E] block">Con firma XAdES-BES válida</span>
+              <span className="text-[11px] text-text-muted block">Con firma XAdES-BES válida</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-amber-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">En Cola / Pendientes</span>
-              <Clock className="w-4 h-4 text-amber-400" />
+              <span className="text-xs text-text-muted font-bold uppercase">En Cola / Pendientes</span>
+              <Clock className="w-4 h-4 text-amber-500" />
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-bold text-amber-400">
+              <span className="text-2xl font-black text-amber-500 font-mono">
                 {invoices.filter((i) => i.status === "PENDING").length}
               </span>
-              <span className="text-[11px] text-[#8E929E] block">Listas para despacho automático</span>
+              <span className="text-[11px] text-text-muted block">Listas para despacho automático</span>
             </div>
           </Card>
 
-          <Card className="border-l-4 border-l-[#0EA5FF]">
+          <Card className="border-l-4 border-l-primary">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Normativa Tributaria</span>
-              <ShieldCheck className="w-4 h-4 text-[#0EA5FF]" />
+              <span className="text-xs text-text-muted font-bold uppercase">Normativa Tributaria</span>
+              <ShieldCheck className="w-4 h-4 text-primary" />
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-bold text-white">v4.3</span>
-              <span className="text-[11px] text-[#8E929E] block">Res. DGT-R-48-2016 Costa Rica</span>
+              <span className="text-2xl font-black text-text-main">v4.3</span>
+              <span className="text-[11px] text-text-muted block">Res. DGT-R-48-2016 Costa Rica</span>
             </div>
           </Card>
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
+            aria-label="Buscar comprobante por clave numérica o consecutivo"
             placeholder="Buscar por clave numérica (50 dígitos), consecutivo o tipo de documento..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+            className="w-full pl-10 pr-4 py-2.5 bg-surface-input border border-border rounded-2xl text-xs sm:text-sm text-text-main placeholder-text-muted focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary shadow-sm"
           />
         </div>
 
         <Card>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs" aria-label="Tabla de comprobantes electrónicos">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
-                  <th className="pb-3">Tipo Documento</th>
-                  <th className="pb-3">Consecutivo (20 dígitos)</th>
-                  <th className="pb-3">Clave Numérica de Hacienda (50 dígitos)</th>
-                  <th className="pb-3">Fecha Emisión</th>
-                  <th className="pb-3 text-center">Estado Hacienda</th>
-                  <th className="pb-3 text-right">Acciones</th>
+                <tr className="text-text-muted border-b border-border">
+                  <th scope="col" className="pb-3 font-bold">Tipo Documento</th>
+                  <th scope="col" className="pb-3 font-bold">Consecutivo (20 dígitos)</th>
+                  <th scope="col" className="pb-3 font-bold">Clave Numérica de Hacienda (50 dígitos)</th>
+                  <th scope="col" className="pb-3 font-bold">Fecha Emisión</th>
+                  <th scope="col" className="pb-3 font-bold text-center">Estado Hacienda</th>
+                  <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#26282E]">
+              <tbody className="divide-y divide-border">
                 {filteredInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
-                    <td className="py-3 font-semibold text-white">{inv.doc_type_label}</td>
-                    <td className="py-3 font-mono text-[#0EA5FF] font-bold">{inv.consecutive_number}</td>
-                    <td className="py-3 font-mono text-[11px] text-[#8E929E] max-w-xs truncate">{inv.numeric_key}</td>
-                    <td className="py-3 font-mono text-[#8E929E]">{inv.created_at}</td>
+                  <tr key={inv.id} className="hover:bg-surface-hover transition-colors">
+                    <td className="py-3 font-bold text-text-main">{inv.doc_type_label}</td>
+                    <td className="py-3 font-mono text-primary font-bold">{inv.consecutive_number}</td>
+                    <td className="py-3 font-mono text-[11px] text-text-muted max-w-xs truncate">{inv.numeric_key}</td>
+                    <td className="py-3 font-mono text-text-muted">{inv.created_at}</td>
                     <td className="py-3 text-center">
                       <Badge variant={inv.status === "ACCEPTED" ? "success" : inv.status === "PENDING" ? "warning" : "danger"}>
                         {inv.status === "ACCEPTED" ? "Aceptada" : inv.status === "PENDING" ? "Pendiente Envío" : "Rechazada"}
@@ -232,12 +233,12 @@ export default function InvoicesPage() {
           maxWidth="lg"
         >
           <div className="space-y-4">
-            <div className="p-3 bg-[#141518] rounded-xl border border-[#26282E] text-xs space-y-1 font-mono">
-              <div><span className="text-[#8E929E]">Clave:</span> <span className="text-[#0EA5FF] break-all">{selectedInvoice.numeric_key}</span></div>
-              <div><span className="text-[#8E929E]">Estado:</span> <span className="text-emerald-400 font-bold">Aceptado por Hacienda</span></div>
+            <div className="p-3.5 bg-surface-secondary rounded-2xl border border-border text-xs space-y-1 font-mono">
+              <div><span className="text-text-muted">Clave:</span> <span className="text-primary font-bold break-all">{selectedInvoice.numeric_key}</span></div>
+              <div><span className="text-text-muted">Estado:</span> <span className="text-emerald-500 font-bold">Aceptado por Hacienda</span></div>
             </div>
 
-            <div className="bg-[#0A0A0A] p-4 rounded-xl border border-[#26282E] overflow-x-auto max-h-80 font-mono text-[11px] text-[#0EA5FF] leading-relaxed">
+            <div className="bg-surface-secondary p-4 rounded-2xl border border-border overflow-x-auto max-h-80 font-mono text-[11px] text-text-main leading-relaxed">
               <pre>{selectedInvoice.xml_signed || `<?xml version="1.0" encoding="utf-8"?>\n<TiqueteElectronico xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3/tiqueteElectronico">\n  <Clave>${selectedInvoice.numeric_key}</Clave>\n  <NumeroConsecutivo>${selectedInvoice.consecutive_number}</NumeroConsecutivo>\n</TiqueteElectronico>`}</pre>
             </div>
 

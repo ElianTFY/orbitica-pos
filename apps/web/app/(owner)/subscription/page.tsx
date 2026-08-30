@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React from "react";
 import { Sparkles, Check, Building, Users, Shield } from "lucide-react";
@@ -14,7 +14,7 @@ export default function SubscriptionPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">Suscripción SaaS Orbítica</h1>
-          <p className="text-xs text-[#8E929E]">Detalles del plan contratado, límites de sucursales y características activas</p>
+          <p className="text-xs text-text-muted">Detalles del plan contratado, límites de sucursales y características activas</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -22,34 +22,34 @@ export default function SubscriptionPage() {
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-[#0EA5FF]" />
+                  <Sparkles className="w-5 h-5 text-primary" />
                   <h3 className="text-lg font-bold text-white">Plan Pro Empresarial</h3>
                 </div>
-                <p className="text-xs text-[#8E929E]">Facturación mensual recurrente</p>
+                <p className="text-xs text-text-muted">Facturación mensual recurrente</p>
               </div>
               <Badge variant="success">ACTIVO</Badge>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
-              <div className="p-3 bg-[#1A1B1F] rounded-xl">
-                <span className="text-[10px] text-[#8E929E] uppercase">Sucursales</span>
+              <div className="p-3 bg-surface-secondary rounded-xl">
+                <span className="text-[10px] text-text-muted uppercase">Sucursales</span>
                 <div className="text-lg font-bold text-white mt-0.5">2 / 5</div>
               </div>
 
-              <div className="p-3 bg-[#1A1B1F] rounded-xl">
-                <span className="text-[10px] text-[#8E929E] uppercase">Colaboradores</span>
+              <div className="p-3 bg-surface-secondary rounded-xl">
+                <span className="text-[10px] text-text-muted uppercase">Colaboradores</span>
                 <div className="text-lg font-bold text-white mt-0.5">4 / 15</div>
               </div>
 
-              <div className="p-3 bg-[#1A1B1F] rounded-xl">
-                <span className="text-[10px] text-[#8E929E] uppercase">Precio Mensual</span>
-                <div className="text-lg font-bold text-[#0EA5FF] mt-0.5">{formatCRC(25000)}</div>
+              <div className="p-3 bg-surface-secondary rounded-xl">
+                <span className="text-[10px] text-text-muted uppercase">Precio Mensual</span>
+                <div className="text-lg font-bold text-primary mt-0.5">{formatCRC(25000)}</div>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-[#26282E]">
+            <div className="space-y-2 pt-2 border-t border-border">
               <h4 className="text-xs font-bold text-white uppercase tracking-wider">Características Incluidas:</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#CFCFD4]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-text-secondary">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400" />
                   <span>Facturación Electrónica v4.3 Ilimitada</span>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -26,15 +26,15 @@ export default function ReportsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Reportes Financieros y Analítica</h1>
-            <p className="text-xs text-[#8E929E]">Métricas de ventas, margen de rentabilidad y valoración de inventario</p>
+            <p className="text-xs text-text-muted">Métricas de ventas, margen de rentabilidad y valoración de inventario</p>
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="flex bg-[#141518] p-1 rounded-xl border border-[#26282E]">
+            <div className="flex bg-surface p-1 rounded-xl border border-border">
               <button
                 onClick={() => setPeriod("today")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  period === "today" ? "bg-[#0EA5FF] text-white" : "text-[#8E929E] hover:text-white"
+                  period === "today" ? "bg-[#0EA5FF] text-white" : "text-text-muted hover:text-white"
                 }`}
               >
                 Hoy
@@ -42,7 +42,7 @@ export default function ReportsPage() {
               <button
                 onClick={() => setPeriod("week")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  period === "week" ? "bg-[#0EA5FF] text-white" : "text-[#8E929E] hover:text-white"
+                  period === "week" ? "bg-[#0EA5FF] text-white" : "text-text-muted hover:text-white"
                 }`}
               >
                 Esta Semana
@@ -50,7 +50,7 @@ export default function ReportsPage() {
               <button
                 onClick={() => setPeriod("month")}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  period === "month" ? "bg-[#0EA5FF] text-white" : "text-[#8E929E] hover:text-white"
+                  period === "month" ? "bg-[#0EA5FF] text-white" : "text-text-muted hover:text-white"
                 }`}
               >
                 Este Mes
@@ -67,8 +67,8 @@ export default function ReportsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-[#0EA5FF]">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Ventas Brutas</span>
-              <DollarSign className="w-4 h-4 text-[#0EA5FF]" />
+              <span className="text-xs text-text-muted font-medium uppercase">Ventas Brutas</span>
+              <DollarSign className="w-4 h-4 text-primary" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-white">{formatCRC(4850000)}</span>
@@ -78,34 +78,34 @@ export default function ReportsPage() {
 
           <Card className="border-l-4 border-l-emerald-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Utilidad Bruta Estimada</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Utilidad Bruta Estimada</span>
               <TrendingUp className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-emerald-400">{formatCRC(1843000)}</span>
-              <span className="text-[11px] text-[#8E929E] block mt-1">Margen comercial: 38%</span>
+              <span className="text-[11px] text-text-muted block mt-1">Margen comercial: 38%</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-purple-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Total IVA Recaudado</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Total IVA Recaudado</span>
               <PieChart className="w-4 h-4 text-purple-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-purple-400">{formatCRC(557876)}</span>
-              <span className="text-[11px] text-[#8E929E] block mt-1">Para declaración D-104</span>
+              <span className="text-[11px] text-text-muted block mt-1">Para declaración D-104</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-cyan-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Valor del Inventario</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Valor del Inventario</span>
               <Layers className="w-4 h-4 text-cyan-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-cyan-400">{formatCRC(12450000)}</span>
-              <span className="text-[11px] text-[#8E929E] block mt-1">Valuación a precio de costo</span>
+              <span className="text-[11px] text-text-muted block mt-1">Valuación a precio de costo</span>
             </div>
           </Card>
         </div>
@@ -117,21 +117,21 @@ export default function ReportsPage() {
             </CardHeader>
 
             <div className="space-y-3">
-              <div className="p-3 bg-[#1A1B1F] rounded-xl flex items-center justify-between">
+              <div className="p-3 bg-surface-secondary rounded-xl flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-white block">SINPE Móvil</span>
-                  <span className="text-[10px] text-[#8E929E]">178 transacciones</span>
+                  <span className="text-[10px] text-text-muted">178 transacciones</span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-bold text-white">{formatCRC(2425000)}</span>
-                  <span className="text-[10px] text-[#0EA5FF] font-semibold block">50.0% del total</span>
+                  <span className="text-[10px] text-primary font-semibold block">50.0% del total</span>
                 </div>
               </div>
 
-              <div className="p-3 bg-[#1A1B1F] rounded-xl flex items-center justify-between">
+              <div className="p-3 bg-surface-secondary rounded-xl flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-white block">Tarjetas de Débito / Crédito</span>
-                  <span className="text-[10px] text-[#8E929E]">102 transacciones</span>
+                  <span className="text-[10px] text-text-muted">102 transacciones</span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-bold text-white">{formatCRC(1455000)}</span>
@@ -139,10 +139,10 @@ export default function ReportsPage() {
                 </div>
               </div>
 
-              <div className="p-3 bg-[#1A1B1F] rounded-xl flex items-center justify-between">
+              <div className="p-3 bg-surface-secondary rounded-xl flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-white block">Efectivo en Colones (CRC)</span>
-                  <span className="text-[10px] text-[#8E929E]">62 transacciones</span>
+                  <span className="text-[10px] text-text-muted">62 transacciones</span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-bold text-white">{formatCRC(970000)}</span>
@@ -160,7 +160,7 @@ export default function ReportsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="text-[#8E929E] border-b border-[#26282E]">
+                  <tr className="text-text-muted border-b border-border">
                     <th className="pb-2">Producto</th>
                     <th className="pb-2 text-right">Uds</th>
                     <th className="pb-2 text-right">Venta</th>
@@ -170,19 +170,19 @@ export default function ReportsPage() {
                 <tbody className="divide-y divide-[#26282E]">
                   <tr>
                     <td className="py-2.5 font-medium text-white">Coca-Cola 600ml</td>
-                    <td className="py-2.5 text-right font-mono text-[#8E929E]">140</td>
+                    <td className="py-2.5 text-right font-mono text-text-muted">140</td>
                     <td className="py-2.5 text-right font-mono text-white">{formatCRC(168000)}</td>
                     <td className="py-2.5 text-right font-mono font-bold text-emerald-400">{formatCRC(56000)}</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 font-medium text-white">Cerveza Imperial 350ml</td>
-                    <td className="py-2.5 text-right font-mono text-[#8E929E]">95</td>
+                    <td className="py-2.5 text-right font-mono text-text-muted">95</td>
                     <td className="py-2.5 text-right font-mono text-white">{formatCRC(133000)}</td>
                     <td className="py-2.5 text-right font-mono font-bold text-emerald-400">{formatCRC(42750)}</td>
                   </tr>
                   <tr>
                     <td className="py-2.5 font-medium text-white">Café Rey 500g</td>
-                    <td className="py-2.5 text-right font-mono text-[#8E929E]">42</td>
+                    <td className="py-2.5 text-right font-mono text-text-muted">42</td>
                     <td className="py-2.5 text-right font-mono text-white">{formatCRC(117600)}</td>
                     <td className="py-2.5 text-right font-mono font-bold text-emerald-400">{formatCRC(29400)}</td>
                   </tr>

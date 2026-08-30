@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -81,7 +81,7 @@ export default function CustomersPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Directorio de Clientes</h1>
-            <p className="text-xs text-[#8E929E]">Gestión de clientes y datos fiscales para facturación electrónica</p>
+            <p className="text-xs text-text-muted">Gestión de clientes y datos fiscales para facturación electrónica</p>
           </div>
           <Button variant="primary" onClick={() => setIsNewModalOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -90,13 +90,13 @@ export default function CustomersPage() {
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por nombre, cédula o correo electrónico..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+            className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
           />
         </div>
 
@@ -104,7 +104,7 @@ export default function CustomersPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Nombre / Razón Social</th>
                   <th className="pb-3">Tipo Identificación</th>
                   <th className="pb-3">Nº Cédula / Identificación</th>
@@ -116,15 +116,15 @@ export default function CustomersPage() {
               </thead>
               <tbody className="divide-y divide-[#26282E]">
                 {filteredCustomers.map((c) => (
-                  <tr key={c.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
+                  <tr key={c.id} className="hover:bg-surface-secondary/50 transition-colors">
                     <td className="py-3 font-semibold text-white">{c.name}</td>
                     <td className="py-3">
                       <Badge variant="blue">{c.identification_type}</Badge>
                     </td>
                     <td className="py-3 font-mono font-bold text-white">{c.identification_number}</td>
-                    <td className="py-3 text-[#CFCFD4]">{c.email || "-"}</td>
-                    <td className="py-3 text-[#8E929E] font-mono">{c.phone || "-"}</td>
-                    <td className="py-3 text-[#8E929E] max-w-xs truncate">{c.address || "-"}</td>
+                    <td className="py-3 text-text-secondary">{c.email || "-"}</td>
+                    <td className="py-3 text-text-muted font-mono">{c.phone || "-"}</td>
+                    <td className="py-3 text-text-muted max-w-xs truncate">{c.address || "-"}</td>
                     <td className="py-3 text-center">
                       <Badge variant="success">Activo</Badge>
                     </td>
@@ -149,11 +149,11 @@ export default function CustomersPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#CFCFD4]">Tipo de Identificación CR</label>
+              <label className="text-xs font-semibold text-text-secondary">Tipo de Identificación CR</label>
               <select
                 value={idType}
                 onChange={(e) => setIdType(e.target.value as any)}
-                className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
               >
                 <option value="FISICA">Cédula Física (9 dígitos)</option>
                 <option value="JURIDICA">Cédula Jurídica (10 dígitos)</option>
@@ -195,7 +195,7 @@ export default function CustomersPage() {
             onChange={(e) => setAddress(e.target.value)}
           />
 
-          <div className="pt-3 border-t border-[#26282E] flex justify-end gap-2">
+          <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsNewModalOpen(false)}>
               Cancelar
             </Button>

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState } from "react";
 import {
@@ -82,7 +82,7 @@ export default function PurchasesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Compras a Proveedores e Ingreso de Stock</h1>
-            <p className="text-xs text-[#8E929E]">Recepción de facturas de compra y aumento automático de inventario</p>
+            <p className="text-xs text-text-muted">Recepción de facturas de compra y aumento automático de inventario</p>
           </div>
           <Button variant="primary" onClick={() => setIsModalOpen(true)}>
             <PackagePlus className="w-4 h-4 mr-2" />
@@ -93,46 +93,46 @@ export default function PurchasesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-[#0EA5FF]">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Total Compras del Mes</span>
-              <Truck className="w-4 h-4 text-[#0EA5FF]" />
+              <span className="text-xs text-text-muted font-medium uppercase">Total Compras del Mes</span>
+              <Truck className="w-4 h-4 text-primary" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-white">{formatCRC(443500)}</span>
-              <span className="text-[11px] text-[#8E929E] block">Auto-ingreso a stock</span>
+              <span className="text-[11px] text-text-muted block">Auto-ingreso a stock</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-emerald-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Facturas Recibidas</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Facturas Recibidas</span>
               <CheckCircle className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-emerald-400">3</span>
-              <span className="text-[11px] text-[#8E929E] block">Con asiento en Libro Mayor</span>
+              <span className="text-[11px] text-text-muted block">Con asiento en Libro Mayor</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-purple-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[#8E929E] font-medium uppercase">Crédito a Proveedores</span>
+              <span className="text-xs text-text-muted font-medium uppercase">Crédito a Proveedores</span>
               <FileSpreadsheet className="w-4 h-4 text-purple-400" />
             </div>
             <div className="mt-3">
               <span className="text-2xl font-bold text-purple-400">{formatCRC(145000)}</span>
-              <span className="text-[11px] text-[#8E929E] block">Cuentas por pagar activas</span>
+              <span className="text-[11px] text-text-muted block">Cuentas por pagar activas</span>
             </div>
           </Card>
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8E929E]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
             placeholder="Buscar por proveedor o número de factura..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#141518] border border-[#26282E] rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-[#0EA5FF]"
+            className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
           />
         </div>
 
@@ -140,7 +140,7 @@ export default function PurchasesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="text-[#8E929E] border-b border-[#26282E]">
+                <tr className="text-text-muted border-b border-border">
                   <th className="pb-3">Proveedor</th>
                   <th className="pb-3">Nº Factura Proveedor</th>
                   <th className="pb-3">Condición Pago</th>
@@ -151,13 +151,13 @@ export default function PurchasesPage() {
               </thead>
               <tbody className="divide-y divide-[#26282E]">
                 {filteredPurchases.map((p) => (
-                  <tr key={p.id} className="hover:bg-[#1A1B1F]/50 transition-colors">
+                  <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
                     <td className="py-3 font-semibold text-white">{p.supplier_name}</td>
-                    <td className="py-3 font-mono text-[#0EA5FF] font-bold">{p.invoice_number}</td>
+                    <td className="py-3 font-mono text-primary font-bold">{p.invoice_number}</td>
                     <td className="py-3">
                       <Badge variant={p.payment_type === "CONTADO" ? "success" : "blue"}>{p.payment_type}</Badge>
                     </td>
-                    <td className="py-3 font-mono text-[#8E929E]">{p.created_at}</td>
+                    <td className="py-3 font-mono text-text-muted">{p.created_at}</td>
                     <td className="py-3 text-center">
                       <Badge variant="success">Inventariado (+)</Badge>
                     </td>
@@ -173,11 +173,11 @@ export default function PurchasesPage() {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Registrar Factura de Compra de Proveedor" maxWidth="md">
         <form onSubmit={handleCreatePurchase} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#CFCFD4]">Seleccionar Proveedor</label>
+            <label className="text-xs font-semibold text-text-secondary">Seleccionar Proveedor</label>
             <select
               value={supplierName}
               onChange={(e) => setSupplierName(e.target.value)}
-              className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+              className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
             >
               <option value="Distribuidora La Florida S.A.">Distribuidora La Florida S.A. (3-101-112233)</option>
               <option value="Corporación Dos Pinos R.L.">Corporación Dos Pinos R.L. (3-004-045000)</option>
@@ -195,11 +195,11 @@ export default function PurchasesPage() {
             />
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-[#CFCFD4]">Condición de Pago</label>
+              <label className="text-xs font-semibold text-text-secondary">Condición de Pago</label>
               <select
                 value={paymentType}
                 onChange={(e) => setPaymentType(e.target.value as any)}
-                className="w-full px-3 py-2 bg-[#1A1B1F] border border-[#26282E] rounded-xl text-xs text-white focus:outline-none focus:border-[#0EA5FF]"
+                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
               >
                 <option value="CONTADO">Contado (Efectivo/Transferencia)</option>
                 <option value="CREDITO">Crédito Comercial</option>
@@ -207,8 +207,8 @@ export default function PurchasesPage() {
             </div>
           </div>
 
-          <div className="p-3 bg-[#1A1B1F] border border-[#26282E] rounded-xl space-y-3">
-            <span className="text-[10px] uppercase font-bold text-[#8E929E] block">Detalle del Producto a Ingresar</span>
+          <div className="p-3 bg-surface-secondary border border-border rounded-xl space-y-3">
+            <span className="text-[10px] uppercase font-bold text-text-muted block">Detalle del Producto a Ingresar</span>
             <Input
               label="Nombre del Producto"
               placeholder="Ej: Jugo Naranja 500ml"
@@ -234,22 +234,22 @@ export default function PurchasesPage() {
             </div>
           </div>
 
-          <div className="p-3 bg-[#141518] rounded-xl border border-[#26282E] space-y-1.5 text-xs">
-            <div className="flex justify-between text-[#8E929E]">
+          <div className="p-3 bg-surface rounded-xl border border-border space-y-1.5 text-xs">
+            <div className="flex justify-between text-text-muted">
               <span>Subtotal:</span>
               <span className="font-mono">{formatCRC(subtotal)}</span>
             </div>
-            <div className="flex justify-between text-[#8E929E]">
+            <div className="flex justify-between text-text-muted">
               <span>IVA 13%:</span>
               <span className="font-mono">{formatCRC(tax)}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold text-white border-t border-[#26282E] pt-1">
+            <div className="flex justify-between text-sm font-bold text-white border-t border-border pt-1">
               <span>Total a Pagar:</span>
-              <span className="font-mono text-[#0EA5FF]">{formatCRC(total)}</span>
+              <span className="font-mono text-primary">{formatCRC(total)}</span>
             </div>
           </div>
 
-          <div className="pt-3 border-t border-[#26282E] flex justify-end gap-2">
+          <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
