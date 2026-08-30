@@ -49,13 +49,13 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-[#141518] border-r border-[#26282E] flex flex-col h-screen fixed left-0 top-0 z-30">
       {/* Brand Header */}
-      <div className="h-16 px-6 flex items-center gap-3 border-b border-[#26282E]">
-        <div className="relative w-8 h-8 flex-shrink-0">
-          <Image src="/brand/icon.png" alt="Orbítica Icon" fill className="object-contain" />
+      <div className="h-16 px-4 flex items-center gap-3 border-b border-[#26282E] bg-[#141518]">
+        <div className="relative w-9 h-9 flex-shrink-0 bg-[#1A1B1F] border border-[#26282E] rounded-xl p-1 shadow-sm flex items-center justify-center">
+          <Image src="/brand/icon.png" alt="Orbítica Icon" width={26} height={26} className="object-contain" priority />
         </div>
-        <div className="flex flex-col">
-          <span className="font-bold text-sm text-white tracking-wider">ORBÍTICA POS</span>
-          <span className="text-[10px] text-[#0EA5FF] uppercase font-mono tracking-widest">
+        <div className="flex flex-col min-w-0">
+          <span className="font-extrabold text-sm text-white tracking-wider truncate">ORBÍTICA POS</span>
+          <span className="text-[9px] text-[#0EA5FF] font-bold uppercase font-mono tracking-widest truncate">
             {user?.role === "superadmin" ? "SUPERADMIN" : user?.organization_name || "STUDIO"}
           </span>
         </div>

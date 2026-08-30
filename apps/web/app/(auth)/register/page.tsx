@@ -73,20 +73,24 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col justify-center items-center p-4 selection:bg-[#0EA5FF] selection:text-white">
-      {/* Background radial glow */}
-      <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
-        <div className="w-[600px] h-[600px] bg-[#0EA5FF]/5 rounded-full blur-[140px]" />
-      </div>
+    <div className="min-h-screen bg-[#0A0A0A] flex flex-col justify-center items-center p-4 selection:bg-[#0EA5FF] selection:text-white relative overflow-hidden">
+      {/* Background ambient lighting */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[650px] h-[400px] bg-[#0EA5FF]/10 blur-[150px] rounded-full pointer-events-none" />
 
       <div className="w-full max-w-xl z-10 space-y-6 my-8">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="relative w-12 h-12 mb-1">
-            <Image src="/brand/icon.png" alt="Orbítica Icon" fill className="object-contain" />
+          <div className="relative w-64 h-20 mx-auto flex items-center justify-center">
+            <Image
+              src="/brand/top_logo.png"
+              alt="Orbítica POS"
+              fill
+              className="object-contain drop-shadow-[0_0_25px_rgba(14,165,255,0.2)]"
+              priority
+            />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            Registrar mi Negocio en <span className="text-[#0EA5FF]">ORBÍTICA POS</span>
+          <h1 className="text-xl font-bold text-white tracking-tight">
+            Aprovisionar Negocio en <span className="text-[#0EA5FF]">ORBÍTICA POS</span>
           </h1>
           <p className="text-xs text-[#8E929E] max-w-md">
             Comienza tu prueba gratuita de 14 días con Punto de Venta, Inventario y Facturación Electrónica de Costa Rica.
@@ -94,7 +98,7 @@ export default function RegisterPage() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-[#141518] border border-[#26282E] rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
+        <div className="bg-[#141518] border border-[#26282E] rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6 backdrop-blur-sm">
           {success ? (
             <div className="py-12 text-center space-y-4">
               <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-emerald-400">
