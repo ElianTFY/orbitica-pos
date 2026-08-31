@@ -1,72 +1,99 @@
-﻿"use client";
+"use client";
 
 import React from "react";
-import { Sparkles, Check, Building, Users, Shield } from "lucide-react";
+import { Sparkles, Check, Building, Users, Shield, Calendar } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
+import { useStore } from "@/features/store/store-context";
+import { useAuth } from "@/features/auth/auth-context";
 
 export default function SubscriptionPage() {
+  const { settings, products } = useStore();
+  const { user } = useAuth();
+
   return (
     <OwnerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Suscripción SaaS Orbítica</h1>
-          <p className="text-xs text-text-muted">Detalles del plan contratado, límites de sucursales y características activas</p>
+          <h1 className="text-xl font-bold text-text-main tracking-tight">Suscripción y Estado de Cuenta</h1>
+          <p className="text-xs text-text-muted">
+            {settings.trade_name} — Plan contratado, período de prueba y límites de la plataforma
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="md:col-span-2 border-l-4 border-l-[#0EA5FF] space-y-6">
+          <Card className="md:col-span-2 border-l-4 border-l-primary space-y-6">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-primary" />
-                  <h3 className="text-lg font-bold text-white">Plan Pro Empresarial</h3>
+                  <h2 className="text-lg font-bold text-text-main">Prueba Gratuita Oficial (14 Días)</h2>
                 </div>
-                <p className="text-xs text-text-muted">Facturación mensual recurrente</p>
+                <p className="text-xs text-text-muted">Acceso completo a todas las funciones profesionales</p>
               </div>
-              <Badge variant="success">ACTIVO</Badge>
+              <Badge variant="success">PRUEBA ACTIVA</Badge>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
-              <div className="p-3 bg-surface-secondary rounded-xl">
-                <span className="text-[10px] text-text-muted uppercase">Sucursales</span>
-                <div className="text-lg font-bold text-white mt-0.5">2 / 5</div>
+              <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
+                <span className="text-[10px] text-text-muted uppercase font-bold">Sucursales</span>
+                <div className="text-lg font-black text-text-main mt-0.5 font-mono">1 / 5</div>
+                <span className="text-[10px] text-text-muted">{settings.branch_name}</span>
               </div>
 
-              <div className="p-3 bg-surface-secondary rounded-xl">
-                <span className="text-[10px] text-text-muted uppercase">Colaboradores</span>
-                <div className="text-lg font-bold text-white mt-0.5">4 / 15</div>
+              <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
+                <span className="text-[10px] text-text-muted uppercase font-bold">Productos Registrados</span>
+                <div className="text-lg font-black text-text-main mt-0.5 font-mono">{products.length} / Ilimitados</div>
+                <span className="text-[10px] text-text-muted">SKUs en catálogo</span>
               </div>
 
-              <div className="p-3 bg-surface-secondary rounded-xl">
-                <span className="text-[10px] text-text-muted uppercase">Precio Mensual</span>
-                <div className="text-lg font-bold text-primary mt-0.5">{formatCRC(25000)}</div>
+              <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
+                <span className="text-[10px] text-text-muted uppercase font-bold">Facturación Hacienda</span>
+                <div className="text-lg font-black text-emerald-500 mt-0.5 font-mono">Ilimitada</div>
+                <span className="text-[10px] text-text-muted">v4.3 XAdES-BES</span>
               </div>
             </div>
 
             <div className="space-y-2 pt-2 border-t border-border">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Características Incluidas:</h4>
+              <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider">Beneficios Incluidos:</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-text-secondary">
                 <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400" />
+                  <Check className="w-4 h-4 text-emerald-500" />
                   <span>Facturación Electrónica v4.3 Ilimitada</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Punto de Venta POS de Alta Velocidad</span>
+                  <Check className="w-4 h-4 text-emerald-500" />
+                  <span>Punto de Venta POS Móvil y Táctil</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Libro Mayor de Inventario Inmutable</span>
+                  <Check className="w-4 h-4 text-emerald-500" />
+                  <span>Control de Inventario y Kárdex</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Arqueos Ciegos y Control de Cajas</span>
+                  <Check className="w-4 h-4 text-emerald-500" />
+                  <span>Arqueo de Caja y Cierres Z</span>
                 </div>
               </div>
+            </div>
+          </Card>
+
+          <Card className="space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-text-main">Información de Facturación SaaS</h3>
+              <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl text-xs space-y-2 text-text-muted">
+                <div><strong>Organización:</strong> <span className="text-text-main">{settings.trade_name}</span></div>
+                <div><strong>Cédula:</strong> <span className="text-text-main font-mono">{settings.identification_number}</span></div>
+                <div><strong>Propietario:</strong> <span className="text-text-main">{user?.full_name || "Owner"}</span></div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Button variant="primary" className="w-full">
+                Elegir Plan Definitivo
+              </Button>
             </div>
           </Card>
         </div>

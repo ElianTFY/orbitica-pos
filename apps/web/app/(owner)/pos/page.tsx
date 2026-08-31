@@ -30,7 +30,7 @@ import { Product, CartItem } from "@/types";
 import { formatCRC } from "@/lib/utils";
 
 export default function POSPage() {
-  const { products, recordSale, settings, importSampleProducts } = useStore();
+  const { products, recordSale, settings } = useStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -247,12 +247,9 @@ export default function POSPage() {
                   <div className="flex gap-2">
                     <Link href="/products">
                       <Button variant="primary" size="sm">
-                        + Registrar Productos
+                        + Registrar Productos en Inventario
                       </Button>
                     </Link>
-                    <Button variant="secondary" size="sm" onClick={importSampleProducts}>
-                      Cargar Ejemplos
-                    </Button>
                   </div>
                 </div>
               ) : (

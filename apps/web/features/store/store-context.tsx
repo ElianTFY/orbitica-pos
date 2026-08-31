@@ -2,7 +2,17 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "@/features/auth/auth-context";
-import { Product, SaleRecord, CashSession } from "@/types";
+import {
+  Product,
+  Customer,
+  Supplier,
+  PurchaseRecord,
+  InventoryMovement,
+  SaleRecord,
+  InvoiceRecord,
+  CashSession,
+  AuditLogEntry,
+} from "@/types";
 
 export interface BusinessSettings {
   trade_name: string;
@@ -19,40 +29,45 @@ export interface BusinessSettings {
   atv_username: string;
 }
 
-export interface InvoiceRecord {
-  id: string;
-  doc_type: "01" | "04" | "03";
-  doc_type_label: string;
-  consecutive_number: string;
-  numeric_key: string;
-  created_at: string;
-  customer_name: string;
-  total: number;
-  status: "ACCEPTED" | "PENDING" | "REJECTED";
-  hacienda_message?: string;
-  xml_signed?: string;
-}
-
-const DEFAULT_SAMPLE_PRODUCTS: Product[] = [
-  { id: "p1", name: "Coca-Cola 600ml Descartable", barcode: "7441001001", sku: "BEB-001", sale_price: 1200, cost_price: 800, min_stock_alert: 10, tax_rate: 13, category_name: "Bebidas", stock: 48 },
-  { id: "p2", name: "Cerveza Imperial 350ml Lata", barcode: "7441002002", sku: "LIC-001", sale_price: 1400, cost_price: 950, min_stock_alert: 24, tax_rate: 13, category_name: "Licores", stock: 35 },
-  { id: "p3", name: "Papas Tosty Clásicas 115g", barcode: "7441003003", sku: "SNK-001", sale_price: 850, cost_price: 550, min_stock_alert: 15, tax_rate: 13, category_name: "Snacks", stock: 20 },
-  { id: "p4", name: "Café Rey 500g Tradicional", barcode: "7441004004", sku: "ABA-001", sale_price: 2800, cost_price: 2100, min_stock_alert: 8, tax_rate: 1, category_name: "Canasta Básica", stock: 15 },
-  { id: "p5", name: "Agua Cristal 600ml Sin Gas", barcode: "7441005005", sku: "BEB-002", sale_price: 700, cost_price: 400, min_stock_alert: 12, tax_rate: 13, category_name: "Bebidas", stock: 50 },
-  { id: "p6", name: "Galletas Chiky Chocolate", barcode: "7441006006", sku: "SNK-002", sale_price: 650, cost_price: 420, min_stock_alert: 10, tax_rate: 13, category_name: "Snacks", stock: 30 },
-];
-
 interface StoreContextType {
   settings: BusinessSettings;
   products: Product[];
+  customers: Customer[];
+  suppliers: Supplier[];
+  purchases: PurchaseRecord[];
+  movements: InventoryMovement[];
   sales: SaleRecord[];
   invoices: InvoiceRecord[];
+  auditLogs: AuditLogEntry[];
   activeCashSession: CashSession | null;
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
-  addProduct: (product: Omit<Product, "id">) => Product;
+  // Products
+  addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
   updateProduct: (id: string, product: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
-  importSampleProducts: () => void;
+  // Customers
+  addCustomer: (customer: Omit<Customer, "id" | "organization_id">) => Customer;
+  updateCustomer: (id: string, customer: Partial<Customer>) => void;
+  deleteCustomer: (id: string) => void;
+  // Suppliers
+  addSupplier: (supplier: Omit<Supplier, "id" | "organization_id">) => Supplier;
+  updateSupplier: (id: string, supplier: Partial<Supplier>) => void;
+  deleteSupplier: (id: string) => void;
+  // Purchases & Inventory
+  recordPurchase: (data: {
+    supplierName: string;
+    invoiceNumber: string;
+    paymentType: "CONTADO" | "CREDITO";
+    items: Array<{ productId?: string; productName: string; quantity: number; unitCost: number }>;
+  }) => PurchaseRecord;
+  recordAdjustment: (data: {
+    productId: string;
+    productName: string;
+    movementType: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
+    quantity: number;
+    reason?: string;
+  }) => InventoryMovement;
+  // Sales & Cash
   recordSale: (saleData: {
     items: Array<{ product: Product; quantity: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
@@ -70,7 +85,7 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const orgId = user?.organization_id || "default_org";
+  const orgId = user?.organization_id || "default_tenant";
 
   const [settings, setSettings] = useState<BusinessSettings>({
     trade_name: user?.organization_name || "Mi Negocio",
@@ -79,7 +94,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     identification_type: "JURIDICA",
     email: user?.email || "facturacion@minegocio.cr",
     phone: user?.phone || "+506 2200-0000",
-    address: "San José Centro, Costa Rica",
+    address: "San José, Costa Rica",
     branch_name: user?.branch_name || "Sucursal Central (001)",
     tax_regime: "TRADICIONAL",
     default_currency: "CRC",
@@ -87,13 +102,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     atv_username: "cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr",
   });
 
+  // Zero-mock initial empty states
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [activeCashSession, setActiveCashSession] = useState<CashSession | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Sync settings with authenticated user
+  // Sync settings when user context changes
   useEffect(() => {
     if (user) {
       setSettings((prev) => ({
@@ -108,92 +129,109 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  // Load persistent store for this specific organization
+  // Load tenant-isolated state
   useEffect(() => {
     if (typeof window === "undefined" || !orgId) return;
 
     try {
-      const savedSettings = localStorage.getItem(`orbitica_settings_${orgId}`);
-      if (savedSettings) setSettings((prev) => ({ ...prev, ...JSON.parse(savedSettings) }));
+      const sSettings = localStorage.getItem(`orbitica_settings_${orgId}`);
+      if (sSettings) setSettings((prev) => ({ ...prev, ...JSON.parse(sSettings) }));
 
-      const savedProducts = localStorage.getItem(`orbitica_products_${orgId}`);
-      if (savedProducts) {
-        setProducts(JSON.parse(savedProducts));
+      const sProducts = localStorage.getItem(`orbitica_products_${orgId}`);
+      setProducts(sProducts ? JSON.parse(sProducts) : []);
+
+      const sCustomers = localStorage.getItem(`orbitica_customers_${orgId}`);
+      setCustomers(sCustomers ? JSON.parse(sCustomers) : []);
+
+      const sSuppliers = localStorage.getItem(`orbitica_suppliers_${orgId}`);
+      setSuppliers(sSuppliers ? JSON.parse(sSuppliers) : []);
+
+      const sPurchases = localStorage.getItem(`orbitica_purchases_${orgId}`);
+      setPurchases(sPurchases ? JSON.parse(sPurchases) : []);
+
+      const sMovements = localStorage.getItem(`orbitica_movements_${orgId}`);
+      setMovements(sMovements ? JSON.parse(sMovements) : []);
+
+      const sSales = localStorage.getItem(`orbitica_sales_${orgId}`);
+      setSales(sSales ? JSON.parse(sSales) : []);
+
+      const sInvoices = localStorage.getItem(`orbitica_invoices_${orgId}`);
+      setInvoices(sInvoices ? JSON.parse(sInvoices) : []);
+
+      const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
+      setActiveCashSession(sCash ? JSON.parse(sCash) : null);
+
+      const sAudit = localStorage.getItem(`orbitica_audit_${orgId}`);
+      if (sAudit) {
+        setAuditLogs(JSON.parse(sAudit));
       } else {
-        // If demo org, populate with samples; if new real org, start clean with samples ready
-        const initial = orgId === "org_sanjose_001" ? DEFAULT_SAMPLE_PRODUCTS : DEFAULT_SAMPLE_PRODUCTS;
-        setProducts(initial);
-        localStorage.setItem(`orbitica_products_${orgId}`, JSON.stringify(initial));
-      }
-
-      const savedSales = localStorage.getItem(`orbitica_sales_${orgId}`);
-      if (savedSales) setSales(JSON.parse(savedSales));
-
-      const savedInvoices = localStorage.getItem(`orbitica_invoices_${orgId}`);
-      if (savedInvoices) setInvoices(JSON.parse(savedInvoices));
-
-      const savedCash = localStorage.getItem(`orbitica_cash_${orgId}`);
-      if (savedCash) {
-        setActiveCashSession(JSON.parse(savedCash));
-      } else {
-        // Default open cash session
-        const defaultCash: CashSession = {
-          id: `cash_${Date.now()}`,
+        const initialAudit: AuditLogEntry = {
+          id: `aud_${Date.now()}`,
           organization_id: orgId,
-          opened_at: new Date().toISOString(),
-          initial_amount: 50000,
-          cash_sales: 0,
-          sinpe_sales: 0,
-          card_sales: 0,
-          total_sales: 0,
-          status: "OPEN",
+          created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+          actor_name: user?.full_name || "Propietario",
+          action: "ORGANIZATION_PROVISIONED",
+          resource: `Organization: ${user?.organization_name || "Mi Negocio"}`,
+          ip_address: "127.0.0.1",
         };
-        setActiveCashSession(defaultCash);
-        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(defaultCash));
+        setAuditLogs([initialAudit]);
+        localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify([initialAudit]));
       }
     } catch (e) {
-      console.warn("Could not load organization store data:", e);
+      console.warn("Error loading isolated tenant data:", e);
     } finally {
       setIsLoaded(true);
     }
   }, [orgId]);
 
-  // Persist products whenever they change
+  // Save changes isolated by organization_id
   useEffect(() => {
     if (!isLoaded || typeof window === "undefined" || !orgId) return;
     try {
       localStorage.setItem(`orbitica_products_${orgId}`, JSON.stringify(products));
-    } catch (e) {}
-  }, [products, orgId, isLoaded]);
-
-  // Persist sales & invoices
-  useEffect(() => {
-    if (!isLoaded || typeof window === "undefined" || !orgId) return;
-    try {
+      localStorage.setItem(`orbitica_customers_${orgId}`, JSON.stringify(customers));
+      localStorage.setItem(`orbitica_suppliers_${orgId}`, JSON.stringify(suppliers));
+      localStorage.setItem(`orbitica_purchases_${orgId}`, JSON.stringify(purchases));
+      localStorage.setItem(`orbitica_movements_${orgId}`, JSON.stringify(movements));
       localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(sales));
       localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(invoices));
-    } catch (e) {}
-  }, [sales, invoices, orgId, isLoaded]);
-
-  // Persist settings
-  useEffect(() => {
-    if (!isLoaded || typeof window === "undefined" || !orgId) return;
-    try {
+      localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify(auditLogs));
       localStorage.setItem(`orbitica_settings_${orgId}`, JSON.stringify(settings));
+      if (activeCashSession) {
+        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(activeCashSession));
+      } else {
+        localStorage.removeItem(`orbitica_cash_${orgId}`);
+      }
     } catch (e) {}
-  }, [settings, orgId, isLoaded]);
+  }, [products, customers, suppliers, purchases, movements, sales, invoices, auditLogs, settings, activeCashSession, orgId, isLoaded]);
+
+  const logAudit = (action: string, resource: string) => {
+    const entry: AuditLogEntry = {
+      id: `aud_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+      actor_name: user?.full_name || "Usuario",
+      action,
+      resource,
+      ip_address: "127.0.0.1",
+    };
+    setAuditLogs((prev) => [entry, ...prev]);
+  };
 
   const updateSettings = (newSettings: Partial<BusinessSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
+    logAudit("SETTINGS_UPDATED", "Configuración Comercial");
   };
 
-  const addProduct = (prod: Omit<Product, "id">): Product => {
+  // Products
+  const addProduct = (prod: Omit<Product, "id" | "organization_id">): Product => {
     const newProduct: Product = {
       ...prod,
       id: `prod_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       organization_id: orgId,
     };
     setProducts((prev) => [newProduct, ...prev]);
+    logAudit("PRODUCT_CREATED", `Producto: ${newProduct.name}`);
     return newProduct;
   };
 
@@ -201,16 +239,167 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setProducts((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...updated } : p))
     );
+    logAudit("PRODUCT_UPDATED", `Producto ID: ${id}`);
   };
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== id));
+    logAudit("PRODUCT_DELETED", `Producto ID: ${id}`);
   };
 
-  const importSampleProducts = () => {
-    setProducts(DEFAULT_SAMPLE_PRODUCTS);
+  // Customers
+  const addCustomer = (cust: Omit<Customer, "id" | "organization_id">): Customer => {
+    const newCustomer: Customer = {
+      ...cust,
+      id: `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+    };
+    setCustomers((prev) => [newCustomer, ...prev]);
+    logAudit("CUSTOMER_CREATED", `Cliente: ${newCustomer.name}`);
+    return newCustomer;
   };
 
+  const updateCustomer = (id: string, updated: Partial<Customer>) => {
+    setCustomers((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updated } : c))
+    );
+  };
+
+  const deleteCustomer = (id: string) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    logAudit("CUSTOMER_DELETED", `Cliente ID: ${id}`);
+  };
+
+  // Suppliers
+  const addSupplier = (supp: Omit<Supplier, "id" | "organization_id">): Supplier => {
+    const newSupplier: Supplier = {
+      ...supp,
+      id: `supp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+    };
+    setSuppliers((prev) => [newSupplier, ...prev]);
+    logAudit("SUPPLIER_CREATED", `Proveedor: ${newSupplier.name}`);
+    return newSupplier;
+  };
+
+  const updateSupplier = (id: string, updated: Partial<Supplier>) => {
+    setSuppliers((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...updated } : s))
+    );
+  };
+
+  const deleteSupplier = (id: string) => {
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+    logAudit("SUPPLIER_DELETED", `Proveedor ID: ${id}`);
+  };
+
+  // Purchases & Inventory
+  const recordPurchase = ({
+    supplierName,
+    invoiceNumber,
+    paymentType,
+    items,
+  }: {
+    supplierName: string;
+    invoiceNumber: string;
+    paymentType: "CONTADO" | "CREDITO";
+    items: Array<{ productId?: string; productName: string; quantity: number; unitCost: number }>;
+  }): PurchaseRecord => {
+    const totalAmount = items.reduce((acc, it) => acc + it.quantity * it.unitCost * 1.13, 0);
+
+    const purchase: PurchaseRecord = {
+      id: `purch_${Date.now()}`,
+      organization_id: orgId,
+      supplier_name: supplierName,
+      invoice_number: invoiceNumber,
+      payment_type: paymentType,
+      total_amount: totalAmount,
+      items_count: items.reduce((acc, it) => acc + it.quantity, 0),
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+      status: "RECEIVED",
+    };
+
+    setPurchases((prev) => [purchase, ...prev]);
+
+    // Update stock and create inventory movements
+    items.forEach((it) => {
+      if (it.productId) {
+        setProducts((prev) =>
+          prev.map((p) => {
+            if (p.id === it.productId) {
+              const newStock = (p.stock ?? 0) + it.quantity;
+              return { ...p, stock: newStock, cost_price: it.unitCost };
+            }
+            return p;
+          })
+        );
+      }
+
+      const mov: InventoryMovement = {
+        id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        organization_id: orgId,
+        created_at: purchase.created_at,
+        product_name: it.productName,
+        movement_type: "IN_PURCHASE",
+        quantity: it.quantity,
+        previous_quantity: 0,
+        new_quantity: it.quantity,
+        actor_name: user?.full_name || "Propietario",
+        reason: `Compra factura #${invoiceNumber} (${supplierName})`,
+      };
+      setMovements((prev) => [mov, ...prev]);
+    });
+
+    logAudit("PURCHASE_RECORDED", `Compra Factura: ${invoiceNumber}`);
+    return purchase;
+  };
+
+  const recordAdjustment = ({
+    productId,
+    productName,
+    movementType,
+    quantity,
+    reason,
+  }: {
+    productId: string;
+    productName: string;
+    movementType: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
+    quantity: number;
+    reason?: string;
+  }): InventoryMovement => {
+    let currentStock = 0;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          currentStock = p.stock ?? 0;
+          const updatedStock = Math.max(0, currentStock + quantity);
+          return { ...p, stock: updatedStock };
+        }
+        return p;
+      })
+    );
+
+    const mov: InventoryMovement = {
+      id: `mov_${Date.now()}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+      product_name: productName,
+      movement_type: movementType,
+      quantity,
+      previous_quantity: currentStock,
+      new_quantity: Math.max(0, currentStock + quantity),
+      actor_name: user?.full_name || "Administrador",
+      reason: reason || "Ajuste manual de stock",
+    };
+
+    setMovements((prev) => [mov, ...prev]);
+    logAudit("INVENTORY_ADJUSTED", `Ajuste en ${productName} (${quantity > 0 ? "+" : ""}${quantity})`);
+    return mov;
+  };
+
+  // Sales
   const recordSale = ({
     items,
     paymentMethod,
@@ -240,17 +429,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
     const total = subtotal + tax;
 
-    // Deduct inventory stock
+    // Deduct stock & create movement
     setProducts((prev) =>
       prev.map((p) => {
         const itemSold = items.find((it) => it.product.id === p.id);
         if (itemSold) {
-          const newStock = Math.max(0, p.stock - itemSold.quantity);
+          const newStock = Math.max(0, (p.stock ?? 0) - itemSold.quantity);
           return { ...p, stock: newStock };
         }
         return p;
       })
     );
+
+    items.forEach((it) => {
+      const mov: InventoryMovement = {
+        id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        organization_id: orgId,
+        created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+        product_name: it.product.name,
+        movement_type: "OUT_SALE",
+        quantity: -it.quantity,
+        previous_quantity: it.product.stock ?? 0,
+        new_quantity: Math.max(0, (it.product.stock ?? 0) - it.quantity),
+        actor_name: user?.full_name || "Cajero",
+        reason: `Venta en POS #${saleNum}`,
+      };
+      setMovements((prev) => [mov, ...prev]);
+    });
 
     const newSale: SaleRecord = {
       id: `sale_${Date.now()}`,
@@ -263,6 +468,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       tax,
       payment_method: paymentMethod,
       customer_name: customerName,
+      customer_cedula: customerCedula || null,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
       items_count: items.reduce((acc, it) => acc + it.quantity, 0),
       status: "COMPLETED",
@@ -270,6 +476,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     const newInvoice: InvoiceRecord = {
       id: `inv_${Date.now()}`,
+      organization_id: orgId,
       doc_type: docType,
       doc_type_label: docType === "01" ? "Factura Electrónica (01)" : "Tiquete Electrónico (04)",
       consecutive_number: consecutive,
@@ -285,7 +492,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSales((prev) => [newSale, ...prev]);
     setInvoices((prev) => [newInvoice, ...prev]);
 
-    // Update active cash session
     if (activeCashSession) {
       const updatedCash: CashSession = {
         ...activeCashSession,
@@ -295,10 +501,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         card_sales: paymentMethod === "CARD" ? activeCashSession.card_sales + total : activeCashSession.card_sales,
       };
       setActiveCashSession(updatedCash);
-      try {
-        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(updatedCash));
-      } catch (e) {}
     }
+
+    logAudit("SALE_COMPLETED", `Venta #${saleNum} (${paymentMethod})`);
 
     const receiptData = {
       sale_number: saleNum,
@@ -363,9 +568,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       status: "OPEN",
     };
     setActiveCashSession(session);
-    try {
-      localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(session));
-    } catch (e) {}
+    logAudit("CASH_SESSION_OPENED", `Apertura de Caja: ₡${initialAmount}`);
   };
 
   const closeCashSession = () => {
@@ -376,9 +579,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         status: "CLOSED",
       };
       setActiveCashSession(closed);
-      try {
-        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(closed));
-      } catch (e) {}
+      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: ₡${closed.total_sales}`);
     }
   };
 
@@ -387,14 +588,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       value={{
         settings,
         products,
+        customers,
+        suppliers,
+        purchases,
+        movements,
         sales,
         invoices,
+        auditLogs,
         activeCashSession,
         updateSettings,
         addProduct,
         updateProduct,
         deleteProduct,
-        importSampleProducts,
+        addCustomer,
+        updateCustomer,
+        deleteCustomer,
+        addSupplier,
+        updateSupplier,
+        deleteSupplier,
+        recordPurchase,
+        recordAdjustment,
         recordSale,
         openCashSession,
         closeCashSession,

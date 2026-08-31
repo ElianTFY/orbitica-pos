@@ -6,6 +6,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, password } = body;
 
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: { code: "MISSING_CREDENTIALS", message: "Debe ingresar correo y contraseña" } },
+        { status: 400 }
+      );
+    }
+
+    const emailLower = email.trim().toLowerCase();
     const cookieStore = await cookies();
     const existingCookie = cookieStore.get("orbitica_session_user");
     let user = null;
@@ -13,52 +21,49 @@ export async function POST(request: Request) {
     if (existingCookie?.value) {
       try {
         const saved = JSON.parse(existingCookie.value);
-        if (saved.email?.toLowerCase() === email?.toLowerCase()) {
+        if (saved.email?.toLowerCase() === emailLower) {
           user = saved;
         }
       } catch (e) {}
     }
 
-    if (!user && email && password) {
-      const emailLower = email.toLowerCase();
-      if (emailLower === "superadmin@orbitica.cr") {
-        user = {
-          id: "usr_superadmin_001",
-          organization_id: "org_orbitica_hq",
-          organization_name: "ORBÍTICA STUDIO HQ",
-          legal_name: "Orbítica Studio Costa Rica S.A.",
-          identification_number: "3101999888",
-          branch_id: "br_hq_001",
-          branch_name: "Sede Principal",
-          email: emailLower,
-          full_name: "Superadmin Orbítica",
-          role: "superadmin",
-          permissions: ["*"],
-        };
-      } else {
-        const namePart = emailLower.split("@")[0].replace(".", " ");
-        const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-        user = {
-          id: `usr_${Date.now()}`,
-          organization_id: `org_${Date.now()}`,
-          organization_name: "Mi Negocio",
-          legal_name: "Comercial S.A.",
-          identification_number: "3101000000",
-          branch_id: "br_001",
-          branch_name: "Sucursal Central (001)",
-          email: emailLower,
-          full_name: formattedName,
-          role: "owner",
-          permissions: ["*"],
-        };
-      }
+    // Platform Superadmin
+    if (!user && emailLower === "superadmin@orbitica.cr") {
+      user = {
+        id: "usr_superadmin_001",
+        organization_id: "org_orbitica_platform",
+        organization_name: "ORBÍTICA PLATFORM",
+        legal_name: "Orbítica Studio Costa Rica S.A.",
+        identification_number: "3101999888",
+        branch_id: "br_platform_001",
+        branch_name: "Sede Principal",
+        email: emailLower,
+        full_name: "Superadministrador Orbítica",
+        role: "superadmin",
+        permissions: ["*"],
+      };
     }
 
+    // If not found in cookie, check if registered in persistent storage header or create clean owner profile
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: { code: "INVALID_CREDENTIALS", message: "Credenciales inválidas" } },
-        { status: 401 }
-      );
+      const namePart = emailLower.split("@")[0].replace(/[._-]/g, " ");
+      const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+      const orgId = `org_${Date.now()}`;
+      user = {
+        id: `usr_${Date.now()}`,
+        organization_id: orgId,
+        organization_name: `Empresa ${formattedName}`,
+        legal_name: `Comercial ${formattedName} S.A.`,
+        identification_number: "3101000000",
+        identification_type: "JURIDICA",
+        branch_id: "br_001",
+        branch_name: "Sucursal Central (001)",
+        email: emailLower,
+        full_name: formattedName,
+        phone: "+506 2200-0000",
+        role: "owner",
+        permissions: ["*"],
+      };
     }
 
     const token = `orbitica_jwt_${user.id}_${Date.now()}`;

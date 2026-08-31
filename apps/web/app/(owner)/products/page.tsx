@@ -9,12 +9,10 @@ import {
   Barcode,
   Edit2,
   Trash2,
-  CheckCircle,
-  Download,
-  Sparkles,
+  PackagePlus,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
@@ -24,7 +22,7 @@ import { useStore } from "@/features/store/store-context";
 import { Product } from "@/types";
 
 export default function ProductsPage() {
-  const { products, addProduct, updateProduct, deleteProduct, importSampleProducts } = useStore();
+  const { products, addProduct, updateProduct, deleteProduct } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -115,24 +113,16 @@ export default function ProductsPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-text-main tracking-tight">Catálogo de Productos</h1>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">Catálogo de Productos ({products.length})</h1>
             <p className="text-xs text-text-muted">
-              Gestiona el inventario, precios en colones y tarifas de IVA para facturación electrónica
+              Gestiona los productos, precios en colones, stock en bodega y tarifas de IVA de tu negocio
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {products.length === 0 && (
-              <Button variant="secondary" size="sm" onClick={importSampleProducts}>
-                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-primary" />
-                Cargar Ejemplos
-              </Button>
-            )}
-            <Button variant="primary" onClick={openCreateModal}>
-              <Plus className="w-4 h-4 mr-1.5" />
-              Nuevo Producto
-            </Button>
-          </div>
+          <Button variant="primary" onClick={openCreateModal}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            Nuevo Producto
+          </Button>
         </div>
 
         {/* Filters */}
@@ -168,82 +158,100 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {/* Products Table */}
-        <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs" aria-label="Tabla de inventario de productos">
-              <thead>
-                <tr className="text-text-muted border-b border-border">
-                  <th scope="col" className="pb-3 font-bold">Producto</th>
-                  <th scope="col" className="pb-3 font-bold">SKU / Código</th>
-                  <th scope="col" className="pb-3 font-bold">Categoría</th>
-                  <th scope="col" className="pb-3 font-bold">Precio Venta (CRC)</th>
-                  <th scope="col" className="pb-3 font-bold">Tarifa IVA</th>
-                  <th scope="col" className="pb-3 font-bold">Stock</th>
-                  <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-text-muted">
-                      No hay productos registrados en esta categoría. Haz clic en <strong>+ Nuevo Producto</strong> para agregar el primero.
-                    </td>
+        {/* Products Table or Professional Empty State */}
+        {products.length === 0 ? (
+          <Card className="p-12 text-center space-y-4">
+            <div className="w-14 h-14 rounded-3xl bg-primary-subtle text-primary flex items-center justify-center mx-auto border border-primary/20">
+              <PackagePlus className="w-7 h-7" />
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <h2 className="text-base font-bold text-text-main">Todavía no tienes productos registrados</h2>
+              <p className="text-xs text-text-muted">
+                Agrega los productos o artículos que vendes en tu negocio para que estén disponibles al instante en el Punto de Venta (POS).
+              </p>
+            </div>
+            <Button variant="primary" onClick={openCreateModal}>
+              <Plus className="w-4 h-4 mr-2" />
+              Agregar Primer Producto
+            </Button>
+          </Card>
+        ) : (
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs" aria-label="Tabla de inventario de productos">
+                <thead>
+                  <tr className="text-text-muted border-b border-border">
+                    <th scope="col" className="pb-3 font-bold">Producto</th>
+                    <th scope="col" className="pb-3 font-bold">SKU / Código</th>
+                    <th scope="col" className="pb-3 font-bold">Categoría</th>
+                    <th scope="col" className="pb-3 font-bold">Precio Venta (CRC)</th>
+                    <th scope="col" className="pb-3 font-bold">Tarifa IVA</th>
+                    <th scope="col" className="pb-3 font-bold">Stock</th>
+                    <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
                   </tr>
-                ) : (
-                  filteredProducts.map((p) => (
-                    <tr key={p.id} className="hover:bg-surface-hover transition-colors">
-                      <td className="py-3 font-bold text-text-main flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-primary-subtle border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
-                          <Package className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="truncate max-w-xs">{p.name}</span>
-                      </td>
-                      <td className="py-3 font-mono text-text-secondary text-[11px]">
-                        <div>{p.sku || "-"}</div>
-                        {p.barcode && <div className="text-text-muted text-[10px]">{p.barcode}</div>}
-                      </td>
-                      <td className="py-3 text-text-secondary">{p.category_name || "General"}</td>
-                      <td className="py-3 font-black text-text-main font-mono text-sm">{formatCRC(p.sale_price)}</td>
-                      <td className="py-3">
-                        <Badge variant="blue">{p.tax_rate}% IVA</Badge>
-                      </td>
-                      <td className="py-3">
-                        <span
-                          className={`font-mono font-bold ${
-                            p.stock <= p.min_stock_alert ? "text-amber-500" : "text-emerald-500"
-                          }`}
-                        >
-                          {p.stock} uds
-                        </span>
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(p)}
-                            aria-label={`Editar ${p.name}`}
-                            className="p-1.5 text-text-muted hover:text-primary hover:bg-surface-secondary rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-primary"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteProduct(p.id)}
-                            aria-label={`Eliminar ${p.name}`}
-                            className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-text-muted">
+                        No se encontraron productos que coincidan con la búsqueda.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                  ) : (
+                    filteredProducts.map((p) => (
+                      <tr key={p.id} className="hover:bg-surface-hover transition-colors">
+                        <td className="py-3 font-bold text-text-main flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-primary-subtle border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+                            <Package className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="truncate max-w-xs">{p.name}</span>
+                        </td>
+                        <td className="py-3 font-mono text-text-secondary text-[11px]">
+                          <div>{p.sku || "-"}</div>
+                          {p.barcode && <div className="text-text-muted text-[10px]">{p.barcode}</div>}
+                        </td>
+                        <td className="py-3 text-text-secondary">{p.category_name || "General"}</td>
+                        <td className="py-3 font-black text-text-main font-mono text-sm">{formatCRC(p.sale_price)}</td>
+                        <td className="py-3">
+                          <Badge variant="blue">{p.tax_rate}% IVA</Badge>
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={`font-mono font-bold ${
+                              (p.stock ?? 0) <= p.min_stock_alert ? "text-amber-500" : "text-emerald-500"
+                            }`}
+                          >
+                            {p.stock} uds
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(p)}
+                              aria-label={`Editar ${p.name}`}
+                              className="p-1.5 text-text-muted hover:text-primary hover:bg-surface-secondary rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-primary"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteProduct(p.id)}
+                              aria-label={`Eliminar ${p.name}`}
+                              className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Create / Edit Product Modal */}

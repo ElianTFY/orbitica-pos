@@ -1,32 +1,17 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { ShieldCheck, Search, Filter } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-interface AuditEntry {
-  id: string;
-  created_at: string;
-  actor_name: string;
-  action: string;
-  resource: string;
-  ip_address: string;
-}
-
-const DEMO_AUDIT: AuditEntry[] = [
-  { id: "1", created_at: "2026-08-29 08:30:15", actor_name: "Cajero Principal", action: "SALE_COMPLETED", resource: "Sale #V-000012", ip_address: "192.168.1.45" },
-  { id: "2", created_at: "2026-08-29 07:45:00", actor_name: "Carlos Propietario", action: "SALE_REFUNDED", resource: "Sale #V-000010", ip_address: "192.168.1.10" },
-  { id: "3", created_at: "2026-08-29 07:00:12", actor_name: "Cajero Principal", action: "CASH_SESSION_OPENED", resource: "CashRegisterSession", ip_address: "192.168.1.45" },
-  { id: "4", created_at: "2026-08-28 18:00:00", actor_name: "Carlos Propietario", action: "PRODUCT_CREATED", resource: "Product: Queso Turrialba", ip_address: "192.168.1.10" },
-];
+import { useStore } from "@/features/store/store-context";
 
 export default function AuditPage() {
-  const [logs] = useState<AuditEntry[]>(DEMO_AUDIT);
+  const { auditLogs, settings } = useStore();
   const [search, setSearch] = useState("");
 
-  const filteredLogs = logs.filter(
+  const filteredLogs = auditLogs.filter(
     (l) =>
       l.action.toLowerCase().includes(search.toLowerCase()) ||
       l.actor_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -37,43 +22,46 @@ export default function AuditPage() {
     <OwnerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Registro de Auditoría de Seguridad</h1>
-          <p className="text-xs text-text-muted">Trazabilidad inmutable de todas las acciones sensibles en el sistema</p>
+          <h1 className="text-xl font-bold text-text-main tracking-tight">Registro de Auditoría de Seguridad</h1>
+          <p className="text-xs text-text-muted">
+            {settings.trade_name} — Trazabilidad inmutable de todas las acciones y eventos en el sistema
+          </p>
         </div>
 
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
           <input
             type="text"
+            aria-label="Filtrar por acción o usuario"
             placeholder="Filtrar por acción, usuario o recurso..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
+            className="w-full pl-10 pr-4 py-2.5 bg-surface-input border border-border rounded-2xl text-xs sm:text-sm text-text-main placeholder-text-muted focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary shadow-sm"
           />
         </div>
 
         <Card>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs" aria-label="Tabla de auditoría de seguridad">
               <thead>
                 <tr className="text-text-muted border-b border-border">
-                  <th className="pb-3">Fecha / Hora (UTC-6)</th>
-                  <th className="pb-3">Usuario / Actor</th>
-                  <th className="pb-3">Acción Realizada</th>
-                  <th className="pb-3">Recurso Afectado</th>
-                  <th className="pb-3 font-mono">IP Origen</th>
+                  <th scope="col" className="pb-3 font-bold">Fecha / Hora</th>
+                  <th scope="col" className="pb-3 font-bold">Usuario / Responsable</th>
+                  <th scope="col" className="pb-3 font-bold">Acción Realizada</th>
+                  <th scope="col" className="pb-3 font-bold">Recurso Afectado</th>
+                  <th scope="col" className="pb-3 font-bold text-right">Dirección IP</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#26282E]">
+              <tbody className="divide-y divide-border">
                 {filteredLogs.map((l) => (
-                  <tr key={l.id} className="hover:bg-surface-secondary/50 transition-colors">
-                    <td className="py-3 font-mono text-text-muted">{l.created_at}</td>
-                    <td className="py-3 font-semibold text-white">{l.actor_name}</td>
+                  <tr key={l.id} className="hover:bg-surface-hover transition-colors">
+                    <td className="py-3 font-mono text-text-muted text-[11px]">{l.created_at}</td>
+                    <td className="py-3 font-bold text-text-main">{l.actor_name}</td>
                     <td className="py-3">
                       <Badge variant="blue">{l.action}</Badge>
                     </td>
-                    <td className="py-3 text-text-secondary">{l.resource}</td>
-                    <td className="py-3 font-mono text-[11px] text-text-muted">{l.ip_address}</td>
+                    <td className="py-3 font-mono text-text-secondary text-[11px]">{l.resource}</td>
+                    <td className="py-3 text-right font-mono text-text-muted text-[11px]">{l.ip_address}</td>
                   </tr>
                 ))}
               </tbody>

@@ -1,14 +1,12 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import {
   Boxes,
   ArrowDownRight,
   ArrowUpRight,
-  RefreshCw,
-  AlertTriangle,
-  FileText,
   Plus,
+  Package,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,70 +14,63 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
-
-interface MovementRecord {
-  id: string;
-  created_at: string;
-  product_name: string;
-  movement_type: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
-  quantity: number;
-  previous_quantity: number;
-  new_quantity: number;
-  actor_name: string;
-  reason?: string;
-}
-
-const DEMO_MOVEMENTS: MovementRecord[] = [
-  { id: "1", created_at: "2026-08-29 08:30", product_name: "Coca-Cola 600ml Descartable", movement_type: "OUT_SALE", quantity: -2, previous_quantity: 52, new_quantity: 50, actor_name: "Cajero Principal", reason: "Venta en POS #V-000012" },
-  { id: "2", created_at: "2026-08-29 07:15", product_name: "Cerveza Imperial 350ml Lata", movement_type: "IN_PURCHASE", quantity: 24, previous_quantity: 21, new_quantity: 45, actor_name: "Carlos Propietario", reason: "Factura de Compra #9921 FIFCO" },
-  { id: "3", created_at: "2026-08-28 16:45", product_name: "Galletas Chiky Chocolate", movement_type: "WASTE", quantity: -5, previous_quantity: 10, new_quantity: 5, actor_name: "Carlos Propietario", reason: "Empaque dañado durante descarga" },
-  { id: "4", created_at: "2026-08-28 14:10", product_name: "Café Rey 500g Tradicional", movement_type: "RETURN_IN", quantity: 1, previous_quantity: 19, new_quantity: 20, actor_name: "Cajero Principal", reason: "Devolución de cliente por compra equivocada" },
-];
+import { useStore } from "@/features/store/store-context";
 
 export default function InventoryPage() {
-  const [movements, setMovements] = useState<MovementRecord[]>(DEMO_MOVEMENTS);
+  const { movements, products, recordAdjustment, settings } = useStore();
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
-  const [adjProduct, setAdjProduct] = useState("Coca-Cola 600ml Descartable");
-  const [adjType, setAdjType] = useState<string>("IN_PURCHASE");
-  const [adjQty, setAdjQty] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [adjType, setAdjType] = useState<"IN_PURCHASE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE">("ADJUSTMENT_IN");
+  const [adjQty, setAdjQty] = useState("10");
   const [adjReason, setAdjReason] = useState("");
 
   const handleCreateAdjustment = (e: React.FormEvent) => {
     e.preventDefault();
+    const prod = products.find((p) => p.id === selectedProductId) || products[0];
+    if (!prod) return;
+
     const qty = parseFloat(adjQty) || 0;
     const isNegative = adjType === "WASTE" || adjType === "ADJUSTMENT_OUT";
     const delta = isNegative ? -Math.abs(qty) : Math.abs(qty);
 
-    const newMov: MovementRecord = {
-      id: Date.now().toString(),
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-      product_name: adjProduct,
-      movement_type: adjType as any,
+    recordAdjustment({
+      productId: prod.id,
+      productName: prod.name,
+      movementType: adjType,
       quantity: delta,
-      previous_quantity: 50,
-      new_quantity: 50 + delta,
-      actor_name: "Carlos Propietario",
       reason: adjReason,
-    };
+    });
 
-    setMovements([newMov, ...movements]);
     setIsAdjustModalOpen(false);
-    setAdjQty("");
+    setAdjQty("10");
     setAdjReason("");
   };
 
-  const getMovementBadge = (type: string) => {
+  const getBadgeVariant = (type: string) => {
     switch (type) {
       case "IN_PURCHASE":
-        return <Badge variant="success">Entrada por Compra</Badge>;
-      case "OUT_SALE":
-        return <Badge variant="blue">Venta POS</Badge>;
+      case "ADJUSTMENT_IN":
       case "RETURN_IN":
-        return <Badge variant="success">Devolución Cliente</Badge>;
+        return "success";
+      case "OUT_SALE":
+        return "blue";
       case "WASTE":
-        return <Badge variant="danger">Merma / Dañado</Badge>;
+      case "ADJUSTMENT_OUT":
+        return "danger";
       default:
-        return <Badge variant="default">Ajuste Manual</Badge>;
+        return "default";
+    }
+  };
+
+  const getLabel = (type: string) => {
+    switch (type) {
+      case "IN_PURCHASE": return "Entrada (Compra)";
+      case "ADJUSTMENT_IN": return "Ajuste Entrada (+)";
+      case "RETURN_IN": return "Devolución Cliente (+)";
+      case "OUT_SALE": return "Salida (Venta POS)";
+      case "ADJUSTMENT_OUT": return "Ajuste Salida (-)";
+      case "WASTE": return "Merma / Daño (-)";
+      default: return type;
     }
   };
 
@@ -88,138 +79,152 @@ export default function InventoryPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Libro Mayor de Inventario (Ledger)</h1>
-            <p className="text-xs text-text-muted">Historial inmutable de movimientos, compras, ventas y mermas</p>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">Kárdex y Movimientos de Inventario</h1>
+            <p className="text-xs text-text-muted">
+              {settings.trade_name} — Trazabilidad de entradas, salidas por venta, mermas y ajustes manuales
+            </p>
           </div>
-          <Button variant="primary" onClick={() => setIsAdjustModalOpen(true)}>
+
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (products.length > 0) {
+                setSelectedProductId(products[0].id);
+              }
+              setIsAdjustModalOpen(true);
+            }}
+            disabled={products.length === 0}
+          >
             <Plus className="w-4 h-4 mr-2" />
-            Ajustar Stock / Entrada
+            Registrar Ajuste / Entrada
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border-l-4 border-l-[#0EA5FF]">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-medium uppercase">Movimientos Registrados</span>
-              <Boxes className="w-4 h-4 text-primary" />
+        {/* Movements Table or Clean Empty State */}
+        {movements.length === 0 ? (
+          <Card className="p-12 text-center space-y-4">
+            <div className="w-14 h-14 rounded-3xl bg-primary-subtle text-primary flex items-center justify-center mx-auto border border-primary/20">
+              <Boxes className="w-7 h-7" />
             </div>
-            <div className="mt-3">
-              <span className="text-2xl font-bold text-white">{movements.length}</span>
-              <span className="text-[11px] text-text-muted block">Trazabilidad en tiempo real</span>
+            <div className="space-y-1 max-w-md mx-auto">
+              <h2 className="text-base font-bold text-text-main">El inventario aún no tiene movimientos</h2>
+              <p className="text-xs text-text-muted">
+                {products.length === 0
+                  ? "Crea productos en el catálogo para comenzar a registrar entradas de mercadería y salidas por ventas."
+                  : "Los movimientos se generarán automáticamente cuando realices compras o ventas en caja."}
+              </p>
             </div>
+            {products.length > 0 && (
+              <Button variant="primary" onClick={() => setIsAdjustModalOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Registrar Primer Ajuste
+              </Button>
+            )}
           </Card>
-
-          <Card className="border-l-4 border-l-amber-500">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-medium uppercase">Artículos Bajo Mínimo</span>
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="mt-3">
-              <span className="text-2xl font-bold text-amber-400">1 Producto</span>
-              <span className="text-[11px] text-text-muted block">Galletas Chiky (5 uds restantes)</span>
-            </div>
-          </Card>
-
-          <Card className="border-l-4 border-l-emerald-500">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-medium uppercase">Integridad del Ledger</span>
-              <FileText className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="mt-3">
-              <span className="text-2xl font-bold text-emerald-400">100% Auditado</span>
-              <span className="text-[11px] text-text-muted block">Cero registros destructivos</span>
-            </div>
-          </Card>
-        </div>
-
-        <Card className="space-y-4">
-          <CardHeader>
-            <CardTitle>Historial de Movimientos de Inventario</CardTitle>
-          </CardHeader>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="text-text-muted border-b border-border">
-                  <th className="pb-3">Fecha / Hora</th>
-                  <th className="pb-3">Producto</th>
-                  <th className="pb-3">Tipo de Movimiento</th>
-                  <th className="pb-3 text-right">Variación</th>
-                  <th className="pb-3 text-right">Stock Anterior</th>
-                  <th className="pb-3 text-right">Nuevo Stock</th>
-                  <th className="pb-3">Responsable</th>
-                  <th className="pb-3">Motivo / Documento</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#26282E]">
-                {movements.map((m) => (
-                  <tr key={m.id} className="hover:bg-surface-secondary/50 transition-colors">
-                    <td className="py-3 font-mono text-text-muted">{m.created_at}</td>
-                    <td className="py-3 font-semibold text-white">{m.product_name}</td>
-                    <td className="py-3">{getMovementBadge(m.movement_type)}</td>
-                    <td className="py-3 text-right font-mono font-bold">
-                      <span className={m.quantity > 0 ? "text-emerald-400" : "text-red-400"}>
-                        {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right font-mono text-text-muted">{m.previous_quantity}</td>
-                    <td className="py-3 text-right font-mono font-bold text-white">{m.new_quantity}</td>
-                    <td className="py-3 text-text-secondary">{m.actor_name}</td>
-                    <td className="py-3 text-[11px] text-text-muted italic">{m.reason || "-"}</td>
+        ) : (
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs" aria-label="Tabla de kárdex de inventario">
+                <thead>
+                  <tr className="text-text-muted border-b border-border">
+                    <th scope="col" className="pb-3 font-bold">Fecha / Hora</th>
+                    <th scope="col" className="pb-3 font-bold">Producto</th>
+                    <th scope="col" className="pb-3 font-bold">Tipo de Movimiento</th>
+                    <th scope="col" className="pb-3 font-bold">Cantidad</th>
+                    <th scope="col" className="pb-3 font-bold">Stock Resultante</th>
+                    <th scope="col" className="pb-3 font-bold">Responsable / Motivo</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {movements.map((m) => (
+                    <tr key={m.id} className="hover:bg-surface-hover transition-colors">
+                      <td className="py-3 font-mono text-text-muted text-[11px]">{m.created_at}</td>
+                      <td className="py-3 font-bold text-text-main flex items-center gap-2">
+                        <Package className="w-3.5 h-3.5 text-primary" />
+                        <span className="truncate max-w-xs">{m.product_name}</span>
+                      </td>
+                      <td className="py-3">
+                        <Badge variant={getBadgeVariant(m.movement_type)}>
+                          {getLabel(m.movement_type)}
+                        </Badge>
+                      </td>
+                      <td className="py-3 font-mono font-bold">
+                        <span className={m.quantity > 0 ? "text-emerald-500" : "text-semantic-danger-text"}>
+                          {m.quantity > 0 ? `+${m.quantity}` : m.quantity} uds
+                        </span>
+                      </td>
+                      <td className="py-3 font-mono font-bold text-text-main">{m.new_quantity} uds</td>
+                      <td className="py-3 text-text-secondary text-[11px]">
+                        <span className="font-bold text-text-main block">{m.actor_name}</span>
+                        <span className="text-text-muted">{m.reason || "Sin detalle"}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
 
-      <Modal isOpen={isAdjustModalOpen} onClose={() => setIsAdjustModalOpen(false)} title="Registrar Movimiento de Inventario" maxWidth="md">
+      {/* Adjust Modal */}
+      <Modal
+        isOpen={isAdjustModalOpen}
+        onClose={() => setIsAdjustModalOpen(false)}
+        title="Ajuste Manual de Inventario / Entrada"
+        maxWidth="md"
+      >
         <form onSubmit={handleCreateAdjustment} className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-text-secondary">Producto</label>
+            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+              Producto a Modificar
+            </label>
             <select
-              value={adjProduct}
-              onChange={(e) => setAdjProduct(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+              required
             >
-              <option value="Coca-Cola 600ml Descartable">Coca-Cola 600ml Descartable</option>
-              <option value="Cerveza Imperial 350ml Lata">Cerveza Imperial 350ml Lata</option>
-              <option value="Papas Tosty Clásicas 115g">Papas Tosty Clásicas 115g</option>
-              <option value="Café Rey 500g Tradicional">Café Rey 500g Tradicional</option>
-              <option value="Galletas Chiky Chocolate">Galletas Chiky Chocolate</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (Stock Actual: {p.stock} uds)
+                </option>
+              ))}
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-text-secondary">Tipo de Movimiento</label>
-            <select
-              value={adjType}
-              onChange={(e) => setAdjType(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
-            >
-              <option value="IN_PURCHASE">Entrada por Compra / Factura Proveedor (+)</option>
-              <option value="ADJUSTMENT_IN">Ajuste Positivo / Conteo (+)</option>
-              <option value="ADJUSTMENT_OUT">Ajuste Negativo (-)</option>
-              <option value="WASTE">Merma / Vencimiento / Producto Dañado (-)</option>
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                Tipo de Ajuste
+              </label>
+              <select
+                value={adjType}
+                onChange={(e) => setAdjType(e.target.value as any)}
+                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <option value="ADJUSTMENT_IN">Ajuste Entrada (+) — Conteo Físico</option>
+                <option value="ADJUSTMENT_OUT">Ajuste Salida (-) — Faltante</option>
+                <option value="WASTE">Merma / Producto Vencido (-)</option>
+                <option value="RETURN_IN">Devolución de Cliente (+)</option>
+              </select>
+            </div>
+
+            <Input
+              label="Cantidad de Unidades"
+              type="number"
+              value={adjQty}
+              onChange={(e) => setAdjQty(e.target.value)}
+              required
+              autoFocus
+            />
           </div>
 
           <Input
-            label="Cantidad de Unidades"
-            type="number"
-            placeholder="Ej: 24"
-            value={adjQty}
-            onChange={(e) => setAdjQty(e.target.value)}
-            required
-          />
-
-          <Input
-            label="Motivo o Referencia Obligatoria"
-            placeholder="Ej: Factura Proveedor #5544 o Conteo físico semanal"
+            label="Motivo o Justificación del Ajuste"
+            placeholder="Ej: Cuadre físico semanal de bodega"
             value={adjReason}
             onChange={(e) => setAdjReason(e.target.value)}
-            required
           />
 
           <div className="pt-3 border-t border-border flex justify-end gap-2">
@@ -227,7 +232,7 @@ export default function InventoryPage() {
               Cancelar
             </Button>
             <Button type="submit" variant="primary">
-              Aplicar Movimiento
+              Aplicar Ajuste de Stock
             </Button>
           </div>
         </form>

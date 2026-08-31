@@ -41,7 +41,7 @@ export interface Branch {
 
 export interface Product {
   id: string;
-  organization_id?: string;
+  organization_id: string;
   name: string;
   sku?: string | null;
   barcode?: string | null;
@@ -62,6 +62,57 @@ export interface CartItem {
   lineTotal: number;
 }
 
+export interface Customer {
+  id: string;
+  organization_id: string;
+  name: string;
+  identification_type: "FISICA" | "JURIDICA" | "DIMEX" | "EXTRANJERO";
+  identification_number: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface Supplier {
+  id: string;
+  organization_id: string;
+  name: string;
+  legal_id: string;
+  legal_id_type: "JURIDICA" | "FISICA" | "DIMEX";
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  created_at?: string;
+}
+
+export interface PurchaseRecord {
+  id: string;
+  organization_id: string;
+  supplier_name: string;
+  invoice_number: string;
+  payment_type: "CONTADO" | "CREDITO";
+  total_amount: number;
+  items_count: number;
+  created_at: string;
+  status: "RECEIVED";
+}
+
+export interface InventoryMovement {
+  id: string;
+  organization_id: string;
+  created_at: string;
+  product_name: string;
+  movement_type: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
+  quantity: number;
+  previous_quantity: number;
+  new_quantity: number;
+  actor_name: string;
+  reason?: string;
+}
+
 export interface SaleRecord {
   id: string;
   organization_id: string;
@@ -73,9 +124,25 @@ export interface SaleRecord {
   tax: number;
   payment_method: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
   customer_name: string;
+  customer_cedula?: string | null;
   created_at: string;
   items_count: number;
   status: "COMPLETED" | "CANCELLED";
+}
+
+export interface InvoiceRecord {
+  id: string;
+  organization_id: string;
+  doc_type: "01" | "04" | "03";
+  doc_type_label: string;
+  consecutive_number: string;
+  numeric_key: string;
+  created_at: string;
+  customer_name: string;
+  total: number;
+  status: "ACCEPTED" | "PENDING" | "REJECTED";
+  hacienda_message?: string;
+  xml_signed?: string;
 }
 
 export interface CashSession {
@@ -89,4 +156,14 @@ export interface CashSession {
   card_sales: number;
   total_sales: number;
   status: "OPEN" | "CLOSED";
+}
+
+export interface AuditLogEntry {
+  id: string;
+  organization_id: string;
+  created_at: string;
+  actor_name: string;
+  action: string;
+  resource: string;
+  ip_address: string;
 }

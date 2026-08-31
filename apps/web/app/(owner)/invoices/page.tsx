@@ -17,7 +17,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
-import { useStore, InvoiceRecord } from "@/features/store/store-context";
+import { useStore } from "@/features/store/store-context";
+import { InvoiceRecord } from "@/types";
 import { formatCRC } from "@/lib/utils";
 
 export default function InvoicesPage() {
