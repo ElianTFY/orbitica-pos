@@ -457,6 +457,53 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setMovements((prev) => [mov, ...prev]);
     });
 
+    const receiptData = {
+      sale_number: saleNum,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+      store: {
+        name: settings.trade_name,
+        legal_name: settings.legal_name,
+        legal_id: settings.identification_number,
+        phone: settings.phone,
+        email: settings.email,
+        address: settings.address,
+        branch_name: settings.branch_name,
+      },
+      customer: {
+        name: customerName,
+        identification: customerCedula || null,
+      },
+      hacienda: {
+        doc_type: docType === "01" ? "Factura Electrónica (01)" : "Tiquete Electrónico (04)",
+        consecutive,
+        numeric_key: key,
+        resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
+        qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
+      },
+      items: items.map((it) => ({
+        name: it.product.name,
+        quantity: it.quantity,
+        unit_price: it.product.sale_price,
+        tax_amount: it.product.sale_price * (it.product.tax_rate / 100) * it.quantity,
+        total: it.product.sale_price * (1 + it.product.tax_rate / 100) * it.quantity,
+      })),
+      totals: {
+        subtotal,
+        discount: 0,
+        tax,
+        total,
+        currency: settings.default_currency,
+      },
+      payments: [
+        {
+          method: paymentMethod,
+          amount: paymentMethod === "CASH_CRC" && cashReceived > 0 ? cashReceived : total,
+          reference: sinpeRef || null,
+        },
+      ],
+      footer_message: `¡Gracias por su compra en ${settings.trade_name}!`,
+    };
+
     const newSale: SaleRecord = {
       id: `sale_${Date.now()}`,
       organization_id: orgId,
@@ -472,6 +519,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
       items_count: items.reduce((acc, it) => acc + it.quantity, 0),
       status: "COMPLETED",
+      items_snapshot: items.map((it) => ({
+        name: it.product.name,
+        quantity: it.quantity,
+        unit_price: it.product.sale_price,
+        tax_rate: it.product.tax_rate,
+        tax_amount: it.product.sale_price * (it.product.tax_rate / 100) * it.quantity,
+        total: it.product.sale_price * (1 + it.product.tax_rate / 100) * it.quantity,
+      })),
+      receipt_data: receiptData,
     };
 
     const newInvoice: InvoiceRecord = {
@@ -505,54 +561,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     logAudit("SALE_COMPLETED", `Venta #${saleNum} (${paymentMethod})`);
 
-    const receiptData = {
-      sale_number: saleNum,
-      created_at: newSale.created_at,
-      store: {
-        name: settings.trade_name,
-        legal_name: settings.legal_name,
-        legal_id: settings.identification_number,
-        phone: settings.phone,
-        email: settings.email,
-        address: settings.address,
-        branch_name: settings.branch_name,
-      },
-      customer: {
-        name: customerName,
-        identification: customerCedula || null,
-      },
-      hacienda: {
-        doc_type: newInvoice.doc_type_label,
-        consecutive: consecutive,
-        numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
-        qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
-      },
-      items: items.map((it) => ({
-        name: it.product.name,
-        quantity: it.quantity,
-        unit_price: it.product.sale_price,
-        tax_amount: it.product.sale_price * (it.product.tax_rate / 100) * it.quantity,
-        total: it.product.sale_price * (1 + it.product.tax_rate / 100) * it.quantity,
-      })),
-      totals: {
-        subtotal,
-        discount: 0,
-        tax,
-        total,
-        currency: settings.default_currency,
-      },
-      payments: [
-        {
-          method: paymentMethod,
-          amount: paymentMethod === "CASH_CRC" && cashReceived > 0 ? cashReceived : total,
-          reference: sinpeRef || null,
-        },
-      ],
-      footer_message: `¡Gracias por su compra en ${settings.trade_name}!`,
-    };
-
-    return { sale: newSale, invoice: newInvoice, receiptData };
+    return { sale: newSale, invoice: newInvoice, receiptData: newSale.receipt_data };
   };
 
   const openCashSession = (initialAmount: number) => {
@@ -578,8 +587,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         closed_at: new Date().toISOString(),
         status: "CLOSED",
       };
-      setActiveCashSession(closed);
-      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: ₡${closed.total_sales}`);
+      // Archive the session in history (never lose data)
+      try {
+        const historyKey = `orbitica_cash_history_${orgId}`;
+        const existing = JSON.parse(localStorage.getItem(historyKey) || "[]");
+        localStorage.setItem(historyKey, JSON.stringify([closed, ...existing]));
+      } catch {}
+      // Clear active session → next openCashSession will start fresh
+      setActiveCashSession(null);
+      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: Ventas ₡${closed.total_sales.toFixed(2)}`);
     }
   };
 

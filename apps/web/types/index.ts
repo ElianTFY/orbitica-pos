@@ -113,6 +113,15 @@ export interface InventoryMovement {
   reason?: string;
 }
 
+export interface SaleItemSnapshot {
+  name: string;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  tax_amount: number;
+  total: number;
+}
+
 export interface SaleRecord {
   id: string;
   organization_id: string;
@@ -128,7 +137,12 @@ export interface SaleRecord {
   created_at: string;
   items_count: number;
   status: "COMPLETED" | "CANCELLED";
+  /** Real item-level data for reprinting exact receipts */
+  items_snapshot?: SaleItemSnapshot[];
+  /** Full receipt payload, serialized for instant reprint */
+  receipt_data?: any;
 }
+
 
 export interface InvoiceRecord {
   id: string;

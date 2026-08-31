@@ -35,6 +35,14 @@ export default function SalesPage() {
   );
 
   const openReceipt = (sale: SaleRecord) => {
+    // Use the exact receipt data stored at time of sale, if available
+    if (sale.receipt_data) {
+      setReceiptData(sale.receipt_data);
+      setIsReceiptModalOpen(true);
+      return;
+    }
+
+    // Fallback: reconstruct from available data (for older sales without snapshot)
     const key = sale.numeric_key || `50629082600${settings.identification_number.padEnd(12, "0").slice(0, 12)}00100001040000000001112345678`;
     setReceiptData({
       sale_number: sale.sale_number,
@@ -50,7 +58,7 @@ export default function SalesPage() {
       },
       customer: {
         name: sale.customer_name,
-        identification: null,
+        identification: sale.customer_cedula || null,
       },
       hacienda: {
         doc_type: "Tiquete Electrónico (04)",
@@ -59,15 +67,17 @@ export default function SalesPage() {
         resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
         qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
       },
-      items: [
-        {
-          name: "Venta Registrada POS",
-          quantity: sale.items_count,
-          unit_price: sale.subtotal / (sale.items_count || 1),
-          tax_amount: sale.tax,
-          total: sale.total,
-        },
-      ],
+      items: sale.items_snapshot
+        ? sale.items_snapshot
+        : [
+            {
+              name: "Venta Registrada POS",
+              quantity: sale.items_count,
+              unit_price: sale.subtotal / (sale.items_count || 1),
+              tax_amount: sale.tax,
+              total: sale.total,
+            },
+          ],
       totals: {
         subtotal: sale.subtotal,
         discount: 0,

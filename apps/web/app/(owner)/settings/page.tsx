@@ -44,8 +44,8 @@ export default function SettingsPage() {
   // Form states for Hacienda
   const [env, setEnv] = useState(settings.atv_environment);
   const [atvUser, setAtvUser] = useState(settings.atv_username);
-  const [atvPass, setAtvPass] = useState("SuperPasswordHacienda123!");
-  const [pin, setPin] = useState("1234");
+  const [atvPass, setAtvPass] = useState("");
+  const [pin, setPin] = useState("");
 
   useEffect(() => {
     setTradeName(settings.trade_name);

@@ -238,3 +238,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+/* ==========================================================================
+   SAFE AREA INSETS (iOS/notched devices)
+   ========================================================================== */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+}
+
+/* ==========================================================================
+   PRINT STYLES FOR THERMAL RECEIPT
+   ========================================================================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .thermal-receipt,
+  .thermal-receipt * {
+    visibility: visible;
+  }
+  .thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    font-size: 10px;
+    font-family: "Courier New", monospace;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
