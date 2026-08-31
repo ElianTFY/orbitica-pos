@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Lock, Mail, ArrowRight, ShieldCheck, Store, UserCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,6 @@ export default function LoginPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const fillCredentials = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError(null);
   };
 
   return (
@@ -111,38 +105,6 @@ export default function LoginPage() {
               <Sparkles className="w-3.5 h-3.5" />
               Registrar Negocio
             </Link>
-          </div>
-
-          <div className="pt-4 border-t border-border space-y-2">
-            <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider block">
-              Accesos Rápidos de Prueba:
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => fillCredentials("owner@sanjoseexpress.cr", "OwnerPassword123!")}
-                className="flex items-center gap-1.5 p-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-text-secondary hover:text-text-main transition-colors focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <Store className="w-3.5 h-3.5 text-primary" />
-                <span>Owner Demo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials("cajero@sanjoseexpress.cr", "CashierPassword123!")}
-                className="flex items-center gap-1.5 p-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-text-secondary hover:text-text-main transition-colors focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Cajero Demo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials("superadmin@orbitica.cr", "SuperSecret123!")}
-                className="col-span-2 flex items-center justify-center gap-1.5 p-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300 transition-colors focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Superadmin Orbítica Studio</span>
-              </button>
-            </div>
           </div>
         </div>
 
