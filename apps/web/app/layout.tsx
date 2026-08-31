@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/features/auth/auth-context";
 import { ThemeProvider } from "@/features/theme/theme-context";
+import { StoreProvider } from "@/features/store/store-context";
 
 export const metadata: Metadata = {
   title: "ORBÍTICA POS | Sistema SaaS Punto de Venta",
@@ -65,7 +66,9 @@ export default function RootLayout({
           Saltar al contenido principal
         </a>
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <StoreProvider>{children}</StoreProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

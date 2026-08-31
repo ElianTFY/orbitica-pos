@@ -3,6 +3,7 @@
 import React from "react";
 import { LogOut, Building2, MapPin, CircleDot, Menu } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
+import { useStore } from "@/features/store/store-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BrandIcon } from "@/components/ui/brand-logo";
@@ -14,6 +15,10 @@ interface TopbarProps {
 
 export function Topbar({ onToggleMobileMenu }: TopbarProps) {
   const { user, logout } = useAuth();
+  const { settings, activeCashSession } = useStore();
+
+  const businessName = user?.organization_name || settings.trade_name || "Mi Negocio";
+  const branchName = user?.branch_name || settings.branch_name || "Sucursal Central (001)";
 
   return (
     <header className="h-16 bg-surface/90 backdrop-blur-md border-b border-border fixed top-0 right-0 left-0 lg:left-64 z-20 flex items-center justify-between px-4 sm:px-6 transition-colors">
@@ -39,18 +44,18 @@ export function Topbar({ onToggleMobileMenu }: TopbarProps) {
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-surface-secondary border border-border rounded-xl text-xs">
           <Building2 className="w-3.5 h-3.5 text-primary" />
           <span className="font-semibold text-text-main truncate max-w-[140px] md:max-w-[200px]">
-            {user?.organization_name || "Orbítica Studio"}
+            {businessName}
           </span>
         </div>
 
         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-surface-secondary border border-border rounded-xl text-xs text-text-secondary">
           <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Sucursal Central (001)</span>
+          <span className="truncate max-w-[150px]">{branchName}</span>
         </div>
 
-        <Badge variant="success" className="hidden sm:inline-flex gap-1 text-[11px] py-1">
-          <CircleDot className="w-2.5 h-2.5 text-emerald-500 animate-pulse" />
-          Caja Abierta
+        <Badge variant={activeCashSession?.status === "OPEN" ? "success" : "default"} className="hidden sm:inline-flex gap-1 text-[11px] py-1">
+          <CircleDot className={`w-2.5 h-2.5 ${activeCashSession?.status === "OPEN" ? "text-emerald-500 animate-pulse" : "text-text-muted"}`} />
+          {activeCashSession?.status === "OPEN" ? "Caja Abierta" : "Caja Cerrada"}
         </Badge>
       </div>
 
@@ -64,7 +69,7 @@ export function Topbar({ onToggleMobileMenu }: TopbarProps) {
             {user?.full_name || "Usuario"}
           </span>
           <span className="text-[9px] text-primary uppercase font-mono tracking-wider font-semibold">
-            {user?.role || "cajero"}
+            {user?.role === "owner" ? "Propietario" : user?.role || "cajero"}
           </span>
         </div>
 

@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Settings as SettingsIcon,
   Save,
   ShieldCheck,
   KeyRound,
@@ -19,22 +18,66 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { AppearanceSettings } from "@/components/accessibility/appearance-settings";
+import { useStore } from "@/features/store/store-context";
+import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api-client";
 
 export default function SettingsPage() {
+  const { settings, updateSettings } = useStore();
+  const { user } = useAuth();
+
   const [activeTab, setActiveTab] = useState<"general" | "hacienda" | "accessibility">("general");
   const [saved, setSaved] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Form states for general
+  const [tradeName, setTradeName] = useState(settings.trade_name);
+  const [legalName, setLegalName] = useState(settings.legal_name);
+  const [idNumber, setIdNumber] = useState(settings.identification_number);
+  const [email, setEmail] = useState(settings.email);
+  const [phone, setPhone] = useState(settings.phone);
+  const [address, setAddress] = useState(settings.address);
+  const [taxRegime, setTaxRegime] = useState(settings.tax_regime);
+  const [currency, setCurrency] = useState(settings.default_currency);
+
   // Form states for Hacienda
-  const [env, setEnv] = useState("STAGING");
-  const [atvUser, setAtvUser] = useState("cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr");
+  const [env, setEnv] = useState(settings.atv_environment);
+  const [atvUser, setAtvUser] = useState(settings.atv_username);
   const [atvPass, setAtvPass] = useState("SuperPasswordHacienda123!");
   const [pin, setPin] = useState("1234");
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    setTradeName(settings.trade_name);
+    setLegalName(settings.legal_name);
+    setIdNumber(settings.identification_number);
+    setEmail(settings.email);
+    setPhone(settings.phone);
+    setAddress(settings.address);
+  }, [settings]);
+
+  const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
+    updateSettings({
+      trade_name: tradeName,
+      legal_name: legalName,
+      identification_number: idNumber,
+      email,
+      phone,
+      address,
+      tax_regime: taxRegime,
+      default_currency: currency,
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleSaveHacienda = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateSettings({
+      atv_environment: env,
+      atv_username: atvUser,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
@@ -70,9 +113,9 @@ export default function SettingsPage() {
     <OwnerLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-text-main tracking-tight">Configuración del Sistema</h1>
+          <h1 className="text-xl font-bold text-text-main tracking-tight">Configuración del Negocio</h1>
           <p className="text-xs text-text-muted">
-            Parámetros tributarios de Costa Rica, llaves criptográficas y preferencias de accesibilidad
+            Administra los datos comerciales de tu empresa ({settings.trade_name}), llaves tributarias de Hacienda y apariencia
           </p>
         </div>
 
@@ -136,19 +179,55 @@ export default function SettingsPage() {
 
         {activeTab === "general" && (
           <Card className="max-w-2xl">
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSaveGeneral} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input label="Nombre Comercial" defaultValue="Minimarket San José Express" />
-                <Input label="Razón Social" defaultValue="Comercial San José S.A." />
-                <Input label="Cédula Jurídica / Física" defaultValue="3101888999" disabled helperText="Inmutable por seguridad tributaria" />
-                <Input label="Correo de Facturación" defaultValue="facturacion@sanjoseexpress.cr" />
+                <Input
+                  label="Nombre Comercial (Fantasía)"
+                  value={tradeName}
+                  onChange={(e) => setTradeName(e.target.value)}
+                  required
+                />
+                <Input
+                  label="Razón Social Legal"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  required
+                />
+                <Input
+                  label="Cédula Jurídica / Física"
+                  value={idNumber}
+                  onChange={(e) => setIdNumber(e.target.value)}
+                  required
+                  helperText="Identificador tributario para Hacienda"
+                />
+                <Input
+                  label="Correo de Facturación"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+                <Input
+                  label="Teléfono Comercial"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <Input
+                  label="Dirección Física"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
               </div>
 
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
                   Régimen Tributario (Ministerio de Hacienda)
                 </label>
-                <select className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary">
+                <select
+                  value={taxRegime}
+                  onChange={(e) => setTaxRegime(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   <option value="TRADICIONAL">Régimen Tradicional (Factura Electrónica Obligatoria)</option>
                   <option value="SIMPLIFICADO">Régimen de Tributación Simplificada</option>
                 </select>
@@ -158,7 +237,11 @@ export default function SettingsPage() {
                 <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
                   Moneda Base del Sistema
                 </label>
-                <select className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary">
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   <option value="CRC">Colones Costarricenses (CRC - ₡)</option>
                   <option value="USD">Dólares Americanos (USD - $)</option>
                 </select>
@@ -167,13 +250,13 @@ export default function SettingsPage() {
               <div className="pt-3 border-t border-border flex items-center justify-between">
                 {saved && (
                   <span className="text-xs text-semantic-success-text font-bold flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" /> Parámetros guardados exitosamente
+                    <CheckCircle className="w-4 h-4" /> Datos comerciales actualizados exitosamente
                   </span>
                 )}
                 <div className="ml-auto">
                   <Button type="submit" variant="primary">
                     <Save className="w-4 h-4 mr-2" />
-                    Guardar Parámetros
+                    Guardar Datos Comerciales
                   </Button>
                 </div>
               </div>
@@ -183,7 +266,7 @@ export default function SettingsPage() {
 
         {activeTab === "hacienda" && (
           <Card className="max-w-2xl space-y-6">
-            <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-2xl border border-border">
+            <div className="flex items-center justify-between p-3.5 bg-surface-secondary rounded-2xl border border-border">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className="w-5 h-5 text-emerald-500" />
                 <div>
@@ -194,14 +277,14 @@ export default function SettingsPage() {
               <Badge variant="success">FIRMADO XAdES-BES ACTIVO</Badge>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4">
+            <form onSubmit={handleSaveHacienda} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
                   Ambiente de Envío de Hacienda
                 </label>
                 <select
                   value={env}
-                  onChange={(e) => setEnv(e.target.value)}
+                  onChange={(e) => setEnv(e.target.value as any)}
                   className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <option value="STAGING">Sandbox / Pruebas (api-sandbox.comprobanteselectronicos.go.cr)</option>
@@ -256,7 +339,7 @@ export default function SettingsPage() {
               {connectionResult && (
                 <div
                   role="alert"
-                  className={`p-3 rounded-xl border flex items-center gap-2 text-xs font-semibold ${
+                  className={`p-3.5 rounded-2xl border flex items-center gap-2 text-xs font-semibold ${
                     connectionResult.success
                       ? "bg-semantic-success-bg border-semantic-success-border text-semantic-success-text"
                       : "bg-semantic-danger-bg border-semantic-danger-border text-semantic-danger-text"

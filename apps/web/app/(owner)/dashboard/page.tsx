@@ -12,24 +12,47 @@ import {
   Smartphone,
   Banknote,
   Package,
+  Receipt,
+  Sparkles,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useStore } from "@/features/store/store-context";
 import { formatCRC } from "@/lib/utils";
 
 export default function DashboardPage() {
+  const { sales, products, settings, activeCashSession } = useStore();
+
+  const totalSalesAmount = sales.reduce((acc, s) => acc + s.total, 0);
+  const totalTransactions = sales.length;
+  const averageTicket = totalTransactions > 0 ? totalSalesAmount / totalTransactions : 0;
+
+  const lowStockProducts = products.filter((p) => (p.stock ?? 0) <= p.min_stock_alert);
+
+  const sinpeSales = sales.filter((s) => s.payment_method === "SINPE").reduce((acc, s) => acc + s.total, 0);
+  const cardSales = sales.filter((s) => s.payment_method === "CARD").reduce((acc, s) => acc + s.total, 0);
+  const cashSales = sales.filter((s) => s.payment_method === "CASH_CRC").reduce((acc, s) => acc + s.total, 0);
+
+  const sinpePct = totalSalesAmount > 0 ? Math.round((sinpeSales / totalSalesAmount) * 100) : 0;
+  const cardPct = totalSalesAmount > 0 ? Math.round((cardSales / totalSalesAmount) * 100) : 0;
+  const cashPct = totalSalesAmount > 0 ? Math.round((cashSales / totalSalesAmount) * 100) : 0;
+
   return (
     <OwnerLayout>
       <div className="space-y-6">
         {/* Welcome Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface border border-border p-6 rounded-3xl shadow-card transition-colors">
           <div className="space-y-1">
-            <h1 className="text-xl font-bold text-text-main tracking-tight">Panel de Control - Resumen Diario</h1>
-            <p className="text-xs text-text-muted">Sucursal Central | Moneda: CRC (Colones Costarricenses)</p>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">
+              {settings.trade_name} — Resumen Operativo
+            </h1>
+            <p className="text-xs text-text-muted">
+              {settings.branch_name} | Cédula: {settings.identification_number} | Moneda: {settings.default_currency}
+            </p>
           </div>
           <Link href="/pos">
-            <Button variant="primary" size="lg" className="font-bold tracking-wide">
+            <Button variant="primary" size="lg" className="font-bold tracking-wide bg-emerald-600 hover:bg-emerald-500 text-white">
               <ShoppingCart className="w-5 h-5 mr-2" />
               Abrir Punto de Venta (F2)
             </Button>
@@ -38,47 +61,44 @@ export default function DashboardPage() {
 
         {/* Metric Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border-l-4 border-l-primary">
+          <Card className="border-l-4 border-l-emerald-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Ventas de Hoy</span>
-              <div className="p-2 bg-primary-subtle text-primary rounded-xl">
+              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Ventas Totales</span>
+              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl">
                 <DollarSign className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-text-main font-mono">{formatCRC(285400)}</span>
-              <div className="flex items-center gap-1 mt-1 text-[11px] text-emerald-500 font-bold">
-                <ArrowUpRight className="w-3.5 h-3.5" />
-                <span>+12.4% vs ayer</span>
+              <span className="text-2xl font-black text-emerald-500 font-mono">{formatCRC(totalSalesAmount)}</span>
+              <div className="flex items-center gap-1 mt-1 text-[11px] text-text-muted font-medium">
+                <span>{totalTransactions} ventas registradas</span>
               </div>
             </div>
           </Card>
 
-          <Card className="border-l-4 border-l-emerald-500">
+          <Card className="border-l-4 border-l-primary">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Ventas del Mes</span>
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl">
+              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Ticket Promedio</span>
+              <div className="p-2 bg-primary-subtle text-primary rounded-xl">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-text-main font-mono">{formatCRC(4850000)}</span>
-              <div className="flex items-center gap-1 mt-1 text-[11px] text-emerald-500 font-bold">
-                <span>342 transacciones</span>
-              </div>
+              <span className="text-2xl font-black text-text-main font-mono">{formatCRC(averageTicket)}</span>
+              <span className="text-[11px] text-text-muted block">Por transacción completada</span>
             </div>
           </Card>
 
           <Card className="border-l-4 border-l-purple-500">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Ticket Promedio</span>
+              <span className="text-xs text-text-muted font-bold uppercase tracking-wider">Productos Activos</span>
               <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl">
-                <ShoppingCart className="w-4 h-4" />
+                <Package className="w-4 h-4" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-text-main font-mono">{formatCRC(8345)}</span>
-              <span className="text-[11px] text-text-muted block">Margen promedio: 38%</span>
+              <span className="text-2xl font-black text-text-main">{products.length} SKUs</span>
+              <span className="text-[11px] text-text-muted block">En catálogo para la venta</span>
             </div>
           </Card>
 
@@ -90,8 +110,12 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-2xl font-black text-amber-500">3 Productos</span>
-              <span className="text-[11px] text-text-muted block">Requiere reposición</span>
+              <span className={`text-2xl font-black ${lowStockProducts.length > 0 ? "text-amber-500" : "text-emerald-500"}`}>
+                {lowStockProducts.length} {lowStockProducts.length === 1 ? "Producto" : "Productos"}
+              </span>
+              <span className="text-[11px] text-text-muted block">
+                {lowStockProducts.length > 0 ? "Requiere reposición de stock" : "Stock en niveles óptimos"}
+              </span>
             </div>
           </Card>
         </div>
@@ -100,7 +124,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-1 space-y-4">
             <CardHeader>
-              <CardTitle>Métodos de Pago (Hoy)</CardTitle>
+              <CardTitle>Métodos de Pago Utilizados</CardTitle>
             </CardHeader>
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3 bg-surface-secondary rounded-2xl border border-border">
@@ -109,8 +133,8 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-text-main">SINPE Móvil</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(142000)}</span>
-                  <span className="text-[10px] text-text-muted block">50% del total</span>
+                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(sinpeSales)}</span>
+                  <span className="text-[10px] text-text-muted block">{sinpePct}% del total</span>
                 </div>
               </div>
 
@@ -120,8 +144,8 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-text-main">Tarjeta</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(85400)}</span>
-                  <span className="text-[10px] text-text-muted block">30% del total</span>
+                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(cardSales)}</span>
+                  <span className="text-[10px] text-text-muted block">{cardPct}% del total</span>
                 </div>
               </div>
 
@@ -131,8 +155,8 @@ export default function DashboardPage() {
                   <span className="text-xs font-bold text-text-main">Efectivo CRC</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(58000)}</span>
-                  <span className="text-[10px] text-text-muted block">20% del total</span>
+                  <span className="text-xs font-black text-text-main font-mono">{formatCRC(cashSales)}</span>
+                  <span className="text-[10px] text-text-muted block">{cashPct}% del total</span>
                 </div>
               </div>
             </div>
@@ -140,37 +164,44 @@ export default function DashboardPage() {
 
           <Card className="lg:col-span-2 space-y-4">
             <CardHeader>
-              <CardTitle>Productos Más Vendidos</CardTitle>
+              <CardTitle>Últimas Ventas Realizadas</CardTitle>
             </CardHeader>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs" aria-label="Tabla de productos más vendidos">
+              <table className="w-full text-left text-xs" aria-label="Tabla de últimas ventas">
                 <thead>
                   <tr className="text-text-muted border-b border-border">
-                    <th scope="col" className="pb-3 font-bold">Producto</th>
-                    <th scope="col" className="pb-3 font-bold">Categoría</th>
-                    <th scope="col" className="pb-3 font-bold">Vendidos</th>
+                    <th scope="col" className="pb-3 font-bold">Nº Venta</th>
+                    <th scope="col" className="pb-3 font-bold">Cliente</th>
+                    <th scope="col" className="pb-3 font-bold">Pago</th>
+                    <th scope="col" className="pb-3 font-bold">Fecha</th>
                     <th scope="col" className="pb-3 font-bold text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr>
-                    <td className="py-3 font-bold text-text-main flex items-center gap-2">
-                      <Package className="w-3.5 h-3.5 text-primary" />
-                      Coca-Cola 600ml Descartable
-                    </td>
-                    <td className="py-3 text-text-secondary">Bebidas</td>
-                    <td className="py-3 font-bold text-text-main font-mono">48 uds</td>
-                    <td className="py-3 font-black text-right text-emerald-500 font-mono">{formatCRC(57600)}</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 font-bold text-text-main flex items-center gap-2">
-                      <Package className="w-3.5 h-3.5 text-primary" />
-                      Cerveza Imperial 350ml Lata
-                    </td>
-                    <td className="py-3 text-text-secondary">Licores</td>
-                    <td className="py-3 font-bold text-text-main font-mono">35 uds</td>
-                    <td className="py-3 font-black text-right text-emerald-500 font-mono">{formatCRC(49000)}</td>
-                  </tr>
+                  {sales.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-text-muted">
+                        No hay ventas registradas aún. Abre el Punto de Venta para realizar tu primera venta.
+                      </td>
+                    </tr>
+                  ) : (
+                    sales.slice(0, 5).map((s) => (
+                      <tr key={s.id} className="hover:bg-surface-hover transition-colors">
+                        <td className="py-3 font-bold text-text-main flex items-center gap-2">
+                          <Receipt className="w-3.5 h-3.5 text-primary" />
+                          <span className="font-mono">{s.sale_number}</span>
+                        </td>
+                        <td className="py-3 text-text-secondary">{s.customer_name}</td>
+                        <td className="py-3">
+                          <span className="text-[11px] font-mono font-bold text-text-muted">
+                            {s.payment_method === "CASH_CRC" ? "Efectivo" : s.payment_method}
+                          </span>
+                        </td>
+                        <td className="py-3 font-mono text-text-muted text-[11px]">{s.created_at}</td>
+                        <td className="py-3 font-black text-right text-emerald-500 font-mono">{formatCRC(s.total)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

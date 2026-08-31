@@ -1,71 +1,57 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-const DEMO_USERS: Record<string, any> = {
-  "owner@sanjoseexpress.cr": {
-    id: "usr_owner_001",
-    organization_id: "org_sanjose_001",
-    organization_name: "Minimarket San José Express",
-    branch_id: "br_central_001",
-    email: "owner@sanjoseexpress.cr",
-    full_name: "Carlos Morales V.",
-    role: "owner",
-    permissions: ["*"],
-  },
-  "cajero@sanjoseexpress.cr": {
-    id: "usr_cashier_001",
-    organization_id: "org_sanjose_001",
-    organization_name: "Minimarket San José Express",
-    branch_id: "br_central_001",
-    email: "cajero@sanjoseexpress.cr",
-    full_name: "Ana Salazar Chaves",
-    role: "cajero",
-    permissions: [
-      "pos:read",
-      "pos:sale",
-      "pos:refund",
-      "catalog:read",
-      "inventory:read",
-      "cash:open",
-      "cash:close",
-      "cash:count",
-      "customer:create",
-      "invoicing:read",
-    ],
-  },
-  "superadmin@orbitica.cr": {
-    id: "usr_superadmin_001",
-    organization_id: "org_orbitica_hq",
-    organization_name: "ORBÍTICA STUDIO HQ",
-    branch_id: "br_hq_001",
-    email: "superadmin@orbitica.cr",
-    full_name: "Superadmin Orbítica",
-    role: "superadmin",
-    permissions: ["*"],
-  },
-};
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
-    let user = DEMO_USERS[email?.toLowerCase()];
+    const cookieStore = await cookies();
+    const existingCookie = cookieStore.get("orbitica_session_user");
+    let user = null;
 
-    // If not demo user, support any login for newly registered businesses
+    if (existingCookie?.value) {
+      try {
+        const saved = JSON.parse(existingCookie.value);
+        if (saved.email?.toLowerCase() === email?.toLowerCase()) {
+          user = saved;
+        }
+      } catch (e) {}
+    }
+
     if (!user && email && password) {
-      const nameParts = email.split("@")[0].replace(".", " ");
-      const formattedName = nameParts.charAt(0).toUpperCase() + nameParts.slice(1);
-      user = {
-        id: `usr_${Date.now()}`,
-        organization_id: `org_${Date.now()}`,
-        organization_name: "Mi Negocio Costa Rica",
-        branch_id: `br_001`,
-        email: email.toLowerCase(),
-        full_name: formattedName || "Propietario",
-        role: "owner",
-        permissions: ["*"],
-      };
+      const emailLower = email.toLowerCase();
+      if (emailLower === "superadmin@orbitica.cr") {
+        user = {
+          id: "usr_superadmin_001",
+          organization_id: "org_orbitica_hq",
+          organization_name: "ORBÍTICA STUDIO HQ",
+          legal_name: "Orbítica Studio Costa Rica S.A.",
+          identification_number: "3101999888",
+          branch_id: "br_hq_001",
+          branch_name: "Sede Principal",
+          email: emailLower,
+          full_name: "Superadmin Orbítica",
+          role: "superadmin",
+          permissions: ["*"],
+        };
+      } else {
+        const namePart = emailLower.split("@")[0].replace(".", " ");
+        const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+        user = {
+          id: `usr_${Date.now()}`,
+          organization_id: `org_${Date.now()}`,
+          organization_name: "Mi Negocio",
+          legal_name: "Comercial S.A.",
+          identification_number: "3101000000",
+          branch_id: "br_001",
+          branch_name: "Sucursal Central (001)",
+          email: emailLower,
+          full_name: formattedName,
+          role: "owner",
+          permissions: ["*"],
+        };
+      }
     }
 
     if (!user) {
@@ -76,13 +62,12 @@ export async function POST(request: Request) {
     }
 
     const token = `orbitica_jwt_${user.id}_${Date.now()}`;
-    const cookieStore = await cookies();
     cookieStore.set("orbitica_session_user", JSON.stringify(user), {
       httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     return NextResponse.json({

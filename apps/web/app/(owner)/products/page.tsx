@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import {
@@ -10,6 +10,8 @@ import {
   Edit2,
   Trash2,
   CheckCircle,
+  Download,
+  Sparkles,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,23 +20,17 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
+import { useStore } from "@/features/store/store-context";
 import { Product } from "@/types";
 
-const INITIAL_PRODUCTS: Product[] = [
-  { id: "1", name: "Coca-Cola 600ml Descartable", barcode: "7441001001", sku: "BEB-001", sale_price: 1200, cost_price: 800, min_stock_alert: 10, tax_rate: 13, category_name: "Bebidas", stock: 50 },
-  { id: "2", name: "Cerveza Imperial 350ml Lata", barcode: "7441002002", sku: "LIC-001", sale_price: 1400, cost_price: 950, min_stock_alert: 24, tax_rate: 13, category_name: "Licores", stock: 45 },
-  { id: "3", name: "Papas Tosty Clásicas 115g", barcode: "7441003003", sku: "SNK-001", sale_price: 850, cost_price: 550, min_stock_alert: 15, tax_rate: 13, category_name: "Snacks", stock: 30 },
-  { id: "4", name: "Café Rey 500g Tradicional", barcode: "7441004004", sku: "ABA-001", sale_price: 2800, cost_price: 2100, min_stock_alert: 8, tax_rate: 1, category_name: "Canasta Básica", stock: 20 },
-  { id: "5", name: "Agua Cristal 600ml Sin Gas", barcode: "7441005005", sku: "BEB-002", sale_price: 700, cost_price: 400, min_stock_alert: 12, tax_rate: 13, category_name: "Bebidas", stock: 60 },
-  { id: "6", name: "Galletas Chiky Chocolate", barcode: "7441006006", sku: "SNK-002", sale_price: 650, cost_price: 420, min_stock_alert: 10, tax_rate: 13, category_name: "Snacks", stock: 5 },
-];
-
 export default function ProductsPage() {
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const { products, addProduct, updateProduct, deleteProduct, importSampleProducts } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
-  const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
+  // Form states
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -42,9 +38,68 @@ export default function ProductsPage() {
   const [salePrice, setSalePrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [taxRate, setTaxRate] = useState("13");
-  const [minStockAlert, setMinStockAlert] = useState("10");
+  const [stock, setStock] = useState("20");
+  const [minStockAlert, setMinStockAlert] = useState("5");
 
-  const categories = ["ALL", "Bebidas", "Licores", "Snacks", "Canasta Básica", "Abarrotes"];
+  const categories = ["ALL", "Bebidas", "Licores", "Snacks", "Canasta Básica", "Abarrotes", "Lácteos", "Carnes", "Limpieza", "Otros"];
+
+  const openCreateModal = () => {
+    setEditingProduct(null);
+    setName("");
+    setSku(`PROD-${Math.floor(100 + Math.random() * 900)}`);
+    setBarcode("");
+    setCategoryName("Abarrotes");
+    setSalePrice("");
+    setCostPrice("");
+    setTaxRate("13");
+    setStock("25");
+    setMinStockAlert("5");
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (p: Product) => {
+    setEditingProduct(p);
+    setName(p.name);
+    setSku(p.sku || "");
+    setBarcode(p.barcode || "");
+    setCategoryName(p.category_name || "Abarrotes");
+    setSalePrice(p.sale_price.toString());
+    setCostPrice(p.cost_price.toString());
+    setTaxRate(p.tax_rate.toString());
+    setStock((p.stock ?? 0).toString());
+    setMinStockAlert(p.min_stock_alert.toString());
+    setIsModalOpen(true);
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingProduct) {
+      updateProduct(editingProduct.id, {
+        name,
+        sku: sku || null,
+        barcode: barcode || null,
+        category_name: categoryName,
+        sale_price: parseFloat(salePrice) || 0,
+        cost_price: parseFloat(costPrice) || 0,
+        tax_rate: parseFloat(taxRate) || 13,
+        stock: parseInt(stock, 10) || 0,
+        min_stock_alert: parseInt(minStockAlert, 10) || 5,
+      });
+    } else {
+      addProduct({
+        name,
+        sku: sku || `SKU-${Date.now()}`,
+        barcode: barcode || null,
+        category_name: categoryName,
+        sale_price: parseFloat(salePrice) || 0,
+        cost_price: parseFloat(costPrice) || 0,
+        tax_rate: parseFloat(taxRate) || 13,
+        stock: parseInt(stock, 10) || 0,
+        min_stock_alert: parseInt(minStockAlert, 10) || 5,
+      });
+    }
+    setIsModalOpen(false);
+  };
 
   const filteredProducts = products.filter((p) => {
     const matchesCategory = selectedCategory === "ALL" || p.category_name === selectedCategory;
@@ -55,226 +110,250 @@ export default function ProductsPage() {
     return matchesCategory && matchesSearch;
   });
 
-  const handleCreateProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newProd: Product = {
-      id: Date.now().toString(),
-      name,
-      sku: sku || `SKU-${Date.now().toString().slice(-4)}`,
-      barcode: barcode || undefined,
-      category_name: categoryName,
-      sale_price: parseFloat(salePrice) || 0,
-      cost_price: parseFloat(costPrice) || 0,
-      tax_rate: parseFloat(taxRate) || 13,
-      min_stock_alert: parseFloat(minStockAlert) || 5,
-      stock: 0,
-    };
-    setProducts([newProd, ...products]);
-    setIsNewProductModalOpen(false);
-    setName("");
-    setSku("");
-    setBarcode("");
-    setSalePrice("");
-    setCostPrice("");
-  };
-
   return (
     <OwnerLayout>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Catálogo de Productos</h1>
-            <p className="text-xs text-text-muted">Administración de artículos, precios e impuestos IVA de Costa Rica</p>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">Catálogo de Productos</h1>
+            <p className="text-xs text-text-muted">
+              Gestiona el inventario, precios en colones y tarifas de IVA para facturación electrónica
+            </p>
           </div>
-          <Button variant="primary" onClick={() => setIsNewProductModalOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nuevo Producto
-          </Button>
+
+          <div className="flex items-center gap-2">
+            {products.length === 0 && (
+              <Button variant="secondary" size="sm" onClick={importSampleProducts}>
+                <Sparkles className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                Cargar Ejemplos
+              </Button>
+            )}
+            <Button variant="primary" onClick={openCreateModal}>
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nuevo Producto
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* Filters */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
+              aria-label="Buscar producto por nombre, SKU o código de barras"
               placeholder="Buscar por nombre, SKU o código de barras..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-surface border border-border rounded-xl text-xs text-white placeholder-[#6C707E] focus:outline-none focus:border-primary"
+              className="w-full pl-10 pr-4 py-2.5 bg-surface-input border border-border rounded-2xl text-xs sm:text-sm text-text-main placeholder-text-muted focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary shadow-sm"
             />
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {/* Category Badges */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
             {categories.map((cat) => (
               <button
                 key={cat}
+                type="button"
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-primary ${
                   selectedCategory === cat
-                    ? "bg-[#0EA5FF] text-white"
-                    : "bg-surface border border-border text-text-muted hover:text-white"
+                    ? "bg-primary text-white shadow-sm"
+                    : "bg-surface border border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
-                {cat === "ALL" ? "Todas las Categorías" : cat}
+                {cat === "ALL" ? "Todos" : cat}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Products Table */}
         <Card>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs" aria-label="Tabla de inventario de productos">
               <thead>
                 <tr className="text-text-muted border-b border-border">
-                  <th className="pb-3">Producto / Descripción</th>
-                  <th className="pb-3">Categoría</th>
-                  <th className="pb-3">SKU / Código</th>
-                  <th className="pb-3">Tarifa IVA</th>
-                  <th className="pb-3 text-right">Precio Costo</th>
-                  <th className="pb-3 text-right">Precio Venta (IVA incl.)</th>
-                  <th className="pb-3 text-center">Stock Actual</th>
-                  <th className="pb-3 text-right">Acciones</th>
+                  <th scope="col" className="pb-3 font-bold">Producto</th>
+                  <th scope="col" className="pb-3 font-bold">SKU / Código</th>
+                  <th scope="col" className="pb-3 font-bold">Categoría</th>
+                  <th scope="col" className="pb-3 font-bold">Precio Venta (CRC)</th>
+                  <th scope="col" className="pb-3 font-bold">Tarifa IVA</th>
+                  <th scope="col" className="pb-3 font-bold">Stock</th>
+                  <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#26282E]">
-                {filteredProducts.map((p) => {
-                  const isLow = (p.stock || 0) <= p.min_stock_alert;
-                  return (
-                    <tr key={p.id} className="hover:bg-surface-secondary/50 transition-colors">
-                      <td className="py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-2 bg-surface-secondary rounded-lg border border-border">
-                            <Package className="w-4 h-4 text-primary" />
-                          </div>
-                          <div>
-                            <span className="font-semibold text-white block">{p.name}</span>
-                            <span className="text-[10px] text-text-muted">Mín. Alerta: {p.min_stock_alert} uds</span>
-                          </div>
+              <tbody className="divide-y divide-border">
+                {filteredProducts.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-text-muted">
+                      No hay productos registrados en esta categoría. Haz clic en <strong>+ Nuevo Producto</strong> para agregar el primero.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredProducts.map((p) => (
+                    <tr key={p.id} className="hover:bg-surface-hover transition-colors">
+                      <td className="py-3 font-bold text-text-main flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-primary-subtle border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
+                          <Package className="w-3.5 h-3.5" />
                         </div>
+                        <span className="truncate max-w-xs">{p.name}</span>
                       </td>
-                      <td className="py-3">
-                        <Badge variant="blue">{p.category_name}</Badge>
-                      </td>
-                      <td className="py-3 font-mono text-[11px] text-text-muted">
+                      <td className="py-3 font-mono text-text-secondary text-[11px]">
                         <div>{p.sku || "-"}</div>
-                        {p.barcode && <div className="text-[10px] text-text-muted">{p.barcode}</div>}
+                        {p.barcode && <div className="text-text-muted text-[10px]">{p.barcode}</div>}
+                      </td>
+                      <td className="py-3 text-text-secondary">{p.category_name || "General"}</td>
+                      <td className="py-3 font-black text-text-main font-mono text-sm">{formatCRC(p.sale_price)}</td>
+                      <td className="py-3">
+                        <Badge variant="blue">{p.tax_rate}% IVA</Badge>
                       </td>
                       <td className="py-3">
-                        <Badge variant={p.tax_rate === 13 ? "default" : p.tax_rate === 1 ? "success" : "warning"}>
-                          IVA {p.tax_rate}%
-                        </Badge>
-                      </td>
-                      <td className="py-3 text-right font-mono text-text-muted">{formatCRC(p.cost_price)}</td>
-                      <td className="py-3 text-right font-mono font-bold text-white">{formatCRC(p.sale_price)}</td>
-                      <td className="py-3 text-center">
-                        <Badge variant={isLow ? "danger" : "success"}>
-                          {p.stock} uds {isLow && "(Bajo Stock)"}
-                        </Badge>
+                        <span
+                          className={`font-mono font-bold ${
+                            p.stock <= p.min_stock_alert ? "text-amber-500" : "text-emerald-500"
+                          }`}
+                        >
+                          {p.stock} uds
+                        </span>
                       </td>
                       <td className="py-3 text-right">
-                        <button className="p-1.5 hover:bg-[#26282E] text-text-muted hover:text-white rounded-lg transition-colors">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(p)}
+                            aria-label={`Editar ${p.name}`}
+                            className="p-1.5 text-text-muted hover:text-primary hover:bg-surface-secondary rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteProduct(p.id)}
+                            aria-label={`Eliminar ${p.name}`}
+                            className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  );
-                })}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </Card>
       </div>
 
-      <Modal isOpen={isNewProductModalOpen} onClose={() => setIsNewProductModalOpen(false)} title="Registrar Nuevo Producto" maxWidth="lg">
-        <form onSubmit={handleCreateProduct} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <Input
-                label="Nombre del Producto"
-                placeholder="Ej: Leche Dos Pinos Semidescremada 1L"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </div>
+      {/* Create / Edit Product Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingProduct ? "Editar Producto" : "Nuevo Producto"}
+        maxWidth="md"
+      >
+        <form onSubmit={handleSave} className="space-y-4">
+          <Input
+            label="Nombre del Producto"
+            placeholder="Ej: Leche Dos Pinos 1L Semidescremada"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+          />
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Código SKU"
-              placeholder="Ej: LEC-001"
+              placeholder="BEB-001"
               value={sku}
               onChange={(e) => setSku(e.target.value)}
             />
-
             <Input
-              label="Código de Barras"
-              placeholder="Ej: 7441001234567"
+              label="Código de Barras (EAN-13)"
+              placeholder="7441001001"
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
             />
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-secondary">Categoría</label>
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                Categoría
+              </label>
               <select
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <option value="Abarrotes">Abarrotes</option>
-                <option value="Bebidas">Bebidas</option>
-                <option value="Licores">Licores</option>
-                <option value="Snacks">Snacks</option>
-                <option value="Canasta Básica">Canasta Básica</option>
+                {categories.filter((c) => c !== "ALL").map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-secondary">Impuesto IVA (Costa Rica)</label>
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                Tarifa de IVA (Costa Rica)
+              </label>
               <select
                 value={taxRate}
                 onChange={(e) => setTaxRate(e.target.value)}
-                className="w-full px-3 py-2 bg-surface-secondary border border-border rounded-xl text-xs text-white focus:outline-none focus:border-primary"
+                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <option value="13">13% - General (Código 01)</option>
-                <option value="4">4% - Reducido Medicamentos (Código 02)</option>
-                <option value="2">2% - Reducido Insumos Agro (Código 03)</option>
-                <option value="1">1% - Canasta Básica (Código 04)</option>
-                <option value="0">0% - Exento (Código 08)</option>
+                <option value="13">13% - Tarifa General</option>
+                <option value="1">1% - Canasta Básica Tributaria</option>
+                <option value="2">2% - Medicamentos e Insumos</option>
+                <option value="4">4% - Servicios de Salud y Boletos</option>
+                <option value="0">0% - Exento</option>
               </select>
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
-              label="Precio de Costo (CRC)"
+              label="Precio de Venta (CRC ₡)"
               type="number"
-              placeholder="Ej: 800"
-              value={costPrice}
-              onChange={(e) => setCostPrice(e.target.value)}
-              required
-            />
-
-            <Input
-              label="Precio de Venta con IVA (CRC)"
-              type="number"
-              placeholder="Ej: 1200"
+              placeholder="1200"
               value={salePrice}
               onChange={(e) => setSalePrice(e.target.value)}
               required
             />
-
             <Input
-              label="Alerta de Stock Mínimo"
+              label="Precio de Costo (CRC ₡)"
               type="number"
-              placeholder="Ej: 10"
+              placeholder="800"
+              value={costPrice}
+              onChange={(e) => setCostPrice(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input
+              label="Stock Inicial en Bodega"
+              type="number"
+              placeholder="25"
+              value={stock}
+              onChange={(e) => setStock(e.target.value)}
+              required
+            />
+            <Input
+              label="Alerta Mínima de Stock"
+              type="number"
+              placeholder="5"
               value={minStockAlert}
               onChange={(e) => setMinStockAlert(e.target.value)}
             />
           </div>
 
           <div className="pt-3 border-t border-border flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setIsNewProductModalOpen(false)}>
+            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
             <Button type="submit" variant="primary">
-              Guardar Producto
+              {editingProduct ? "Guardar Cambios" : "Crear Producto"}
             </Button>
           </div>
         </form>

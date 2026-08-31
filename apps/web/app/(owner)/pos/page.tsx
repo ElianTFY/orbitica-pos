@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   Search,
   Barcode,
@@ -16,6 +17,7 @@ import {
   ShoppingBag,
   Grid,
   ArrowRight,
+  PackagePlus,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Button } from "@/components/ui/button";
@@ -23,19 +25,13 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { ThermalReceipt } from "@/components/pos/thermal-receipt";
+import { useStore } from "@/features/store/store-context";
 import { Product, CartItem } from "@/types";
 import { formatCRC } from "@/lib/utils";
 
-const SAMPLE_CATALOG: Product[] = [
-  { id: "1", name: "Coca-Cola 600ml Descartable", barcode: "7441001001", sku: "BEB-001", sale_price: 1200, cost_price: 800, min_stock_alert: 10, tax_rate: 13, category_name: "Bebidas", stock: 50 },
-  { id: "2", name: "Cerveza Imperial 350ml Lata", barcode: "7441002002", sku: "LIC-001", sale_price: 1400, cost_price: 950, min_stock_alert: 24, tax_rate: 13, category_name: "Licores", stock: 45 },
-  { id: "3", name: "Papas Tosty Clásicas 115g", barcode: "7441003003", sku: "SNK-001", sale_price: 850, cost_price: 550, min_stock_alert: 15, tax_rate: 13, category_name: "Snacks", stock: 30 },
-  { id: "4", name: "Café Rey 500g Tradicional", barcode: "7441004004", sku: "ABA-001", sale_price: 2800, cost_price: 2100, min_stock_alert: 8, tax_rate: 1, category_name: "Canasta Básica", stock: 20 },
-  { id: "5", name: "Agua Cristal 600ml Sin Gas", barcode: "7441005005", sku: "BEB-002", sale_price: 700, cost_price: 400, min_stock_alert: 12, tax_rate: 13, category_name: "Bebidas", stock: 60 },
-  { id: "6", name: "Galletas Chiky Chocolate", barcode: "7441006006", sku: "SNK-002", sale_price: 650, cost_price: 420, min_stock_alert: 10, tax_rate: 13, category_name: "Snacks", stock: 25 },
-];
-
 export default function POSPage() {
+  const { products, recordSale, settings, importSampleProducts } = useStore();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeMobileTab, setActiveMobileTab] = useState<"catalog" | "cart">("catalog");
@@ -44,6 +40,9 @@ export default function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<"CASH_CRC" | "SINPE" | "CARD" | "MIXED">("CASH_CRC");
   const [cashReceived, setCashReceived] = useState<string>("");
   const [sinpeRef, setSinpeRef] = useState<string>("");
+  const [customerName, setCustomerName] = useState<string>("CLIENTE CONTADO");
+  const [customerCedula, setCustomerCedula] = useState<string>("");
+  const [docType, setDocType] = useState<"04" | "01">("04");
   const [lastReceiptData, setLastReceiptData] = useState<any>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,67 +129,28 @@ export default function POSPage() {
   const change = Math.max(0, numCash - total);
 
   const completeSale = () => {
-    const seq = Math.floor(1000 + Math.random() * 9000);
-    const saleNum = `V-${seq.toString().padStart(6, "0")}`;
-    const key = `5062908260031018889990010000104000000${seq.toString().padStart(4, "0")}112345678`;
-    const consecutive = `0010000104000000${seq.toString().padStart(4, "0")}`;
+    const { receiptData } = recordSale({
+      items: cart.map((c) => ({ product: c.product, quantity: c.quantity })),
+      paymentMethod,
+      cashReceived: numCash,
+      sinpeRef,
+      customerName: customerName || "CLIENTE CONTADO",
+      customerCedula,
+      docType,
+    });
 
-    const receiptPayload = {
-      sale_number: saleNum,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      store: {
-        name: "Minimarket San José Express",
-        legal_name: "Comercial San José S.A.",
-        legal_id: "3-101-888999",
-        phone: "2222-3344",
-        email: "facturacion@sanjoseexpress.cr",
-        address: "San José Centro, Avenida Central",
-        branch_name: "Sucursal Central (001)",
-      },
-      customer: {
-        name: "CLIENTE CONTADO",
-        identification: null,
-      },
-      hacienda: {
-        doc_type: "04 Tiquete Electrónico",
-        consecutive: consecutive,
-        numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
-        qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
-      },
-      items: cart.map((it) => ({
-        name: it.product.name,
-        quantity: it.quantity,
-        unit_price: it.product.sale_price,
-        tax_amount: (it.product.sale_price * (it.product.tax_rate / 100)) * it.quantity,
-        total: (it.product.sale_price * (1 + it.product.tax_rate / 100)) * it.quantity,
-      })),
-      totals: {
-        subtotal,
-        discount: 0,
-        tax: totalTax,
-        total,
-        currency: "CRC",
-      },
-      payments: [
-        {
-          method: paymentMethod,
-          amount: paymentMethod === "CASH_CRC" ? numCash : total,
-          reference: sinpeRef || null,
-        },
-      ],
-      footer_message: "¡Gracias por su compra en San José Express!",
-    };
-
-    setLastReceiptData(receiptPayload);
+    setLastReceiptData(receiptData);
     setIsPaymentModalOpen(false);
     setIsReceiptModalOpen(true);
     clearCart();
     setCashReceived("");
     setSinpeRef("");
+    setCustomerName("CLIENTE CONTADO");
+    setCustomerCedula("");
+    setDocType("04");
   };
 
-  const filteredProducts = SAMPLE_CATALOG.filter(
+  const filteredProducts = products.filter(
     (p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.barcode && p.barcode.includes(searchQuery)) ||
@@ -218,7 +178,7 @@ export default function POSPage() {
             }`}
           >
             <Grid className="w-4 h-4" />
-            Catálogo
+            Catálogo ({products.length})
           </button>
           <button
             type="button"
@@ -271,35 +231,61 @@ export default function POSPage() {
 
             {/* Product Cards Grid */}
             <div className="flex-1 overflow-y-auto pr-1">
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-2.5 sm:gap-3.5">
-                {filteredProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => addToCart(p)}
-                    className="p-3 sm:p-4 bg-surface border border-border rounded-2xl hover:border-primary hover:bg-surface-hover transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[110px] shadow-sm focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <div className="space-y-1 w-full">
-                      <div className="flex justify-between items-start gap-1">
-                        <span className="text-[9px] sm:text-[10px] font-mono text-text-muted uppercase tracking-wider truncate">
-                          {p.category_name}
-                        </span>
-                        <span className="text-[9px] sm:text-[10px] font-bold text-emerald-500 flex-shrink-0">
-                          {p.tax_rate}%
-                        </span>
+              {filteredProducts.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center text-center space-y-3 bg-surface border border-border rounded-3xl p-6">
+                  <div className="w-12 h-12 rounded-2xl bg-primary-subtle text-primary flex items-center justify-center">
+                    <PackagePlus className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text-main">No hay productos disponibles</h3>
+                    <p className="text-xs text-text-muted mt-1 max-w-sm">
+                      {searchQuery
+                        ? "No se encontraron productos que coincidan con la búsqueda."
+                        : "Agrega tus productos en la sección de inventario para empezar a vender."}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Link href="/products">
+                      <Button variant="primary" size="sm">
+                        + Registrar Productos
+                      </Button>
+                    </Link>
+                    <Button variant="secondary" size="sm" onClick={importSampleProducts}>
+                      Cargar Ejemplos
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-2.5 sm:gap-3.5">
+                  {filteredProducts.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => addToCart(p)}
+                      className="p-3 sm:p-4 bg-surface border border-border rounded-2xl hover:border-primary hover:bg-surface-hover transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[110px] shadow-sm focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      <div className="space-y-1 w-full">
+                        <div className="flex justify-between items-start gap-1">
+                          <span className="text-[9px] sm:text-[10px] font-mono text-text-muted uppercase tracking-wider truncate">
+                            {p.category_name || "General"}
+                          </span>
+                          <span className="text-[9px] sm:text-[10px] font-bold text-emerald-500 flex-shrink-0">
+                            {p.tax_rate}% IVA
+                          </span>
+                        </div>
+                        <h3 className="text-xs sm:text-sm font-bold text-text-main group-hover:text-primary transition-colors line-clamp-2">
+                          {p.name}
+                        </h3>
                       </div>
-                      <h3 className="text-xs sm:text-sm font-bold text-text-main group-hover:text-primary transition-colors line-clamp-2">
-                        {p.name}
-                      </h3>
-                    </div>
 
-                    <div className="mt-2.5 flex items-baseline justify-between pt-2 border-t border-border w-full">
-                      <span className="text-sm sm:text-base font-black text-text-main font-mono">{formatCRC(p.sale_price)}</span>
-                      <span className="text-[9px] sm:text-[10px] text-text-muted font-mono">Stock: {p.stock}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                      <div className="mt-2.5 flex items-baseline justify-between pt-2 border-t border-border w-full">
+                        <span className="text-sm sm:text-base font-black text-text-main font-mono">{formatCRC(p.sale_price)}</span>
+                        <span className="text-[9px] sm:text-[10px] text-text-muted font-mono">Stock: {p.stock}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -389,7 +375,7 @@ export default function POSPage() {
                 </div>
                 <div className="flex justify-between text-base font-black text-text-main pt-2 border-t border-border">
                   <span>TOTAL A COBRAR:</span>
-                  <span className="font-mono text-primary text-lg">{formatCRC(total)}</span>
+                  <span className="font-mono text-emerald-500 text-lg">{formatCRC(total)}</span>
                 </div>
               </div>
 
@@ -398,7 +384,7 @@ export default function POSPage() {
                 size="lg"
                 onClick={() => setIsPaymentModalOpen(true)}
                 disabled={cart.length === 0}
-                className="w-full py-4 text-sm font-bold shadow-sm touch-manipulation"
+                className="w-full py-4 text-sm font-bold shadow-sm touch-manipulation bg-emerald-600 hover:bg-emerald-500 text-white"
               >
                 Cobrar Venta ({formatCRC(total)})
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -412,7 +398,7 @@ export default function POSPage() {
           <div className="fixed bottom-14 left-0 right-0 p-3 bg-surface/95 border-t border-border lg:hidden z-20 backdrop-blur-md flex items-center justify-between shadow-card">
             <div>
               <span className="text-[10px] text-text-muted uppercase font-bold block">{totalItemCount} productos</span>
-              <span className="text-lg font-black text-primary font-mono">{formatCRC(total)}</span>
+              <span className="text-lg font-black text-emerald-500 font-mono">{formatCRC(total)}</span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -426,7 +412,7 @@ export default function POSPage() {
                 variant="primary"
                 size="sm"
                 onClick={() => setIsPaymentModalOpen(true)}
-                className="font-bold"
+                className="font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
               >
                 Cobrar
                 <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -441,8 +427,56 @@ export default function POSPage() {
         <div className="space-y-5">
           <div className="p-4 bg-surface-secondary border border-border rounded-2xl text-center">
             <span className="text-xs text-text-muted uppercase tracking-wider font-bold">Total a Pagar</span>
-            <h2 className="text-3xl font-black text-primary font-mono mt-1">{formatCRC(total)}</h2>
+            <h2 className="text-3xl font-black text-emerald-500 font-mono mt-1">{formatCRC(total)}</h2>
           </div>
+
+          {/* Document Type (Tiquete 04 vs Factura 01) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Tipo de Comprobante</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setDocType("04")}
+                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                  docType === "04"
+                    ? "bg-primary text-white border-primary shadow-sm"
+                    : "bg-surface border-border text-text-secondary hover:bg-surface-hover"
+                }`}
+              >
+                Tiquete Electrónico (04)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocType("01")}
+                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                  docType === "01"
+                    ? "bg-primary text-white border-primary shadow-sm"
+                    : "bg-surface border-border text-text-secondary hover:bg-surface-hover"
+                }`}
+              >
+                Factura Electrónica (01)
+              </button>
+            </div>
+          </div>
+
+          {docType === "01" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 bg-surface-secondary rounded-xl border border-border">
+              <Input
+                label="Nombre / Razón Social Cliente"
+                placeholder="Ej: Distribuidora Central S.A."
+                value={customerName === "CLIENTE CONTADO" ? "" : customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                required
+              />
+              <Input
+                label="Cédula Física / Jurídica"
+                placeholder="3101999999"
+                value={customerCedula}
+                onChange={(e) => setCustomerCedula(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Forma de Pago</label>
@@ -452,7 +486,7 @@ export default function POSPage() {
                 onClick={() => setPaymentMethod("CASH_CRC")}
                 className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                   paymentMethod === "CASH_CRC"
-                    ? "bg-primary-subtle border-primary text-primary shadow-sm"
+                    ? "bg-emerald-500/10 border-emerald-500 text-emerald-500 shadow-sm"
                     : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
@@ -478,7 +512,7 @@ export default function POSPage() {
                 onClick={() => setPaymentMethod("CARD")}
                 className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                   paymentMethod === "CARD"
-                    ? "bg-primary-subtle border-primary text-primary shadow-sm"
+                    ? "bg-purple-500/10 border-purple-500 text-purple-500 shadow-sm"
                     : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                 }`}
               >
@@ -511,21 +545,21 @@ export default function POSPage() {
                 <button
                   type="button"
                   onClick={() => setCashReceived("2000")}
-                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-emerald-500 font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡2,000
                 </button>
                 <button
                   type="button"
                   onClick={() => setCashReceived("5000")}
-                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-emerald-500 font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡5,000
                 </button>
                 <button
                   type="button"
                   onClick={() => setCashReceived("10000")}
-                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-primary font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
+                  className="py-2 px-2 bg-surface-secondary hover:bg-surface-hover border border-border rounded-xl text-[11px] text-emerald-500 font-mono font-bold transition-colors focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   ₡10,000
                 </button>
@@ -556,7 +590,7 @@ export default function POSPage() {
             size="lg"
             onClick={completeSale}
             disabled={paymentMethod === "CASH_CRC" && numCash < total}
-            className="w-full py-4 font-bold text-sm"
+            className="w-full py-4 font-bold text-sm bg-emerald-600 hover:bg-emerald-500 text-white"
           >
             Completar Venta e Imprimir Comprobante
           </Button>

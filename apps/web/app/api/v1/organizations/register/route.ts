@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 export async function POST(request: Request) {
@@ -12,6 +12,7 @@ export async function POST(request: Request) {
       owner_email,
       owner_password,
       owner_full_name,
+      phone,
       initial_branch_name,
     } = body;
 
@@ -19,19 +20,24 @@ export async function POST(request: Request) {
     const userId = `usr_${Date.now()}`;
     const branchId = `br_001`;
 
-    const newUser = {
+    const realUser = {
       id: userId,
       organization_id: orgId,
       organization_name: trade_name || legal_name || "Mi Negocio",
+      legal_name: legal_name || trade_name || "Comercial S.A.",
+      identification_number: identification_number || "3101000000",
+      identification_type: identification_type || "JURIDICA",
       branch_id: branchId,
+      branch_name: initial_branch_name || "Sucursal Central (001)",
       email: owner_email.toLowerCase(),
       full_name: owner_full_name || "Propietario",
+      phone: phone || "+506 2200-0000",
       role: "owner",
       permissions: ["*"],
     };
 
     const cookieStore = await cookies();
-    cookieStore.set("orbitica_session_user", JSON.stringify(newUser), {
+    cookieStore.set("orbitica_session_user", JSON.stringify(realUser), {
       httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -49,7 +55,8 @@ export async function POST(request: Request) {
         trial_days: 14,
         country: "CR",
         currency: "CRC",
-        user: newUser,
+        user: realUser,
+        access_token: `orbitica_jwt_${userId}_${Date.now()}`,
       },
     });
   } catch (error: any) {
