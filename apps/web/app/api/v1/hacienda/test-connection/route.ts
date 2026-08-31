@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
         environment: environment || "STAGING",
         atv_user: atv_username,
         ping_ms: 184,
-        hacienda_version: "v4.3",
+        hacienda_version: "v4.4",
       },
     });
   } catch (error: any) {

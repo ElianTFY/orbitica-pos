@@ -152,7 +152,7 @@ export default function SettingsPage() {
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            Hacienda v4.3
+            Hacienda v4.4
           </button>
 
           <button

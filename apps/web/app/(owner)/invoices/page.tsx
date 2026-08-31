@@ -63,7 +63,7 @@ export default function InvoicesPage() {
           <div className="flex items-center gap-2">
             <Badge variant="blue" className="py-1.5 px-3">
               <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-              ATV v4.3 Conectado
+              ATV v4.4 Conectado
             </Badge>
           </div>
         </div>

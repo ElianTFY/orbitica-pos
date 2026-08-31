@@ -477,8 +477,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         doc_type: docType === "01" ? "Factura Electrónica (01)" : "Tiquete Electrónico (04)",
         consecutive,
         numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
-        qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
+        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019 (Esquema v4.4)",
+        qr_url: `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${key}`,
       },
       items: items.map((it) => ({
         name: it.product.name,
@@ -541,8 +541,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       customer_name: customerName,
       total,
       status: "ACCEPTED",
-      hacienda_message: "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.3",
-      xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"} xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.3">\n  <Clave>${key}</Clave>\n  <NumeroConsecutivo>${consecutive}</NumeroConsecutivo>\n  <FechaEmision>${new Date().toISOString()}</FechaEmision>\n  <Emisor>\n    <Nombre>${settings.legal_name}</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>${settings.identification_number}</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda>${settings.default_currency}</CodigoTipoMoneda>\n    <TotalComprobante>${total.toFixed(2)}</TotalComprobante>\n  </ResumenFactura>\n</${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"}>`,
+      hacienda_message: "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.4",
+      xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"} xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/${docType === "01" ? "facturaElectronica" : "tiqueteElectronico"}">\n  <Clave>${key}</Clave>\n  <NumeroConsecutivo>${consecutive}</NumeroConsecutivo>\n  <FechaEmision>${new Date().toISOString()}</FechaEmision>\n  <Emisor>\n    <Nombre>${settings.legal_name}</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>${settings.identification_number}</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda><CodigoMoneda>${settings.default_currency}</CodigoMoneda><TipoCambio>1.00</TipoCambio></CodigoTipoMoneda>\n    <TotalComprobante>${total.toFixed(2)}</TotalComprobante>\n  </ResumenFactura>\n</${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"}>`,
     };
 
     setSales((prev) => [newSale, ...prev]);

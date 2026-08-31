@@ -64,8 +64,8 @@ export default function SalesPage() {
         doc_type: "Tiquete Electrónico (04)",
         consecutive: sale.consecutive_number || "00100001040000000001",
         numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-48-2016",
-        qr_url: `https://tribunet.hacienda.go.cr/docs/${key}`,
+        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019",
+        qr_url: `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${key}`,
       },
       items: sale.items_snapshot
         ? sale.items_snapshot

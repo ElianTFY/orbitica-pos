@@ -53,7 +53,7 @@ export default function SubscriptionPage() {
               <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
                 <span className="text-[10px] text-text-muted uppercase font-bold">Facturación Hacienda</span>
                 <div className="text-lg font-black text-emerald-500 mt-0.5 font-mono">Ilimitada</div>
-                <span className="text-[10px] text-text-muted">v4.3 XAdES-BES</span>
+                <span className="text-[10px] text-text-muted">v4.4 XAdES-BES</span>
               </div>
             </div>
 
@@ -62,7 +62,7 @@ export default function SubscriptionPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-text-secondary">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-500" />
-                  <span>Facturación Electrónica v4.3 Ilimitada</span>
+                  <span>Facturación Electrónica v4.4 Ilimitada</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-500" />
