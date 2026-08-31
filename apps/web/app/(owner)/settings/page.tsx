@@ -56,6 +56,11 @@ export default function SettingsPage() {
     setAddress(settings.address);
   }, [settings]);
 
+  // Clear connection result whenever the user changes ATV credentials
+  useEffect(() => {
+    setConnectionResult(null);
+  }, [atvUser, atvPass, env]);
+
   const handleSaveGeneral = (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings({
@@ -83,6 +88,22 @@ export default function SettingsPage() {
   };
 
   const handleTestConnection = async () => {
+    // Client-side guard — never call the API with missing credentials
+    if (!atvUser.trim()) {
+      setConnectionResult({
+        success: false,
+        message: "Debe ingresar el Usuario ATV (CPF-...) antes de validar.",
+      });
+      return;
+    }
+    if (!atvPass.trim()) {
+      setConnectionResult({
+        success: false,
+        message: "Debe ingresar la Contraseña API ATV antes de validar la conexión.",
+      });
+      return;
+    }
+
     setTestingConnection(true);
     setConnectionResult(null);
     try {
@@ -355,7 +376,8 @@ export default function SettingsPage() {
                   type="button"
                   variant="secondary"
                   onClick={handleTestConnection}
-                  disabled={testingConnection}
+                  disabled={testingConnection || !atvUser.trim() || !atvPass.trim()}
+                  title={!atvUser.trim() || !atvPass.trim() ? "Ingrese usuario y contraseña ATV para validar" : undefined}
                 >
                   {testingConnection ? (
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin text-primary" />
