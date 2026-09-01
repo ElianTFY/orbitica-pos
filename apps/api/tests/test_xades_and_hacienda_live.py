@@ -1,5 +1,7 @@
 import base64
+import uuid
 import pytest
+from decimal import Decimal
 from datetime import datetime, timezone, timedelta
 from httpx import AsyncClient
 from cryptography import x509
@@ -8,10 +10,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12, BestAvailableEncryption
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.models.organization import Organization
+from app.models.sale import Sale, SaleItem
+from app.models.branch import Branch
 from app.services.xades_signer_v44 import XAdESSignerV44
 from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.hacienda_xml_generator_v44 import HaciendaXMLGeneratorV44
+from app.core.exceptions import BadRequestException
 
 def generate_test_p12(pin: str = "1234") -> bytes:
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -71,6 +77,78 @@ async def test_p12_metadata_and_encryption_custody(db_session: AsyncSession, sam
     assert decrypted["p12_bytes"] == p12_bytes
 
 @pytest.mark.asyncio
+async def test_xml_generation_with_xsd_validation_and_cabys_enforcement(
+    db_session: AsyncSession,
+    sample_organization: Organization
+):
+    b_stmt = select(Branch).where(Branch.organization_id == sample_organization.id)
+    b_res = await db_session.execute(b_stmt)
+    branch = b_res.scalars().first()
+
+    dummy_sale_id = uuid.uuid4()
+    dummy_prod_id = uuid.uuid4()
+
+    # Create dummy sale structure with real CAByS
+    sale = Sale(
+        organization_id=sample_organization.id,
+        branch_id=branch.id,
+        user_id=uuid.uuid4(),
+        sale_number="FAC-001-00001",
+        status="COMPLETED",
+        currency="CRC",
+        subtotal_amount=Decimal("1000.00"),
+        discount_amount=Decimal("0.00"),
+        tax_amount=Decimal("130.00"),
+        total_amount=Decimal("1130.00")
+    )
+
+    item = SaleItem(
+        sale_id=dummy_sale_id,
+        product_id=dummy_prod_id,
+        product_name="Arroz Grano Entero 1kg",
+        product_sku="ARR-001",
+        quantity=Decimal("1.00"),
+        unit_price=Decimal("1130.0000"),
+        unit_cost=Decimal("800.0000"),
+        discount_percentage=Decimal("0.00"),
+        discount_amount=Decimal("0.00"),
+        tax_rate=Decimal("13.00"),
+        tax_amount=Decimal("130.00"),
+        line_total=Decimal("1130.00")
+    )
+    # Assign valid 13-digit CAByS
+    item.cabys_code = "5211010000100"
+    item.unit_of_measure = "Unid"
+    sale.items = [item]
+
+    # 1. Generate XML with XSD validation enabled
+    xml_str = HaciendaXMLGeneratorV44.generate_xml(
+        doc_type="04",
+        numeric_key="50631082600310188899900100001040000000001112345678",
+        consecutive_number="00100001040000000001",
+        sale=sale,
+        org=sample_organization,
+        branch=branch,
+        validate_xsd=True
+    )
+    assert "<TiqueteElectronico" in xml_str
+    assert "<CodigoCabys>5211010000100</CodigoCabys>" in xml_str
+    assert "<CodigoTarifa>08</CodigoTarifa>" in xml_str
+
+    # 2. Reject dummy CAByS 0000000000000
+    item.cabys_code = "0000000000000"
+    with pytest.raises(BadRequestException) as exc_info:
+        HaciendaXMLGeneratorV44.generate_xml(
+            doc_type="04",
+            numeric_key="50631082600310188899900100001040000000001112345678",
+            consecutive_number="00100001040000000001",
+            sale=sale,
+            org=sample_organization,
+            branch=branch
+        )
+    assert "Código CAByS" in str(exc_info.value)
+
+@pytest.mark.asyncio
 async def test_xades_epes_signature_and_verification():
     pin = "1234"
     p12_bytes = generate_test_p12(pin=pin)
@@ -87,16 +165,59 @@ async def test_xades_epes_signature_and_verification():
             <Tipo>02</Tipo>
             <Numero>3101888999</Numero>
         </Identificacion>
+        <Ubicacion>
+            <Provincia>1</Provincia>
+            <Canton>01</Canton>
+            <Distrito>01</Distrito>
+            <OtrasSenas>San Jose</OtrasSenas>
+        </Ubicacion>
+        <CorreoElectronico>facturacion@elsol.cr</CorreoElectronico>
     </Emisor>
     <CondicionVenta>01</CondicionVenta>
     <MedioPago>01</MedioPago>
+    <DetalleServicio>
+        <LineaDetalle>
+            <NumeroLinea>1</NumeroLinea>
+            <CodigoCabys>5211010000100</CodigoCabys>
+            <Cantidad>1.000</Cantidad>
+            <UnidadMedida>Unid</UnidadMedida>
+            <Detalle>Arroz Grano Entero 1kg</Detalle>
+            <PrecioUnitario>1130.00000</PrecioUnitario>
+            <MontoTotal>1130.00</MontoTotal>
+            <SubTotal>1130.00</SubTotal>
+            <Impuesto>
+                <Codigo>01</Codigo>
+                <CodigoTarifa>08</CodigoTarifa>
+                <Tarifa>13.00</Tarifa>
+                <Monto>130.00</Monto>
+            </Impuesto>
+            <MontoTotalLinea>1130.00</MontoTotalLinea>
+        </LineaDetalle>
+    </DetalleServicio>
     <ResumenFactura>
         <CodigoTipoMoneda>
             <CodigoMoneda>CRC</CodigoMoneda>
             <TipoCambio>1.00000</TipoCambio>
         </CodigoTipoMoneda>
+        <TotalServGravados>0.00</TotalServGravados>
+        <TotalServExentos>0.00</TotalServExentos>
+        <TotalMercanciasGravadas>1000.00</TotalMercanciasGravadas>
+        <TotalMercanciasExentas>0.00</TotalMercanciasExentas>
+        <TotalGravado>1000.00</TotalGravado>
+        <TotalExento>0.00</TotalExento>
+        <TotalVenta>1000.00</TotalVenta>
+        <TotalDescuentos>0.00</TotalDescuentos>
+        <TotalVentaNeta>1000.00</TotalVentaNeta>
+        <TotalImpuesto>130.00</TotalImpuesto>
         <TotalComprobante>1130.00</TotalComprobante>
     </ResumenFactura>
+    <ProveedorSistemas>
+        <Identificacion>
+            <Tipo>02</Tipo>
+            <Numero>3101000000</Numero>
+        </Identificacion>
+        <RazonSocial>ORBITICA STUDIO S.A.</RazonSocial>
+    </ProveedorSistemas>
 </TiqueteElectronico>"""
 
     # 1. Sign XML

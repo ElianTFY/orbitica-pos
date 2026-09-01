@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/tiqueteElectronico"
+           targetNamespace="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/tiqueteElectronico"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified"
+           version="4.4">
+
+  <xs:element name="TiqueteElectronico">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Clave">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="\d{50}"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="CodigoActividad">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="\d{6}"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="NumeroConsecutivo">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="\d{20}"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="FechaEmision" type="xs:dateTime"/>
+        <xs:element name="Emisor">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Nombre" type="xs:string"/>
+              <xs:element name="Identificacion">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Tipo" type="xs:string"/>
+                    <xs:element name="Numero" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="NombreComercial" type="xs:string" minOccurs="0"/>
+              <xs:element name="Ubicacion">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Provincia" type="xs:string"/>
+                    <xs:element name="Canton" type="xs:string"/>
+                    <xs:element name="Distrito" type="xs:string"/>
+                    <xs:element name="Barrio" type="xs:string" minOccurs="0"/>
+                    <xs:element name="OtrasSenas" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="Telefono" minOccurs="0">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="CodigoPais" type="xs:string"/>
+                    <xs:element name="NumTelefono" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="CorreoElectronico" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Receptor" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Nombre" type="xs:string"/>
+              <xs:element name="Identificacion" minOccurs="0">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Tipo" type="xs:string"/>
+                    <xs:element name="Numero" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="CorreoElectronico" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="CondicionVenta" type="xs:string"/>
+        <xs:element name="MedioPago" type="xs:string"/>
+        <xs:element name="DetalleServicio">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="LineaDetalle" maxOccurs="1000">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="NumeroLinea" type="xs:integer"/>
+                    <xs:element name="CodigoCabys">
+                      <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                          <xs:pattern value="[1-9]\d{12}"/>
+                        </xs:restriction>
+                      </xs:simpleType>
+                    </xs:element>
+                    <xs:element name="CodigoComercial" minOccurs="0">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="Tipo" type="xs:string"/>
+                          <xs:element name="Codigo" type="xs:string"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="Cantidad" type="xs:decimal"/>
+                    <xs:element name="UnidadMedida" type="xs:string"/>
+                    <xs:element name="Detalle" type="xs:string"/>
+                    <xs:element name="PrecioUnitario" type="xs:decimal"/>
+                    <xs:element name="MontoTotal" type="xs:decimal"/>
+                    <xs:element name="Descuento" minOccurs="0">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="MontoDescuento" type="xs:decimal"/>
+                          <xs:element name="NaturalezaDescuento" type="xs:string"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="SubTotal" type="xs:decimal"/>
+                    <xs:element name="Impuesto" minOccurs="0">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="Codigo" type="xs:string"/>
+                          <xs:element name="CodigoTarifa" type="xs:string"/>
+                          <xs:element name="Tarifa" type="xs:decimal"/>
+                          <xs:element name="Monto" type="xs:decimal"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                    <xs:element name="MontoTotalLinea" type="xs:decimal"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="ResumenFactura">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="CodigoTipoMoneda">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="CodigoMoneda" type="xs:string"/>
+                    <xs:element name="TipoCambio" type="xs:decimal"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="TotalServGravados" type="xs:decimal"/>
+              <xs:element name="TotalServExentos" type="xs:decimal"/>
+              <xs:element name="TotalMercanciasGravadas" type="xs:decimal"/>
+              <xs:element name="TotalMercanciasExentas" type="xs:decimal"/>
+              <xs:element name="TotalGravado" type="xs:decimal"/>
+              <xs:element name="TotalExento" type="xs:decimal"/>
+              <xs:element name="TotalVenta" type="xs:decimal"/>
+              <xs:element name="TotalDescuentos" type="xs:decimal"/>
+              <xs:element name="TotalVentaNeta" type="xs:decimal"/>
+              <xs:element name="TotalImpuesto" type="xs:decimal"/>
+              <xs:element name="TotalComprobante" type="xs:decimal"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="InformacionReferencia" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="TipoDoc" type="xs:string"/>
+              <xs:element name="Numero" type="xs:string"/>
+              <xs:element name="FechaEmision" type="xs:dateTime"/>
+              <xs:element name="Codigo" type="xs:string"/>
+              <xs:element name="Razon" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="ProveedorSistemas">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Identificacion">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Tipo" type="xs:string"/>
+                    <xs:element name="Numero" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="RazonSocial" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:any namespace="http://www.w3.org/2000/09/xmldsig#" processContents="lax" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
