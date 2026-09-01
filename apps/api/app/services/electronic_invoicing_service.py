@@ -1,191 +1,240 @@
 import base64
 import uuid
-import datetime
-from typing import Dict, Any, Optional
+from datetime import datetime, timezone
+from typing import Dict, Any, Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
-from cryptography import x509
-from cryptography.x509.oid import NameOID
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import pkcs12, BestAvailableEncryption
 from app.models.sale import Sale
 from app.models.organization import Organization
 from app.models.branch import Branch
 from app.models.customer import Customer
 from app.models.invoice import ElectronicInvoice
-from app.services.hacienda_service import HaciendaService
-from app.services.xades_signer import XAdESSigner
-from app.services.hacienda_client import HaciendaAPIClient
-
-_TENANT_HACIENDA_CREDENTIALS: Dict[str, Dict[str, Any]] = {}
-
-def generate_ephemeral_p12(pin: str = "1234") -> bytes:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, "CR"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Orbítica Studio Test Cert"),
-        x509.NameAttribute(NameOID.COMMON_NAME, "ATV Test Key")
-    ])
-    cert = x509.CertificateBuilder().subject_name(
-        subject
-    ).issuer_name(
-        issuer
-    ).public_key(
-        key.public_key()
-    ).serial_number(
-        x509.random_serial_number()
-    ).not_valid_before(
-        datetime.datetime.now(datetime.timezone.utc)
-    ).not_valid_after(
-        datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365)
-    ).sign(key, hashes.SHA256())
-
-    return pkcs12.serialize_key_and_certificates(
-        name=b"test_key",
-        key=key,
-        cert=cert,
-        cas=None,
-        encryption_algorithm=BestAvailableEncryption(pin.encode("utf-8"))
-    )
+from app.services.fiscal_security_service import FiscalSecurityService
+from app.services.hacienda_xml_generator_v44 import HaciendaXMLGeneratorV44
+from app.services.xades_signer_v44 import XAdESSignerV44
+from app.infrastructure.external.hacienda_api_client import HaciendaAPIClient
+from app.services.audit_service import AuditService
+from app.core.exceptions import NotFoundException, BadRequestException
 
 class ElectronicInvoicingService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    @staticmethod
-    def set_credentials(
-        org_id: str,
-        env: str,
-        username: str,
-        password: str,
-        pin: str,
-        p12_bytes: Optional[bytes] = None
-    ):
-        _TENANT_HACIENDA_CREDENTIALS[str(org_id)] = {
-            "environment": env,
-            "username": username,
-            "password": password,
-            "pin": pin,
-            "p12_bytes": p12_bytes or generate_ephemeral_p12(pin)
-        }
-
-    @staticmethod
-    def get_credentials(org_id: str) -> Optional[Dict[str, Any]]:
-        return _TENANT_HACIENDA_CREDENTIALS.get(str(org_id))
-
-    async def transmit_sale_to_hacienda(
+    async def prepare_and_sign_invoice(
         self,
-        sale_id: uuid.UUID,
-        org_id: uuid.UUID,
-        simulate_success: bool = True
-    ) -> Dict[str, Any]:
-        stmt = select(Sale).options(selectinload(Sale.items), selectinload(Sale.payments)).where(Sale.id == sale_id, Sale.organization_id == org_id)
+        invoice_id: uuid.UUID,
+        organization_id: uuid.UUID
+    ) -> ElectronicInvoice:
+        stmt = (
+            select(ElectronicInvoice)
+            .options(selectinload(ElectronicInvoice.sale))
+            .where(
+                ElectronicInvoice.id == invoice_id,
+                ElectronicInvoice.organization_id == organization_id
+            )
+        )
         res = await self.db.execute(stmt)
-        sale = res.scalar_one_or_none()
-        if not sale:
-            raise ValueError("Venta no encontrada")
+        invoice = res.scalar_one_or_none()
+        if not invoice:
+            raise NotFoundException("Factura electrónica no encontrada")
 
-        org_stmt = select(Organization).where(Organization.id == org_id)
-        org_res = await self.db.execute(org_stmt)
+        org_res = await self.db.execute(select(Organization).where(Organization.id == organization_id))
         org = org_res.scalar_one_or_none()
         if not org:
-            raise ValueError("Organización no encontrada")
+            raise NotFoundException("Organización no encontrada")
 
-        branch = None
-        if sale.branch_id:
-            b_stmt = select(Branch).where(Branch.id == sale.branch_id)
-            b_res = await self.db.execute(b_stmt)
-            branch = b_res.scalar_one_or_none()
+        branch_res = await self.db.execute(select(Branch).where(Branch.id == invoice.branch_id))
+        branch = branch_res.scalar_one_or_none()
 
         customer = None
-        if sale.customer_id:
-            c_stmt = select(Customer).where(Customer.id == sale.customer_id)
-            c_res = await self.db.execute(c_stmt)
-            customer = c_res.scalar_one_or_none()
+        if invoice.sale and invoice.sale.customer_id:
+            cust_res = await self.db.execute(select(Customer).where(Customer.id == invoice.sale.customer_id))
+            customer = cust_res.scalar_one_or_none()
 
-        raw_xml = HaciendaService.generate_hacienda_xml_v43(
-            sale=sale,
+        # 1. Fetch encrypted credentials
+        creds = await FiscalSecurityService.get_decrypted_credentials(
+            db=self.db,
+            organization_id=organization_id,
+            environment=invoice.environment
+        )
+        if not creds or not creds.get("p12_bytes") or not creds.get("pin"):
+            raise BadRequestException("No se han configurado certificado criptográfico .p12 y PIN fiscal válidos")
+
+        # 2. Generate XML v4.4
+        ref_info = None
+        if invoice.doc_type in ["02", "03"] and invoice.reference_numeric_key:
+            ref_info = {
+                "doc_type": invoice.reference_doc_type or "01",
+                "numeric_key": invoice.reference_numeric_key,
+                "emission_date": invoice.reference_date.isoformat() if invoice.reference_date else datetime.now(timezone.utc).isoformat(),
+                "code": invoice.reference_code or "01",
+                "reason": invoice.reference_reason or "Anulación de documento"
+            }
+
+        raw_xml = HaciendaXMLGeneratorV44.generate_xml(
+            doc_type=invoice.doc_type,
+            numeric_key=invoice.numeric_key,
+            consecutive_number=invoice.consecutive_number,
+            sale=invoice.sale,
             org=org,
             branch=branch,
-            customer=customer
+            customer=customer,
+            reference_info=ref_info
         )
+        invoice.xml_generated = raw_xml
 
-        creds = ElectronicInvoicingService.get_credentials(str(org_id))
-        if not creds:
-            p12_bytes = generate_ephemeral_p12("1234")
-            creds = {
-                "environment": "STAGING",
-                "username": "cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr",
-                "password": "DemoPassword123!",
-                "pin": "1234",
-                "p12_bytes": p12_bytes
-            }
-            ElectronicInvoicingService.set_credentials(
-                str(org_id),
-                creds["environment"],
-                creds["username"],
-                creds["password"],
-                creds["pin"],
-                p12_bytes
-            )
-
-        signed_xml = XAdESSigner.sign_xml(
-            xml_string=raw_xml,
-            p12_data=creds["p12_bytes"],
+        # 3. Cryptographically Sign with XAdES-EPES v1.3.2
+        signed_xml = XAdESSignerV44.sign_xml(
+            xml_content=raw_xml,
+            p12_bytes=creds["p12_bytes"],
             pin=creds["pin"]
         )
+        invoice.xml_signed = signed_xml
+        invoice.status = "SIGNED"
 
-        consecutive = HaciendaService.generate_consecutive(
-            branch_code="001",
-            terminal_code="00001",
-            doc_type="01" if customer and customer.identification_number else "04",
-            sequential_number=int("".join(filter(str.isdigit, sale.sale_number)) or 1)
+        await self.db.commit()
+        return invoice
+
+    async def transmit_invoice_to_hacienda(
+        self,
+        invoice_id: uuid.UUID,
+        organization_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        stmt = select(ElectronicInvoice).where(
+            ElectronicInvoice.id == invoice_id,
+            ElectronicInvoice.organization_id == organization_id
         )
-        clave = HaciendaService.generate_numeric_key(
-            issuer_id_number=org.identification_number or "3101888999",
-            consecutive=consecutive,
-            date=sale.created_at
-        )
-
-        inv_stmt = select(ElectronicInvoice).where(ElectronicInvoice.sale_id == sale_id)
-        inv_res = await self.db.execute(inv_stmt)
-        invoice = inv_res.scalar_one_or_none()
-
-        now = datetime.datetime.now(datetime.timezone.utc)
+        res = await self.db.execute(stmt)
+        invoice = res.scalar_one_or_none()
         if not invoice:
-            invoice = ElectronicInvoice(
-                organization_id=org_id,
-                branch_id=sale.branch_id or org.branches[0].id if org.branches else uuid.uuid4(),
-                sale_id=sale_id,
-                consecutive_number=consecutive,
-                numeric_key=clave,
-                doc_type="01" if customer and customer.identification_number else "04",
-                status="ACCEPTED" if simulate_success else "SENT_TO_HACIENDA",
-                hacienda_status_code="200" if simulate_success else "202",
-                sent_to_hacienda_at=now,
-                hacienda_processed_at=now if simulate_success else None
-            )
-            self.db.add(invoice)
-        else:
-            invoice.numeric_key = clave
-            invoice.consecutive_number = consecutive
-            invoice.status = "ACCEPTED" if simulate_success else "SENT_TO_HACIENDA"
-            invoice.sent_to_hacienda_at = now
-            if simulate_success:
-                invoice.hacienda_processed_at = now
-                invoice.hacienda_status_code = "200"
+            raise NotFoundException("Factura electrónica no encontrada")
 
-        await self.db.flush()
+        if not invoice.xml_signed:
+            invoice = await self.prepare_and_sign_invoice(invoice_id, organization_id)
 
+        org_res = await self.db.execute(select(Organization).where(Organization.id == organization_id))
+        org = org_res.scalar_one_or_none()
+
+        creds = await FiscalSecurityService.get_decrypted_credentials(
+            db=self.db,
+            organization_id=organization_id,
+            environment=invoice.environment
+        )
+        if not creds or not creds.get("username") or not creds.get("password"):
+            raise BadRequestException("Credenciales de usuario API de Hacienda (ATV) no configuradas")
+
+        # 1. Obtain OAuth token from IdP
+        client = HaciendaAPIClient()
+        token = await client.get_oauth_token(
+            username=creds["username"],
+            password=creds["password"],
+            environment=invoice.environment
+        )
+
+        # 2. Transmit to /recepcion
+        signed_b64 = base64.b64encode(invoice.xml_signed.encode("utf-8")).decode("utf-8")
+        result = await client.send_document(
+            token=token,
+            numeric_key=invoice.numeric_key,
+            emission_date=invoice.created_at or datetime.now(timezone.utc),
+            emitter_tax_id_type=org.identification_type,
+            emitter_tax_id=org.identification_number,
+            signed_xml_b64=signed_b64,
+            receiver_tax_id_type=invoice.receiver_tax_id_type,
+            receiver_tax_id=invoice.receiver_tax_id,
+            environment=invoice.environment
+        )
+
+        now = datetime.now(timezone.utc)
+        invoice.sent_to_hacienda_at = now
+        invoice.status = "PROCESSING"  # HTTP 201 received -> PROCESSING
+        invoice.hacienda_status_code = "201"
+
+        await AuditService.log_action(
+            db=self.db,
+            action="INVOICE_TRANSMITTED_HACIENDA",
+            resource="ElectronicInvoice",
+            organization_id=organization_id,
+            resource_id=str(invoice.id),
+            payload_after={"clave": invoice.numeric_key, "status": invoice.status}
+        )
+
+        await self.db.commit()
         return {
             "invoice_id": str(invoice.id),
-            "sale_id": str(sale.id),
-            "clave": clave,
-            "consecutive": consecutive,
-            "status": "COMPLETED",
-            "hacienda_status": invoice.status,
-            "sent_at": now.isoformat(),
-            "message": "Comprobante firmado con XAdES-BES y transmitido con éxito al Ministerio de Hacienda"
+            "clave": invoice.numeric_key,
+            "status": invoice.status,
+            "message": result.get("message")
+        }
+
+    async def poll_invoice_status(
+        self,
+        invoice_id: uuid.UUID,
+        organization_id: uuid.UUID
+    ) -> Dict[str, Any]:
+        stmt = select(ElectronicInvoice).where(
+            ElectronicInvoice.id == invoice_id,
+            ElectronicInvoice.organization_id == organization_id
+        )
+        res = await self.db.execute(stmt)
+        invoice = res.scalar_one_or_none()
+        if not invoice:
+            raise NotFoundException("Factura electrónica no encontrada")
+
+        creds = await FiscalSecurityService.get_decrypted_credentials(
+            db=self.db,
+            organization_id=organization_id,
+            environment=invoice.environment
+        )
+        if not creds or not creds.get("username") or not creds.get("password"):
+            raise BadRequestException("Credenciales de usuario API de Hacienda no configuradas")
+
+        client = HaciendaAPIClient()
+        token = await client.get_oauth_token(
+            username=creds["username"],
+            password=creds["password"],
+            environment=invoice.environment
+        )
+
+        status_result = await client.query_document_status(
+            token=token,
+            numeric_key=invoice.numeric_key,
+            environment=invoice.environment
+        )
+
+        ind_estado = status_result.get("ind_estado", "").lower()
+        now = datetime.now(timezone.utc)
+
+        if ind_estado == "aceptado":
+            invoice.status = "ACCEPTED"
+            invoice.hacienda_processed_at = now
+            invoice.hacienda_status_code = "200"
+            invoice.hacienda_response_xml = status_result.get("response_xml")
+        elif ind_estado == "rechazado":
+            invoice.status = "REJECTED"
+            invoice.hacienda_processed_at = now
+            invoice.hacienda_status_code = "400"
+            invoice.hacienda_response_xml = status_result.get("response_xml")
+            invoice.hacienda_error_message = status_result.get("raw_response", {}).get("detalle-mensaje", "Comprobante rechazado por Hacienda")
+        else:
+            invoice.status = "PROCESSING"
+
+        await AuditService.log_action(
+            db=self.db,
+            action="INVOICE_STATUS_POLLED",
+            resource="ElectronicInvoice",
+            organization_id=organization_id,
+            resource_id=str(invoice.id),
+            payload_after={"clave": invoice.numeric_key, "ind_estado": ind_estado, "status": invoice.status}
+        )
+
+        await self.db.commit()
+        return {
+            "invoice_id": str(invoice.id),
+            "clave": invoice.numeric_key,
+            "status": invoice.status,
+            "ind_estado": ind_estado,
+            "response_xml": invoice.hacienda_response_xml,
+            "error_message": invoice.hacienda_error_message
         }
