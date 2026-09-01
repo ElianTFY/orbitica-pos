@@ -25,9 +25,11 @@ import {
   Wrench,
   Navigation,
   Landmark,
-  TrendingDown,
   CreditCard,
   Tag,
+  UploadCloud,
+  LifeBuoy,
+  TrendingDown,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
@@ -63,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
       { name: "Inventario & Kárdex", href: "/inventory", icon: Boxes, perm: "inventory:read" },
       { name: "Compras a Proveedores", href: "/purchases", icon: PackagePlus, perm: "inventory:adjust" },
       { name: "Directorio Proveedores", href: "/suppliers", icon: Truck, perm: "inventory:read" },
+      { name: "Migración & Excel", href: "/migration", icon: UploadCloud, perm: "catalog:read" },
     ],
   },
   {
@@ -86,6 +89,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "ADMINISTRACIÓN",
     items: [
+      { name: "Asistente Onboarding", href: "/onboarding", icon: Sparkles, perm: "org:read" },
+      { name: "Soporte & Ayuda", href: "/support", icon: LifeBuoy, perm: "org:read" },
       { name: "Empleados & Roles", href: "/employees", icon: UserCog, perm: "org:read" },
       { name: "Sucursales & Cajas", href: "/branches", icon: Building, perm: "branch:read" },
       { name: "Auditoría de Seguridad", href: "/audit", icon: ShieldCheck, perm: "audit:read" },

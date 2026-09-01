@@ -232,13 +232,13 @@ const COMPARISON_DATA: ComparisonCategory[] = [
 ];
 
 export default function SubscriptionPage() {
-  const { settings, products, invoices, foundersPromo } = useStore();
+  const { settings, products, invoices, foundersPromo, subscription, updateSubscription } = useStore();
   const { user } = useAuth();
 
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">(subscription.billing_cycle || "monthly");
   const [applyFoundersPromo, setApplyFoundersPromo] = useState<boolean>(foundersPromo.is_active);
   const [selectedPlan, setSelectedPlan] = useState<PricingPlanTier | null>(null);
-  const [activePlanId, setActivePlanId] = useState<string>("trial");
+  const [activePlanId, setActivePlanId] = useState<string>(subscription.plan_id || "trial");
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
 
@@ -249,11 +249,46 @@ export default function SubscriptionPage() {
   };
 
   const handleConfirmPlan = () => {
-    if (selectedPlan) {
-      setActivePlanId(selectedPlan.id);
+    if (!selectedPlan) return;
+    if (selectedPlan.isCustom) {
+      alert("✓ Tu solicitud de cotización para el Plan Empresarial ha sido enviada. Un asesor de cuentas se pondrá en contacto.");
       setSelectedPlan(null);
-      setIsSuccessModalOpen(true);
+      return;
     }
+
+    const calculated = calculateDisplayPrice(selectedPlan);
+    const now = new Date().toISOString().split("T")[0];
+    const periodEnd = new Date();
+    if (billingCycle === "annual") {
+      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    } else {
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+    }
+
+    const newInvoice = {
+      id: `sub_inv_${Date.now()}`,
+      number: `SUB-${Math.floor(1000 + Math.random() * 9000)}`,
+      date: now,
+      amount: calculated.price,
+      status: "PAID" as const,
+      pdf_url: "#",
+      hacienda_ref: `506${Date.now().toString().slice(-10)}`,
+    };
+
+    updateSubscription({
+      plan_id: selectedPlan.id,
+      state: "active",
+      billing_cycle: billingCycle,
+      founders_discount_applied: calculated.isDiscounted,
+      amount: calculated.price,
+      current_period_start: now,
+      current_period_end: periodEnd.toISOString().split("T")[0],
+      invoices: [newInvoice, ...(subscription.invoices || [])],
+    });
+
+    setActivePlanId(selectedPlan.id);
+    setSelectedPlan(null);
+    setIsSuccessModalOpen(true);
   };
 
   const calculateDisplayPrice = (plan: PricingPlanTier) => {
@@ -704,6 +739,63 @@ export default function SubscriptionPage() {
             <h4 className="text-xs font-bold text-text-main">Cancelación Flexible</h4>
             <p className="text-[11px] text-text-muted">Puedes actualizar, cambiar de plan o cancelar tu suscripción en cualquier momento sin contratos de permanencia.</p>
           </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-4">
+          <Card className="lg:col-span-2 p-5 border border-border space-y-3">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="text-xs font-black text-text-main flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-primary" />
+                Historial de Pagos y Comprobantes de Suscripción
+              </h3>
+              <span className="text-[10px] text-text-muted font-mono">
+                {subscription.invoices?.length || 0} Comprobantes
+              </span>
+            </div>
+
+            {(!subscription.invoices || subscription.invoices.length === 0) ? (
+              <div className="text-center py-6 text-xs text-text-muted space-y-1">
+                <p className="font-bold">No hay pagos facturados aún</p>
+                <p className="text-[10px]">Durante los 14 días de prueba no se genera ningún cobro a tu cuenta.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {subscription.invoices.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-surface-secondary border border-border text-xs"
+                  >
+                    <div>
+                      <span className="font-bold text-text-main block">{inv.number}</span>
+                      <span className="text-[10px] text-text-muted font-mono">{inv.date}</span>
+                    </div>
+                    <div className="text-right flex items-center gap-3">
+                      <div>
+                        <span className="font-black text-text-main font-mono block">
+                          {formatCRC(inv.amount)}
+                        </span>
+                        <Badge variant="success">{inv.status}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-5 border border-border space-y-3">
+            <h3 className="text-xs font-black text-text-main border-b border-border pb-3">
+              Método de Pago Asociado
+            </h3>
+            <div className="p-3 bg-surface-secondary rounded-2xl border border-border space-y-1 text-xs">
+              <span className="font-bold text-text-main block">SINPE Móvil / Tarjeta</span>
+              <span className="text-[10px] text-text-muted block">
+                {subscription.state === "trial" ? "Prueba sin tarjeta registrada" : "Facturación directa con IVA 13%"}
+              </span>
+            </div>
+            <p className="text-[10px] text-text-muted leading-tight">
+              Los cobros son procesados de forma segura con encriptación TLS 256-bit y comprobante electrónico oficial de Costa Rica.
+            </p>
+          </Card>
         </div>
 
         {/* Plan Selection Confirmation Modal */}

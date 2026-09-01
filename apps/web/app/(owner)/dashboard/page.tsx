@@ -72,9 +72,17 @@ export default function DashboardPage() {
                   <p className="text-[11px] text-text-muted">Completa estos pasos para emitir tus primeras facturas electrónicas y operar tu comercio al 100%.</p>
                 </div>
               </div>
-              <span className="text-[11px] font-mono font-bold text-primary px-2.5 py-1 bg-surface rounded-lg border border-border">
-                {Number(Boolean(settings.identification_number)) + Number(Boolean(products.length > 0)) + Number(Boolean(sales.length > 0))} / 3 Pasos
-              </span>
+              <div className="flex items-center gap-2">
+                <Link href="/onboarding">
+                  <Button variant="primary" size="sm" className="text-xs font-bold gap-1 bg-primary hover:bg-primary/90">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Abrir Asistente (8 Pasos)
+                  </Button>
+                </Link>
+                <span className="text-[11px] font-mono font-bold text-primary px-2.5 py-1 bg-surface rounded-lg border border-border">
+                  {Number(Boolean(settings.identification_number)) + Number(Boolean(products.length > 0)) + Number(Boolean(sales.length > 0))} / 3 Pasos
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">

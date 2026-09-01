@@ -142,6 +142,8 @@ export interface SaleRecord {
   items_snapshot?: SaleItemSnapshot[];
   /** Full receipt payload, serialized for instant reprint */
   receipt_data?: any;
+  /** Test sale flag that can be safely purged */
+  is_test?: boolean;
 }
 
 
@@ -158,6 +160,7 @@ export interface InvoiceRecord {
   status: "ACCEPTED" | "PENDING" | "REJECTED";
   hacienda_message?: string;
   xml_signed?: string;
+  is_test?: boolean;
 }
 
 export interface CashSession {
@@ -367,4 +370,133 @@ export interface PricingPlanTier {
     terminals: string;
     invoices: string;
   };
+}
+
+export type SubscriptionState =
+  | "trial"
+  | "active"
+  | "past_due"
+  | "grace_period"
+  | "suspended"
+  | "cancelled"
+  | "expired";
+
+export interface SubscriptionInvoice {
+  id: string;
+  number: string;
+  date: string;
+  amount: number;
+  status: "PAID" | "PENDING" | "FAILED" | "REFUNDED";
+  pdf_url?: string;
+  hacienda_ref?: string;
+}
+
+export interface SubscriptionDetails {
+  plan_id: string;
+  state: SubscriptionState;
+  trial_start_at: string;
+  trial_end_at: string;
+  current_period_start: string;
+  current_period_end: string;
+  billing_cycle: "monthly" | "annual";
+  founders_discount_applied: boolean;
+  amount: number;
+  currency: "CRC" | "USD";
+  cancel_at_period_end: boolean;
+  scheduled_downgrade_plan_id: string | null;
+  payment_method_summary?: {
+    brand: string;
+    last4: string;
+    exp_month: number;
+    exp_year: number;
+  };
+  invoices: SubscriptionInvoice[];
+}
+
+export interface OnboardingProgress {
+  current_step: number;
+  is_completed: boolean;
+  steps: {
+    business: boolean;
+    fiscal: boolean;
+    branches: boolean;
+    payments: boolean;
+    products: boolean;
+    contacts: boolean;
+    users: boolean;
+    test_sale: boolean;
+  };
+  last_saved_at: string;
+}
+
+export interface ImportBatch {
+  id: string;
+  organization_id: string;
+  entity_type: "products" | "customers" | "suppliers" | "inventory" | "receivables" | "payables";
+  filename: string;
+  total_rows: number;
+  imported_rows: number;
+  failed_rows: number;
+  errors: Array<{ row: number; column: string; message: string }>;
+  created_at: string;
+  is_reverted: boolean;
+  records_created_ids: string[];
+}
+
+export interface SupportMessage {
+  id: string;
+  sender_type: "CLIENT" | "SUPPORT_AGENT";
+  sender_name: string;
+  message: string;
+  is_internal_note?: boolean;
+  created_at: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  ticket_number: string;
+  organization_id: string;
+  organization_name: string;
+  created_by_name: string;
+  created_by_email: string;
+  category: "HACIENDA" | "POS" | "INVOICING" | "INVENTORY" | "PAYMENTS" | "MIGRATION" | "ACCOUNT";
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  status: "OPEN" | "IN_PROGRESS" | "WAITING_CLIENT" | "RESOLVED" | "CLOSED";
+  subject: string;
+  description: string;
+  telemetry?: {
+    browser: string;
+    os: string;
+    screen_res: string;
+    app_version: string;
+    current_route: string;
+    error_code?: string;
+  };
+  messages: SupportMessage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SupportAccessGrant {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  granted_by_user_id: string;
+  reason: string;
+  permission_level: "READ_ONLY" | "FULL_ADMIN";
+  expires_at: string;
+  created_at: string;
+  is_revoked: boolean;
+  token: string;
+}
+
+export interface TenantHealthAlert {
+  id: string;
+  organization_id: string;
+  level: "INFO" | "WARNING" | "CRITICAL";
+  category: "SYNC" | "HACIENDA" | "PAYMENTS" | "INVENTORY" | "SECURITY" | "STORAGE";
+  title: string;
+  message: string;
+  occurred_at: string;
+  resolved: boolean;
 }

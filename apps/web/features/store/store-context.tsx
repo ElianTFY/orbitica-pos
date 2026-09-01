@@ -25,6 +25,14 @@ import {
   SuspendedSale,
   CartItem,
   FoundersPromoConfig,
+  SubscriptionDetails,
+  SubscriptionState,
+  OnboardingProgress,
+  ImportBatch,
+  SupportTicket,
+  SupportMessage,
+  SupportAccessGrant,
+  TenantHealthAlert,
 } from "@/types";
 
 export interface BusinessSettings {
@@ -67,6 +75,24 @@ interface StoreContextType {
   foundersPromo: FoundersPromoConfig;
   updateFoundersPromo: (config: Partial<FoundersPromoConfig>) => void;
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
+  // Control Center Extensions
+  subscription: SubscriptionDetails;
+  updateSubscription: (details: Partial<SubscriptionDetails>) => void;
+  onboarding: OnboardingProgress;
+  updateOnboarding: (progress: Partial<OnboardingProgress>) => void;
+  importBatches: ImportBatch[];
+  executeImportBatch: (batchMeta: Omit<ImportBatch, "id" | "created_at" | "is_reverted" | "records_created_ids">, items: any[]) => ImportBatch;
+  revertImportBatch: (batchId: string) => boolean;
+  supportTickets: SupportTicket[];
+  createSupportTicket: (ticket: Omit<SupportTicket, "id" | "ticket_number" | "created_at" | "updated_at" | "messages">, initialMessage: string) => SupportTicket;
+  addSupportMessage: (ticketId: string, message: string, isInternal?: boolean) => void;
+  activeSupportGrant: SupportAccessGrant | null;
+  grantSupportAccess: (reason: string, durationMinutes: number, permission: "READ_ONLY" | "FULL_ADMIN") => SupportAccessGrant;
+  revokeSupportAccess: (grantId?: string) => void;
+  healthAlerts: TenantHealthAlert[];
+  resolveHealthAlert: (alertId: string) => void;
+  checkLimit: (resource: "products" | "users" | "branches" | "cajas") => { allowed: boolean; max: number; current: number; message?: string };
+  purgeTestSales: () => number;
   // Products
   addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
   updateProduct: (id: string, product: Partial<Product>) => void;
@@ -141,6 +167,7 @@ interface StoreContextType {
     customerName?: string;
     customerCedula?: string;
     docType?: "04" | "01";
+    isTest?: boolean;
   }) => { sale: SaleRecord; invoice: InvoiceRecord; receiptData: any };
   openCashSession: (initialAmount: number) => void;
   closeCashSession: (actualCash?: number) => void;
@@ -195,6 +222,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     claimed_count: 18,
   });
   const [activeCashSession, setActiveCashSession] = useState<CashSession | null>(null);
+
+  // Control Center state
+  const [subscription, setSubscription] = useState<SubscriptionDetails>(() => {
+    const now = new Date();
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 14);
+    return {
+      plan_id: "crece", // Full trial gets Crece features
+      state: "trial",
+      trial_start_at: now.toISOString().split("T")[0],
+      trial_end_at: trialEnd.toISOString().split("T")[0],
+      current_period_start: now.toISOString().split("T")[0],
+      current_period_end: trialEnd.toISOString().split("T")[0],
+      billing_cycle: "monthly",
+      founders_discount_applied: false,
+      amount: 0,
+      currency: "CRC",
+      cancel_at_period_end: false,
+      scheduled_downgrade_plan_id: null,
+      invoices: [],
+    };
+  });
+
+  const [onboarding, setOnboarding] = useState<OnboardingProgress>({
+    current_step: 1,
+    is_completed: false,
+    steps: {
+      business: false,
+      fiscal: false,
+      branches: false,
+      payments: false,
+      products: false,
+      contacts: false,
+      users: false,
+      test_sale: false,
+    },
+    last_saved_at: new Date().toISOString(),
+  });
+
+  const [importBatches, setImportBatches] = useState<ImportBatch[]>([]);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [activeSupportGrant, setActiveSupportGrant] = useState<SupportAccessGrant | null>(null);
+  const [healthAlerts, setHealthAlerts] = useState<TenantHealthAlert[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Sync settings when user context changes
@@ -310,6 +380,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
       setActiveCashSession(sCash ? JSON.parse(sCash) : null);
+
+      const sSub = localStorage.getItem(`orbitica_subscription_${orgId}`);
+      if (sSub) setSubscription(JSON.parse(sSub));
+
+      const sOnb = localStorage.getItem(`orbitica_onboarding_${orgId}`);
+      if (sOnb) setOnboarding(JSON.parse(sOnb));
+
+      const sImp = localStorage.getItem(`orbitica_import_batches_${orgId}`);
+      setImportBatches(sImp ? JSON.parse(sImp) : []);
+
+      const sTickets = localStorage.getItem(`orbitica_support_tickets_${orgId}`);
+      setSupportTickets(sTickets ? JSON.parse(sTickets) : []);
+
+      const sGrant = localStorage.getItem(`orbitica_support_grant_${orgId}`);
+      setActiveSupportGrant(sGrant ? JSON.parse(sGrant) : null);
+
+      const sAlerts = localStorage.getItem(`orbitica_health_alerts_${orgId}`);
+      setHealthAlerts(sAlerts ? JSON.parse(sAlerts) : []);
 
       const sAudit = localStorage.getItem(`orbitica_audit_${orgId}`);
       if (sAudit) {
@@ -929,6 +1017,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     customerName = "CLIENTE CONTADO",
     customerCedula,
     docType = "04",
+    isTest = false,
   }: {
     items: Array<{ product: Product; quantity: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
@@ -937,9 +1026,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     customerName?: string;
     customerCedula?: string;
     docType?: "04" | "01";
+    isTest?: boolean;
   }) => {
     const seq = sales.length + 1;
-    const saleNum = `V-${seq.toString().padStart(6, "0")}`;
+    const saleNum = isTest ? `TEST-${seq.toString().padStart(4, "0")}` : `V-${seq.toString().padStart(6, "0")}`;
     const consecutive = `00100001${docType}${seq.toString().padStart(10, "0")}`;
 
     // Standard 50-digit Hacienda numeric key:
@@ -960,7 +1050,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
     const total = subtotal + tax;
 
-    // Deduct stock & create movement
+    // Deduct stock & create movement (only for non-test or track as test)
     setProducts((prev) =>
       prev.map((p) => {
         const itemSold = items.find((it) => it.product.id === p.id);
@@ -983,13 +1073,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         previous_quantity: it.product.stock ?? 0,
         new_quantity: Math.max(0, (it.product.stock ?? 0) - it.quantity),
         actor_name: user?.full_name || "Cajero",
-        reason: `Venta en POS #${saleNum}`,
+        reason: `${isTest ? "[PRUEBA] " : ""}Venta en POS #${saleNum}`,
       };
       setMovements((prev) => [mov, ...prev]);
     });
 
     const receiptData = {
       sale_number: saleNum,
+      is_test: isTest,
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
       store: {
         name: settings.trade_name,
@@ -1032,7 +1123,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           reference: sinpeRef || null,
         },
       ],
-      footer_message: `¡Gracias por su compra en ${settings.trade_name}!`,
+      footer_message: isTest
+        ? "⚠️ COMPROBANTE DE PRUEBA — NO VÁLIDO PARA EFECTOS TRIBUTARIOS"
+        : `¡Gracias por su compra en ${settings.trade_name}!`,
     };
 
     const newSale: SaleRecord = {
@@ -1050,6 +1143,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
       items_count: items.reduce((acc, it) => acc + it.quantity, 0),
       status: "COMPLETED",
+      is_test: isTest,
       items_snapshot: items.map((it) => ({
         name: it.product.name,
         quantity: it.quantity,
@@ -1072,14 +1166,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       customer_name: customerName,
       total,
       status: "ACCEPTED",
-      hacienda_message: "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.4",
+      is_test: isTest,
+      hacienda_message: isTest
+        ? "Venta de prueba simulada exitosamente (Ambiente Sandbox)"
+        : "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.4",
       xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"} xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/${docType === "01" ? "facturaElectronica" : "tiqueteElectronico"}">\n  <Clave>${key}</Clave>\n  <NumeroConsecutivo>${consecutive}</NumeroConsecutivo>\n  <FechaEmision>${new Date().toISOString()}</FechaEmision>\n  <Emisor>\n    <Nombre>${settings.legal_name}</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>${settings.identification_number}</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda><CodigoMoneda>${settings.default_currency}</CodigoMoneda><TipoCambio>1.00</TipoCambio></CodigoTipoMoneda>\n    <TotalComprobante>${total.toFixed(2)}</TotalComprobante>\n  </ResumenFactura>\n</${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"}>`,
     };
 
     setSales((prev) => [newSale, ...prev]);
     setInvoices((prev) => [newInvoice, ...prev]);
 
-    if (activeCashSession) {
+    if (activeCashSession && !isTest) {
       const updatedCash: CashSession = {
         ...activeCashSession,
         total_sales: activeCashSession.total_sales + total,
@@ -1090,7 +1187,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setActiveCashSession(updatedCash);
     }
 
-    logAudit("SALE_COMPLETED", `Venta #${saleNum} (${paymentMethod})`);
+    logAudit("SALE_COMPLETED", `${isTest ? "[PRUEBA] " : ""}Venta #${saleNum} (${paymentMethod})`);
 
     return { sale: newSale, invoice: newInvoice, receiptData: newSale.receipt_data };
   };
@@ -1135,6 +1232,329 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateSubscription = (details: Partial<SubscriptionDetails>) => {
+    setSubscription((prev) => {
+      const next = { ...prev, ...details };
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_subscription_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    logAudit("SUBSCRIPTION_UPDATED", `Suscripción actualizada a plan: ${details.plan_id || subscription.plan_id} (${details.state || subscription.state})`);
+  };
+
+  const updateOnboarding = (progress: Partial<OnboardingProgress>) => {
+    setOnboarding((prev) => {
+      const next = {
+        ...prev,
+        ...progress,
+        steps: { ...prev.steps, ...(progress.steps || {}) },
+        last_saved_at: new Date().toISOString(),
+      };
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_onboarding_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    logAudit("ONBOARDING_SAVED", `Progreso de onboarding guardado: Paso ${progress.current_step || onboarding.current_step}`);
+  };
+
+  const executeImportBatch = (
+    batchMeta: Omit<ImportBatch, "id" | "created_at" | "is_reverted" | "records_created_ids">,
+    items: any[]
+  ): ImportBatch => {
+    const createdIds: string[] = [];
+
+    if (batchMeta.entity_type === "products") {
+      items.forEach((item) => {
+        const prod = addProduct({
+          name: item.name || "Producto Importado",
+          sku: item.sku || `SKU-${Date.now().toString().slice(-4)}`,
+          barcode: item.barcode || "",
+          sale_price: Number(item.sale_price) || 0,
+          cost_price: Number(item.cost_price) || 0,
+          min_stock_alert: Number(item.min_stock_alert) || 5,
+          tax_rate: item.tax_rate !== undefined ? Number(item.tax_rate) : 13,
+          category_name: item.category_name || "General",
+          stock: Number(item.stock) || 0,
+        });
+        createdIds.push(prod.id);
+      });
+    } else if (batchMeta.entity_type === "customers") {
+      items.forEach((item) => {
+        const cust = addCustomer({
+          name: item.name || "Cliente Importado",
+          identification_type: item.identification_type || "FISICA",
+          identification_number: item.identification_number || "000000000",
+          email: item.email || "",
+          phone: item.phone || "",
+          address: item.address || "",
+          is_active: true,
+        });
+        createdIds.push(cust.id);
+      });
+    } else if (batchMeta.entity_type === "suppliers") {
+      items.forEach((item) => {
+        const supp = addSupplier({
+          name: item.name || "Proveedor Importado",
+          legal_id: item.legal_id || "000000000",
+          legal_id_type: item.legal_id_type || "JURIDICA",
+          contact_person: item.contact_person || "",
+          phone: item.phone || "",
+          email: item.email || "",
+          address: item.address || "",
+        });
+        createdIds.push(supp.id);
+      });
+    }
+
+    const batch: ImportBatch = {
+      id: `imp_${Date.now()}`,
+      organization_id: orgId,
+      entity_type: batchMeta.entity_type,
+      filename: batchMeta.filename,
+      total_rows: batchMeta.total_rows,
+      imported_rows: items.length,
+      failed_rows: batchMeta.failed_rows || 0,
+      errors: batchMeta.errors || [],
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+      is_reverted: false,
+      records_created_ids: createdIds,
+    };
+
+    setImportBatches((prev) => {
+      const next = [batch, ...prev];
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_import_batches_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+
+    logAudit("IMPORT_BATCH_EXECUTED", `Importación de ${items.length} registros de ${batchMeta.entity_type} desde ${batchMeta.filename}`);
+    return batch;
+  };
+
+  const revertImportBatch = (batchId: string): boolean => {
+    const batch = importBatches.find((b) => b.id === batchId && !b.is_reverted);
+    if (!batch) return false;
+
+    if (batch.entity_type === "products") {
+      setProducts((prev) => prev.filter((p) => !batch.records_created_ids.includes(p.id)));
+    } else if (batch.entity_type === "customers") {
+      setCustomers((prev) => prev.filter((c) => !batch.records_created_ids.includes(c.id)));
+    } else if (batch.entity_type === "suppliers") {
+      setSuppliers((prev) => prev.filter((s) => !batch.records_created_ids.includes(s.id)));
+    }
+
+    setImportBatches((prev) => {
+      const next = prev.map((b) => (b.id === batchId ? { ...b, is_reverted: true } : b));
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_import_batches_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+
+    logAudit("IMPORT_BATCH_REVERTED", `Lote ${batch.filename} revertido (${batch.records_created_ids.length} registros removidos)`);
+    return true;
+  };
+
+  const createSupportTicket = (
+    ticketData: Omit<SupportTicket, "id" | "ticket_number" | "created_at" | "updated_at" | "messages">,
+    initialMessage: string
+  ): SupportTicket => {
+    const newTicket: SupportTicket = {
+      ...ticketData,
+      id: `tick_${Date.now()}`,
+      ticket_number: `TICK-${Math.floor(1000 + Math.random() * 9000)}`,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+      updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+      messages: [
+        {
+          id: `msg_${Date.now()}`,
+          sender_type: "CLIENT",
+          sender_name: ticketData.created_by_name || user?.full_name || "Usuario",
+          message: initialMessage,
+          created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+        },
+      ],
+    };
+
+    setSupportTickets((prev) => {
+      const next = [newTicket, ...prev];
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_support_tickets_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+
+    logAudit("SUPPORT_TICKET_CREATED", `Ticket creado #${newTicket.ticket_number}: ${newTicket.subject}`);
+    return newTicket;
+  };
+
+  const addSupportMessage = (ticketId: string, message: string, isInternal: boolean = false) => {
+    setSupportTickets((prev) => {
+      const next = prev.map((t) => {
+        if (t.id === ticketId) {
+          const newMsg: SupportMessage = {
+            id: `msg_${Date.now()}`,
+            sender_type: isInternal ? "SUPPORT_AGENT" : "CLIENT",
+            sender_name: isInternal ? "Especialista de Soporte Orbítica" : (user?.full_name || "Cliente"),
+            message,
+            is_internal_note: isInternal,
+            created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+          };
+          return {
+            ...t,
+            status: (isInternal ? "WAITING_CLIENT" : "IN_PROGRESS") as SupportTicket["status"],
+            updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+            messages: [...t.messages, newMsg],
+          };
+        }
+        return t;
+      });
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_support_tickets_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const grantSupportAccess = (
+    reason: string,
+    durationMinutes: number,
+    permission: "READ_ONLY" | "FULL_ADMIN"
+  ): SupportAccessGrant => {
+    const expires = new Date();
+    expires.setMinutes(expires.getMinutes() + durationMinutes);
+
+    const grant: SupportAccessGrant = {
+      id: `grant_${Date.now()}`,
+      organization_id: orgId,
+      organization_name: settings.trade_name,
+      granted_by_user_id: user?.id || "owner",
+      reason: reason || "Asistencia técnica autorizada",
+      permission_level: permission,
+      expires_at: expires.toISOString(),
+      created_at: new Date().toISOString(),
+      is_revoked: false,
+      token: `sup_tok_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    };
+
+    setActiveSupportGrant(grant);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(`orbitica_support_grant_${orgId}`, JSON.stringify(grant));
+      } catch {}
+    }
+    logAudit("SUPPORT_ACCESS_GRANTED", `Acceso de soporte concedido por ${durationMinutes} min (${permission})`);
+    return grant;
+  };
+
+  const revokeSupportAccess = () => {
+    setActiveSupportGrant((prev) => (prev ? { ...prev, is_revoked: true } : null));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(`orbitica_support_grant_${orgId}`);
+      } catch {}
+    }
+    logAudit("SUPPORT_ACCESS_REVOKED", "Acceso delegado de soporte revocado inmediatamente");
+  };
+
+  const resolveHealthAlert = (alertId: string) => {
+    setHealthAlerts((prev) => {
+      const next = prev.map((a) => (a.id === alertId ? { ...a, resolved: true } : a));
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_health_alerts_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const checkLimit = (resource: "products" | "users" | "branches" | "cajas") => {
+    if (subscription.state === "suspended" || subscription.state === "expired") {
+      return {
+        allowed: false,
+        max: 0,
+        current: 0,
+        message: `Tu suscripción se encuentra ${subscription.state === "suspended" ? "suspendida" : "vencida"}. Reactiva tu plan para continuar creando elementos.`,
+      };
+    }
+
+    const plan = subscription.plan_id || "crece";
+    if (resource === "users") {
+      const max = plan === "inicio" ? 2 : plan === "crece" ? 8 : 100;
+      const current = employees.length + 1;
+      return {
+        allowed: current < max,
+        max,
+        current,
+        message: current >= max ? `Has alcanzado el límite de ${max} usuarios del plan ${plan.toUpperCase()}.` : undefined,
+      };
+    }
+
+    if (resource === "branches") {
+      const max = plan === "inicio" ? 1 : plan === "crece" ? 3 : 10;
+      const current = branches.length;
+      return {
+        allowed: current < max,
+        max,
+        current,
+        message: current >= max ? `Has alcanzado el límite de ${max} sucursales del plan ${plan.toUpperCase()}.` : undefined,
+      };
+    }
+
+    if (resource === "cajas") {
+      const max = plan === "inicio" ? 1 : plan === "crece" ? 5 : 50;
+      const current = 1;
+      return {
+        allowed: current < max,
+        max,
+        current,
+        message: current >= max ? `Has alcanzado el límite de cajas POS.` : undefined,
+      };
+    }
+
+    return { allowed: true, max: 999999, current: products.length };
+  };
+
+  const purgeTestSales = () => {
+    const testCount = sales.filter((s) => s.is_test).length;
+    setSales((prev) => {
+      const next = prev.filter((s) => !s.is_test);
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    setInvoices((prev) => {
+      const next = prev.filter((i) => !i.is_test);
+      if (typeof window !== "undefined" && orgId) {
+        try {
+          localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    logAudit("TEST_SALES_PURGED", `Se purgaron ${testCount} ventas de prueba del sistema`);
+    return testCount;
+  };
+
   return (
     <StoreContext.Provider
       value={{
@@ -1162,6 +1582,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         foundersPromo,
         updateFoundersPromo,
         updateSettings,
+        subscription,
+        updateSubscription,
+        onboarding,
+        updateOnboarding,
+        importBatches,
+        executeImportBatch,
+        revertImportBatch,
+        supportTickets,
+        createSupportTicket,
+        addSupportMessage,
+        activeSupportGrant,
+        grantSupportAccess,
+        revokeSupportAccess,
+        healthAlerts,
+        resolveHealthAlert,
+        checkLimit,
+        purgeTestSales,
         addProduct,
         updateProduct,
         deleteProduct,
