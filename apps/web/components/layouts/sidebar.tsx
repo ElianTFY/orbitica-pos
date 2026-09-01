@@ -89,6 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "ADMINISTRACIÓN",
     items: [
+      { name: "Superadmin Hub", href: "/superadmin", icon: ShieldCheck, perm: "superadmin" },
       { name: "Asistente Onboarding", href: "/onboarding", icon: Sparkles, perm: "org:read" },
       { name: "Soporte & Ayuda", href: "/support", icon: LifeBuoy, perm: "org:read" },
       { name: "Empleados & Roles", href: "/employees", icon: UserCog, perm: "org:read" },

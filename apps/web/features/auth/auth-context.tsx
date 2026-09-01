@@ -39,12 +39,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, pass: string) => {
     setIsLoading(true);
     try {
-      const res = await api.request<{ access_token: string }>("/auth/login", {
+      const res = await api.request<{ access_token: string; user?: UserProfile }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password: pass }),
       });
       api.setToken(res.data.access_token);
-      await fetchProfile();
+      if (res.data.user) {
+        setUser(res.data.user);
+        if (res.data.user.role === "superadmin") {
+          router.push("/superadmin");
+          return;
+        }
+      } else {
+        await fetchProfile();
+      }
       router.push("/dashboard");
     } finally {
       setIsLoading(false);
