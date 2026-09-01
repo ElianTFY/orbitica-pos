@@ -16,6 +16,12 @@ import {
   Building2,
   ArrowRight,
   CheckCircle2,
+  Tag,
+  Flame,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card } from "@/components/ui/card";
@@ -25,47 +31,34 @@ import { Modal } from "@/components/ui/modal";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
 import { useAuth } from "@/features/auth/auth-context";
+import { PricingPlanTier } from "@/types";
 
-interface PlanTier {
-  id: string;
-  name: string;
-  badge?: string;
-  popular?: boolean;
-  isCustom?: boolean;
-  monthlyPrice: number;
-  annualPrice: number;
-  description: string;
-  features: string[];
-  limits: {
-    users: string;
-    branches: string;
-    terminals: string;
-    invoices: string;
-  };
-}
-
-const PLANS: PlanTier[] = [
+const PLANS: PricingPlanTier[] = [
   {
     id: "inicio",
     name: "Orbítica Inicio",
-    monthlyPrice: 12900,
-    annualPrice: 129000, // 10 meses (2 meses gratis)
-    description: "Para pequeños comercios, sodas, pulperías y emprendimientos.",
+    monthlyPrice: 9900,
+    annualPrice: 99000, // 10 meses
+    foundersMonthlyPrice: 7920,
+    description: "Ideal para emprendimientos, sodas, pulperías y pequeños comercios.",
     limits: {
       users: "2 Usuarios",
       branches: "1 Sucursal",
       terminals: "1 Caja POS",
-      invoices: "Facturación v4.4 Incluida",
+      invoices: "Hacienda v4.4 Incluida",
     },
     features: [
-      "Punto de Venta POS rápido y táctil",
+      "Punto de Venta POS completo y táctil",
       "Facturación Electrónica Hacienda v4.4",
       "Cotizaciones y Proformas comerciales",
-      "Productos, Inventario y Clientes",
-      "Compras y Gastos operativos",
-      "Apertura y Cierre de Caja con Arqueo Z",
+      "Catálogo de productos y servicios",
+      "Control de inventario y stock",
+      "Directorio de clientes y proveedores",
+      "Registro de compras y gastos",
+      "Apertura y cierre de caja con Arqueo Z",
       "Cuentas por cobrar básicas",
-      "10 Reportes esenciales",
+      "Cupones y promociones de descuento",
+      "10 Reportes esenciales del negocio",
       "Soporte estándar por Correo",
     ],
   },
@@ -73,26 +66,30 @@ const PLANS: PlanTier[] = [
     id: "crece",
     name: "Orbítica Crece",
     popular: true,
-    badge: "RECOMENDADO",
-    monthlyPrice: 22900,
-    annualPrice: 229000, // 10 meses (2 meses gratis)
-    description: "Para restaurantes, tiendas, ferreterías y negocios en pleno crecimiento.",
+    badge: "MÁS POPULAR",
+    monthlyPrice: 17900,
+    annualPrice: 179000, // 10 meses
+    foundersMonthlyPrice: 14320,
+    description: "Ideal para negocios en crecimiento que requieren control total y multi-caja.",
     limits: {
       users: "8 Usuarios",
       branches: "Hasta 3 Sucursales",
       terminals: "Múltiples Cajas",
-      invoices: "Facturación v4.4 Ilimitada",
+      invoices: "Hacienda v4.4 Ilimitada",
     },
     features: [
-      "Todo lo incluido en Inicio",
-      "Hasta 3 Sucursales y múltiples bodegas",
-      "Facturación y venta Offline con sincronización",
-      "Bancos, cuentas y conciliación",
+      "Todo lo incluido en el plan Inicio",
+      "Hasta 3 sucursales y varias bodegas",
+      "Múltiples cajas POS simultáneas en red",
+      "Facturación y ventas en modo Offline",
+      "Bancos, cuentas IBAN y conciliación",
       "Cuentas por cobrar y pagar completas",
-      "Programa de Fidelidad y Cupones",
-      "Comisiones de vendedores",
-      "Citas y Órdenes de Trabajo / Reparación",
-      "Despachos y control de entregas",
+      "Club de Fidelidad, puntos y recompensas",
+      "Comisiones automáticas para vendedores",
+      "Citas y Órdenes de trabajo / taller",
+      "Despacho de pedidos y control de entregas",
+      "Importación de catálogo mediante Excel",
+      "Automatizaciones de negocio",
       "Reportes avanzados y resumen D-104",
       "Soporte prioritario por WhatsApp y Email",
     ],
@@ -100,27 +97,32 @@ const PLANS: PlanTier[] = [
   {
     id: "escala",
     name: "Orbítica Escala",
-    badge: "EMPRESARIAL AVANZADO",
-    monthlyPrice: 32900,
-    annualPrice: 329000, // 10 meses (2 meses gratis)
-    description: "Para cadenas de tiendas, distribuidoras y operaciones exigentes.",
+    badge: "EMPRESAS EN EXPANSIÓN",
+    monthlyPrice: 27900,
+    annualPrice: 279000, // 10 meses
+    foundersMonthlyPrice: 22320,
+    description: "Para negocios con varias sucursales, distribución u operaciones de mayor volumen.",
     limits: {
       users: "Usuarios Ilimitados*",
       branches: "Hasta 10 Sucursales",
-      terminals: "Cajas Ilimitadas en Red",
-      invoices: "Hacienda Ilimitada Multi-Emisor",
+      terminals: "Cajas Ilimitadas",
+      invoices: "Hacienda v4.4 Ilimitada",
     },
     features: [
-      "Todo lo incluido en Crece",
-      "Hasta 10 Sucursales interconectadas",
-      "Facturación masiva mediante Excel/CSV",
-      "Ruteo de entregas y asignación de choferes",
+      "Todo lo incluido en el plan Crece",
+      "Usuarios operativos ilimitados*",
+      "Hasta 10 sucursales y bodegas centralizadas",
+      "Facturación masiva por lote mediante Excel",
+      "Ruteo inteligente y asignación de choferes",
       "Membresías y campañas de marketing",
-      "Importación y validación de XML de proveedores",
-      "API y Webhooks para integraciones",
-      "Pronósticos de inventario y alertas inteligentes",
-      "Más de 30 reportes financieros y auditoría",
-      "Soporte prioritario VIP",
+      "Importación automática de XML de proveedores",
+      "API REST y Webhooks para integraciones",
+      "Pronósticos de demanda e inventario",
+      "Alertas inteligentes de reposición",
+      "Auditoría de seguridad y trazabilidad total",
+      "Más de 30 reportes analíticos por área",
+      "Tienda en línea conectada al inventario",
+      "Soporte prioritario avanzado VIP",
     ],
   },
   {
@@ -128,37 +130,121 @@ const PLANS: PlanTier[] = [
     name: "Orbítica Empresarial",
     badge: "A MEDIDA",
     isCustom: true,
-    monthlyPrice: 0,
-    annualPrice: 0,
-    description: "Solución a medida para corporaciones, franquicias e instituciones.",
+    monthlyPrice: 44900,
+    annualPrice: 449000,
+    description: "Solución corporativa integral para cadenas, franquicias y distribuidoras.",
     limits: {
-      users: "Sin límites",
-      branches: "Sucursales Ilimitadas",
+      users: "Sin Límites",
+      branches: "Personalizadas",
       terminals: "Infraestructura Dedicada",
-      invoices: "Emisión de Alto Volumen",
+      invoices: "Alto Volumen",
     },
     features: [
-      "Operación y sucursales a medida",
-      "Módulo de Contabilidad y Recursos Humanos",
-      "Control de asistencia de personal",
+      "Todo lo incluido en el plan Escala",
+      "Cantidad de sucursales personalizada",
+      "Operaciones y servidores de alto volumen",
+      "Módulo contable integrado",
+      "Recursos humanos y nómina",
+      "Control de asistencia y marcadas de personal",
       "Integraciones personalizadas con ERP / WMS",
-      "Migración asistida de información",
-      "Capacitación presencial/virtual y onboarding",
-      "SLA de disponibilidad garantizada 99.9%",
-      "Gerente de cuenta dedicado 24/7",
+      "Migración avanzada de información asistida",
+      "Configuración y onboarding acompañado",
+      "Capacitación presencial y virtual",
+      "Soporte dedicado con gerente de cuenta",
+      "Acuerdo de nivel de servicio (SLA 99.9%)",
+      "Desarrollo de funciones especiales a medida",
+    ],
+  },
+];
+
+interface ComparisonCategory {
+  title: string;
+  features: {
+    name: string;
+    inicio: string | boolean;
+    crece: string | boolean;
+    escala: string | boolean;
+    empresarial: string | boolean;
+  }[];
+}
+
+const COMPARISON_DATA: ComparisonCategory[] = [
+  {
+    title: "1. Punto de Venta (POS) & Facturación Fiscal",
+    features: [
+      { name: "Punto de Venta POS rápido y táctil", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Facturación Electrónica Hacienda v4.4", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Tiquetes (04) y Facturas con Cédula (01)", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Cotizaciones y Proformas Comerciales", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Apertura y Cierre de Caja con Arqueo Z", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Facturación y Venta en Modo Offline", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Facturación Masiva por Lote (Excel/CSV)", inicio: false, crece: false, escala: true, empresarial: true },
+    ],
+  },
+  {
+    title: "2. Catálogo, Inventario & Bodegas",
+    features: [
+      { name: "Catálogo de Productos y Servicios", inicio: "Completo", crece: "Completo", escala: "Completo", empresarial: "Completo" },
+      { name: "Control de Stock y Kárdex de Movimientos", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Multi-Bodega por Sucursal", inicio: "1 Bodega", crece: "Hasta 3 Bodegas", escala: "Hasta 10 Bodegas", empresarial: "Ilimitadas" },
+      { name: "Importación de Catálogo desde Excel", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Importación Automática de XML Hacienda", inicio: false, crece: false, escala: true, empresarial: true },
+      { name: "Pronósticos de Demanda y Reposición", inicio: false, crece: false, escala: true, empresarial: true },
+      { name: "Tienda en Línea Conectada a Stock", inicio: false, crece: false, escala: true, empresarial: true },
+    ],
+  },
+  {
+    title: "3. Comercial, Clientes & CRM",
+    features: [
+      { name: "Directorio de Clientes y Proveedores", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Cuentas por Cobrar", inicio: "Básicas", crece: "Completas", escala: "Avanzadas con Intereses", empresarial: "Centralizadas" },
+      { name: "Cupones y Descuentos Promocionales", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Club de Fidelidad & Puntos Acumulables", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Comisiones para Vendedores", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Citas y Órdenes de Servicio / Taller", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Despachos, Envíos y Rutas de Entrega", inicio: false, crece: true, escala: "Ruteo Avanzado", empresarial: "Gestión Flotas" },
+      { name: "Membresías y Campañas de Marketing", inicio: false, crece: false, escala: true, empresarial: true },
+    ],
+  },
+  {
+    title: "4. Finanzas, Bancos & Flujo de Caja",
+    features: [
+      { name: "Compras y Gastos Operativos", inicio: true, crece: true, escala: true, empresarial: true },
+      { name: "Cuentas por Pagar a Proveedores", inicio: "Básicas", crece: "Completas", escala: "Automatizadas", empresarial: "Centralizadas" },
+      { name: "Cuentas Bancarias IBAN y SINPE Móvil", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Conciliación Bancaria de Ventas POS", inicio: false, crece: true, escala: true, empresarial: true },
+      { name: "Reportes Financieros y Resumen D-104", inicio: "10 Reportes", crece: "Avanzados", escala: "+30 Reportes", empresarial: "Personalizados" },
+      { name: "Módulo de Contabilidad Integrada", inicio: false, crece: false, escala: false, empresarial: true },
+    ],
+  },
+  {
+    title: "5. Administración, Integraciones & Soporte",
+    features: [
+      { name: "Usuarios de Sistema Incluidos", inicio: "2 Usuarios", crece: "8 Usuarios", escala: "Ilimitados*", empresarial: "Sin Límites" },
+      { name: "Sucursales Incluidas", inicio: "1 Sucursal", crece: "Hasta 3", escala: "Hasta 10", empresarial: "Personalizadas" },
+      { name: "Roles y Permisos de Personal", inicio: "Estándar", crece: "Personalizados", escala: "Granulares", empresarial: "Corporativos" },
+      { name: "Auditoría de Seguridad y Trazabilidad", inicio: "Básica", crece: "Completa", escala: "Avanzada", empresarial: "Forense" },
+      { name: "API REST y Webhooks", inicio: false, crece: false, escala: true, empresarial: "Dedicada" },
+      { name: "Recursos Humanos y Control de Asistencia", inicio: false, crece: false, escala: false, empresarial: true },
+      { name: "Nivel de Soporte y SLA", inicio: "Email Estándar", crece: "WhatsApp y Email", escala: "WhatsApp VIP Prioritario", empresarial: "Gerente 24/7 + SLA 99.9%" },
     ],
   },
 ];
 
 export default function SubscriptionPage() {
-  const { settings, products, invoices, updateSettings } = useStore();
+  const { settings, products, invoices, foundersPromo } = useStore();
   const { user } = useAuth();
+
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
-  const [selectedPlan, setSelectedPlan] = useState<PlanTier | null>(null);
+  const [applyFoundersPromo, setApplyFoundersPromo] = useState<boolean>(foundersPromo.is_active);
+  const [selectedPlan, setSelectedPlan] = useState<PricingPlanTier | null>(null);
   const [activePlanId, setActivePlanId] = useState<string>("trial");
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
 
-  const handleSelectPlan = (plan: PlanTier) => {
+  const isPromoEligible = foundersPromo.is_active;
+
+  const handleSelectPlan = (plan: PricingPlanTier) => {
     setSelectedPlan(plan);
   };
 
@@ -170,72 +256,163 @@ export default function SubscriptionPage() {
     }
   };
 
+  const calculateDisplayPrice = (plan: PricingPlanTier) => {
+    if (plan.isCustom) return { price: plan.monthlyPrice, isCustom: true };
+
+    if (billingCycle === "annual") {
+      // Annual calculation
+      if (applyFoundersPromo && isPromoEligible) {
+        const discountAnnual = Math.round(plan.annualPrice * (1 - foundersPromo.discount_percentage / 100));
+        return {
+          price: Math.round(discountAnnual / 12),
+          annualTotal: discountAnnual,
+          regularAnnual: plan.annualPrice,
+          regularPrice: Math.round(plan.annualPrice / 12),
+          isCustom: false,
+          isDiscounted: true,
+        };
+      }
+      return {
+        price: Math.round(plan.annualPrice / 12),
+        annualTotal: plan.annualPrice,
+        regularPrice: Math.round(plan.annualPrice / 12),
+        isCustom: false,
+        isDiscounted: false,
+      };
+    } else {
+      // Monthly calculation
+      if (applyFoundersPromo && isPromoEligible && plan.foundersMonthlyPrice) {
+        return {
+          price: plan.foundersMonthlyPrice,
+          regularPrice: plan.monthlyPrice,
+          isCustom: false,
+          isDiscounted: true,
+        };
+      }
+      return {
+        price: plan.monthlyPrice,
+        regularPrice: plan.monthlyPrice,
+        isCustom: false,
+        isDiscounted: false,
+      };
+    }
+  };
+
   return (
     <OwnerLayout>
-      <div className="space-y-8 max-w-6xl mx-auto">
+      <div className="space-y-8 max-w-7xl mx-auto pb-12">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-text-main tracking-tight">Planes y Suscripción</h1>
+            <h1 className="text-2xl font-black text-text-main tracking-tight">Planes y Precios Transparentes</h1>
             <p className="text-xs text-text-muted mt-0.5">
-              {settings.trade_name} — Facturación electrónica Hacienda CR v4.4 y punto de venta sin comisiones ocultas
+              {settings.trade_name} — Más funciones, mejor experiencia y precios justos para los negocios costarricenses
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <Badge variant="success" className="py-1.5 px-3 font-mono text-xs">
               <Sparkles className="w-3.5 h-3.5 mr-1" />
-              {activePlanId === "trial" ? "Prueba Gratuita Activa" : `Plan ${PLANS.find(p => p.id === activePlanId)?.name || "Activo"}`}
+              {activePlanId === "trial" ? "Prueba Gratuita (14 Días)" : `Plan ${PLANS.find(p => p.id === activePlanId)?.name || "Activo"}`}
             </Badge>
           </div>
         </div>
 
-        {/* Current Status Overview Card */}
-        <Card className="border-l-4 border-l-primary space-y-6">
+        {/* Founders Promo Launch Banner */}
+        {foundersPromo.is_active && (
+          <div className="p-5 bg-gradient-to-r from-emerald-500/15 via-primary-subtle to-cyan-500/15 border-2 border-emerald-500/40 rounded-3xl relative overflow-hidden shadow-lg">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 bg-emerald-500 text-white font-black text-[10px] uppercase tracking-wider rounded-full shadow-sm flex items-center gap-1">
+                    <Flame className="w-3 h-3" />
+                    OFERTA DE LANZAMIENTO
+                  </span>
+                  <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                    PRECIO FUNDADORES ({foundersPromo.discount_percentage}% OFF)
+                  </span>
+                </div>
+                <h2 className="text-base sm:text-lg font-black text-text-main">
+                  20% de descuento durante los primeros 12 meses de tu suscripción
+                </h2>
+                <p className="text-xs text-text-muted max-w-2xl">
+                  Aprovecha las tarifas especiales para los primeros negocios en Costa Rica. Incluye todas las funciones, facturación Hacienda v4.4 y soporte prioritario.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-shrink-0">
+                <div className="p-3 bg-surface rounded-2xl border border-border text-left sm:text-right">
+                  <div className="flex items-center gap-1 text-[11px] font-bold text-text-muted">
+                    <Clock className="w-3.5 h-3.5 text-primary" />
+                    <span>Cupos Disponibles:</span>
+                  </div>
+                  <div className="text-sm font-black text-primary font-mono mt-0.5">
+                    {Math.max(0, foundersPromo.max_claims - foundersPromo.claimed_count)} de {foundersPromo.max_claims} cupos
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setApplyFoundersPromo(!applyFoundersPromo)}
+                  className={`px-4 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-2 border shadow-sm ${
+                    applyFoundersPromo
+                      ? "bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500"
+                      : "bg-surface border-border text-text-main hover:bg-surface-secondary"
+                  }`}
+                >
+                  <Tag className="w-4 h-4" />
+                  {applyFoundersPromo ? "✓ Precio Fundadores Aplicado" : "Aplicar Precio Fundadores"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Current Organization Status Card */}
+        <Card className="border-l-4 border-l-primary space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <Crown className="w-5 h-5 text-primary" />
-                <h2 className="text-base sm:text-lg font-bold text-text-main">
-                  {activePlanId === "trial" ? "Período de Prueba Gratuita (14 Días)" : `Plan ${PLANS.find(p => p.id === activePlanId)?.name} Activo`}
-                </h2>
+                <h3 className="text-base font-bold text-text-main">
+                  {activePlanId === "trial" ? "Período de Evaluación Gratuita Activo" : `Plan ${PLANS.find(p => p.id === activePlanId)?.name} Activo`}
+                </h3>
               </div>
               <p className="text-xs text-text-muted">
                 {activePlanId === "trial"
-                  ? "Tienes acceso completo a todas las funciones profesionales para evaluar el sistema en tu negocio."
-                  : "Tu suscripción se encuentra activa y al día con facturación electrónica habilitada."}
+                  ? "14 días de prueba completa sin tarjeta de crédito. Puedes cambiarte a cualquier plan en cualquier momento."
+                  : "Tu cuenta está activa con facturación electrónica y todos los módulos habilitados."}
               </p>
             </div>
             <div className="text-left sm:text-right">
-              <span className="text-[10px] text-text-muted uppercase font-bold block">Empresa</span>
-              <span className="text-sm font-bold text-text-main">{settings.trade_name}</span>
+              <span className="text-[10px] text-text-muted uppercase font-bold block">Empresa Activa</span>
+              <span className="text-xs font-black text-text-main">{settings.trade_name}</span>
             </div>
           </div>
 
-          {/* Real Metrics Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
-              <span className="text-[10px] text-text-muted uppercase font-bold block">Sucursales</span>
-              <div className="text-lg font-black text-text-main mt-0.5 font-mono">1 Activa</div>
-              <span className="text-[10px] text-text-muted truncate block">{settings.branch_name}</span>
+            <div className="p-3 bg-surface-secondary border border-border rounded-2xl">
+              <span className="text-[10px] text-text-muted uppercase font-bold block">Prueba Gratis</span>
+              <div className="text-base font-black text-emerald-500 mt-0.5 font-mono">14 Días</div>
+              <span className="text-[10px] text-text-muted block">Sin tarjeta requerida</span>
             </div>
 
-            <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
+            <div className="p-3 bg-surface-secondary border border-border rounded-2xl">
               <span className="text-[10px] text-text-muted uppercase font-bold block">Productos</span>
-              <div className="text-lg font-black text-text-main mt-0.5 font-mono">{products.length} SKUs</div>
-              <span className="text-[10px] text-text-muted block">En inventario</span>
+              <div className="text-base font-black text-text-main mt-0.5 font-mono">{products.length} SKUs</div>
+              <span className="text-[10px] text-text-muted block">En catálogo activo</span>
             </div>
 
-            <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
+            <div className="p-3 bg-surface-secondary border border-border rounded-2xl">
               <span className="text-[10px] text-text-muted uppercase font-bold block">Comprobantes</span>
-              <div className="text-lg font-black text-emerald-500 mt-0.5 font-mono">{invoices.length} Emitidos</div>
+              <div className="text-base font-black text-primary mt-0.5 font-mono">{invoices.length} Emitidos</div>
               <span className="text-[10px] text-text-muted block">Hacienda v4.4</span>
             </div>
 
-            <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
-              <span className="text-[10px] text-text-muted uppercase font-bold block">Estado Cuenta</span>
-              <div className="text-lg font-black text-primary mt-0.5 font-mono">Al Día</div>
-              <span className="text-[10px] text-text-muted block">Sin cobros sorpresa</span>
+            <div className="p-3 bg-surface-secondary border border-border rounded-2xl">
+              <span className="text-[10px] text-text-muted uppercase font-bold block">Transparencia</span>
+              <div className="text-base font-black text-text-main mt-0.5 font-mono">₡ CRC</div>
+              <span className="text-[10px] text-text-muted block">Sin cobros ocultos</span>
             </div>
           </div>
         </Card>
@@ -246,7 +423,7 @@ export default function SubscriptionPage() {
             <button
               type="button"
               onClick={() => setBillingCycle("monthly")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
                 billingCycle === "monthly"
                   ? "bg-primary text-white shadow-sm"
                   : "text-text-secondary hover:text-text-main"
@@ -257,24 +434,24 @@ export default function SubscriptionPage() {
             <button
               type="button"
               onClick={() => setBillingCycle("annual")}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
                 billingCycle === "annual"
                   ? "bg-primary text-white shadow-sm"
                   : "text-text-secondary hover:text-text-main"
               }`}
             >
               <span>Facturación Anual</span>
-              <span className="px-1.5 py-0.5 bg-emerald-500 text-white text-[10px] rounded-md font-black">
-                -20% (2 meses gratis)
+              <span className="px-2 py-0.5 bg-emerald-500 text-white text-[10px] rounded-md font-black">
+                Paga 10 meses (2 meses gratis)
               </span>
             </button>
           </div>
         </div>
 
-        {/* Pricing Tiers Grid */}
+        {/* Pricing Tiers Grid (4 Columns) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {PLANS.map((plan) => {
-            const price = billingCycle === "monthly" ? plan.monthlyPrice : Math.round(plan.annualPrice / 12);
+            const pricing = calculateDisplayPrice(plan);
             const isCurrentPlan = activePlanId === plan.id;
 
             return (
@@ -282,14 +459,14 @@ export default function SubscriptionPage() {
                 key={plan.id}
                 className={`relative flex flex-col justify-between p-5 rounded-3xl transition-all ${
                   plan.popular
-                    ? "border-2 border-primary shadow-xl ring-1 ring-primary/20 bg-surface"
+                    ? "border-2 border-primary shadow-xl ring-1 ring-primary/25 bg-surface"
                     : "border border-border bg-surface"
                 }`}
               >
                 {/* Badge */}
                 {plan.badge && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className={`px-2.5 py-0.5 text-white text-[9px] font-black tracking-wider uppercase rounded-full shadow-md ${
+                    <span className={`px-3 py-1 text-white text-[9px] font-black tracking-wider uppercase rounded-full shadow-md ${
                       plan.popular ? "bg-primary" : "bg-cyan-600"
                     }`}>
                       {plan.badge}
@@ -303,33 +480,47 @@ export default function SubscriptionPage() {
                     <p className="text-[11px] text-text-muted min-h-[30px]">{plan.description}</p>
                   </div>
 
-                  {/* Price */}
+                  {/* Price Block */}
                   <div className="pt-2 border-t border-border">
-                    {plan.isCustom ? (
+                    {pricing.isCustom ? (
                       <div className="py-1">
-                        <span className="text-xl font-black text-primary uppercase tracking-tight">
-                          A Medida
-                        </span>
-                        <p className="text-[10px] text-text-muted mt-0.5">Cotización según escala</p>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xs text-text-muted font-bold">desde</span>
+                          <span className="text-2xl font-black text-text-main font-mono">
+                            {formatCRC(pricing.price)}
+                          </span>
+                          <span className="text-[10px] text-text-muted font-medium">/ mes</span>
+                        </div>
+                        <p className="text-[10px] text-text-muted mt-0.5">Cotización a la medida de tu escala</p>
                       </div>
                     ) : (
                       <div>
+                        {pricing.isDiscounted && pricing.regularPrice && (
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-xs line-through text-text-muted font-mono">
+                              {formatCRC(pricing.regularPrice)}
+                            </span>
+                            <span className="text-[9px] font-black px-1.5 py-0.2 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 rounded">
+                              -{foundersPromo.discount_percentage}% FUNDADORES
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-baseline gap-1">
                           <span className="text-2xl font-black text-text-main font-mono">
-                            {formatCRC(price)}
+                            {formatCRC(pricing.price)}
                           </span>
                           <span className="text-[10px] text-text-muted font-medium">/ mes</span>
                         </div>
                         {billingCycle === "annual" && (
                           <p className="text-[10px] text-emerald-500 font-bold mt-0.5">
-                            {formatCRC(plan.annualPrice)} / año (10 meses)
+                            {formatCRC(pricing.annualTotal || plan.annualPrice)} / año (10 mensualidades)
                           </p>
                         )}
                       </div>
                     )}
                   </div>
 
-                  {/* Limits summary */}
+                  {/* Limits summary badge box */}
                   <div className="p-2.5 bg-surface-secondary rounded-xl border border-border text-[11px] space-y-1 font-medium">
                     <div className="flex justify-between">
                       <span className="text-text-muted">Usuarios:</span>
@@ -355,7 +546,7 @@ export default function SubscriptionPage() {
                       Incluye:
                     </span>
                     <ul className="space-y-1.5 text-[11px] text-text-secondary">
-                      {plan.features.map((feat, idx) => (
+                      {plan.features.slice(0, 5).map((feat, idx) => (
                         <li key={idx} className="flex items-start gap-1.5">
                           <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
                           <span>{feat}</span>
@@ -389,181 +580,205 @@ export default function SubscriptionPage() {
           })}
         </div>
 
-        {/* FAQ Section */}
-        <div className="pt-6 border-t border-border space-y-4">
-          <div className="text-center space-y-1">
-            <h2 className="text-lg font-bold text-text-main">Preguntas Frecuentes sobre los Planes</h2>
-            <p className="text-xs text-text-muted">Todo lo que necesitas saber sobre pagos y facturación en Costa Rica</p>
+        {/* Feature Comparator Toggle & Table */}
+        <div className="pt-4 space-y-4">
+          <div className="flex items-center justify-between p-4 bg-surface border border-border rounded-2xl">
+            <div>
+              <h3 className="text-sm font-black text-text-main">Comparador Detallado de Funciones</h3>
+              <p className="text-xs text-text-muted">Revisa la matriz completa de características módulo por módulo.</p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowComparison(!showComparison)}
+              className="gap-1.5 font-bold text-xs"
+            >
+              {showComparison ? "Ocultar Comparativa" : "Ver Comparativa Completa"}
+              {showComparison ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-4xl mx-auto">
-            <Card className="p-4 space-y-1.5">
-              <h3 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-primary" />
-                ¿Qué métodos de pago aceptan en Costa Rica?
-              </h3>
-              <p className="text-xs text-text-muted leading-relaxed">
-                Aceptamos transferencias por <strong>SINPE Móvil</strong>, transferencias electrónicas bancarias directas (IBAN BAC, BCR, BNCR) y tarjetas de crédito/débito.
-              </p>
-            </Card>
+          {showComparison && (
+            <Card className="overflow-hidden p-0 border border-border">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs" aria-label="Tabla comparativa de funciones por plan">
+                  <thead>
+                    <tr className="bg-surface-secondary border-b border-border text-text-main font-black">
+                      <th scope="col" className="p-3.5 min-w-[240px]">Módulo / Funcionalidad</th>
+                      <th scope="col" className="p-3.5 text-center min-w-[120px]">Inicio</th>
+                      <th scope="col" className="p-3.5 text-center min-w-[120px] bg-primary/5 text-primary">Crece ⭐</th>
+                      <th scope="col" className="p-3.5 text-center min-w-[120px]">Escala</th>
+                      <th scope="col" className="p-3.5 text-center min-w-[120px]">Empresarial</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {COMPARISON_DATA.map((cat, catIdx) => (
+                      <React.Fragment key={catIdx}>
+                        <tr className="bg-surface-secondary/70 font-black text-text-main text-[11px]">
+                          <td colSpan={5} className="px-3.5 py-2.5 uppercase tracking-wider text-primary font-bold">
+                            {cat.title}
+                          </td>
+                        </tr>
+                        {cat.features.map((feat, fIdx) => (
+                          <tr key={fIdx} className="hover:bg-surface-hover transition-colors text-[11px]">
+                            <td className="p-3 font-medium text-text-main">{feat.name}</td>
+                            
+                            <td className="p-3 text-center">
+                              {typeof feat.inicio === "boolean" ? (
+                                feat.inicio ? (
+                                  <Check className="w-4 h-4 text-emerald-500 mx-auto" />
+                                ) : (
+                                  <span className="text-text-muted">—</span>
+                                )
+                              ) : (
+                                <span className="font-bold text-text-secondary">{feat.inicio}</span>
+                              )}
+                            </td>
 
-            <Card className="p-4 space-y-1.5">
-              <h3 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-primary" />
-                ¿Los planes incluyen la firma digital y Hacienda v4.4?
-              </h3>
-              <p className="text-xs text-text-muted leading-relaxed">
-                Sí. Todos los planes incluyen firmado digital XAdES-BES, generación de XML v4.4, cálculo de clave de 50 dígitos y validación ante el Ministerio de Hacienda.
-              </p>
-            </Card>
+                            <td className="p-3 text-center bg-primary/5 font-bold text-text-main">
+                              {typeof feat.crece === "boolean" ? (
+                                feat.crece ? (
+                                  <Check className="w-4 h-4 text-emerald-500 mx-auto" />
+                                ) : (
+                                  <span className="text-text-muted">—</span>
+                                )
+                              ) : (
+                                <span className="font-bold text-primary">{feat.crece}</span>
+                              )}
+                            </td>
 
-            <Card className="p-4 space-y-1.5">
-              <h3 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-primary" />
-                ¿Puedo cambiar de plan en cualquier momento?
-              </h3>
-              <p className="text-xs text-text-muted leading-relaxed">
-                Totalmente. Puedes subir o ajustar tu plan en cualquier momento sin perder ningún dato de ventas, inventario ni facturas históricas.
-              </p>
-            </Card>
+                            <td className="p-3 text-center">
+                              {typeof feat.escala === "boolean" ? (
+                                feat.escala ? (
+                                  <Check className="w-4 h-4 text-emerald-500 mx-auto" />
+                                ) : (
+                                  <span className="text-text-muted">—</span>
+                                )
+                              ) : (
+                                <span className="font-bold text-text-secondary">{feat.escala}</span>
+                              )}
+                            </td>
 
-            <Card className="p-4 space-y-1.5">
-              <h3 className="text-xs font-bold text-text-main flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-primary" />
-                ¿Mis datos se borran si vence el período de prueba?
-              </h3>
-              <p className="text-xs text-text-muted leading-relaxed">
-                No. Tu información, catálogo, clientes y facturas permanecen seguros y resguardados para que los reactives cuando elijas tu plan.
-              </p>
+                            <td className="p-3 text-center">
+                              {typeof feat.empresarial === "boolean" ? (
+                                feat.empresarial ? (
+                                  <Check className="w-4 h-4 text-emerald-500 mx-auto" />
+                                ) : (
+                                  <span className="text-text-muted">—</span>
+                                )
+                              ) : (
+                                <span className="font-bold text-cyan-500">{feat.empresarial}</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </Card>
+          )}
+        </div>
+
+        {/* Commercial Conditions Guarantee Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+          <div className="p-4 bg-surface border border-border rounded-2xl space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-text-main">14 Días de Prueba Gratuita</h4>
+            <p className="text-[11px] text-text-muted">Sin necesidad de registrar tarjeta de crédito. Acceso completo a todas las funciones para evaluar tu negocio.</p>
+          </div>
+
+          <div className="p-4 bg-surface border border-border rounded-2xl space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-primary-subtle text-primary flex items-center justify-center">
+              <CreditCard className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-text-main">Sin Comisiones Ocultas</h4>
+            <p className="text-[11px] text-text-muted">No cobramos porcentaje por cada venta realizada. Tarifa fija mensual en Colones costarricenses (CRC).</p>
+          </div>
+
+          <div className="p-4 bg-surface border border-border rounded-2xl space-y-1.5">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-500 flex items-center justify-center">
+              <Shield className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-text-main">Cancelación Flexible</h4>
+            <p className="text-[11px] text-text-muted">Puedes actualizar, cambiar de plan o cancelar tu suscripción en cualquier momento sin contratos de permanencia.</p>
           </div>
         </div>
 
-        {/* Plan Checkout & Activation Modal */}
+        {/* Plan Selection Confirmation Modal */}
         {selectedPlan && (
           <Modal
             isOpen={true}
             onClose={() => setSelectedPlan(null)}
-            title={`Activar Plan ${selectedPlan.name}`}
-            maxWidth="md"
+            title={`Confirmar Suscripción — ${selectedPlan.name}`}
+            maxWidth="sm"
           >
-            <div className="space-y-5">
-              {/* Summary */}
+            <div className="space-y-4">
               <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-text-main">Plan Seleccionado:</span>
-                  <span className="text-sm font-black text-primary font-mono">{selectedPlan.name}</span>
+                  <span className="text-xs font-black text-primary">{selectedPlan.name}</span>
                 </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-text-muted">Ciclo de Cobro:</span>
-                  <span className="font-bold text-text-main">
-                    {billingCycle === "monthly" ? "Mensual" : "Anual (Ahorro 20%)"}
-                  </span>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-text-main">Ciclo de Cobro:</span>
+                  <span className="text-xs font-bold capitalize">{billingCycle === "annual" ? "Anual (10 Meses)" : "Mensual"}</span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-border">
-                  <span className="text-xs font-bold text-text-main">Monto Total:</span>
-                  <span className="text-xl font-black text-emerald-500 font-mono">
-                    {formatCRC(billingCycle === "monthly" ? selectedPlan.monthlyPrice : selectedPlan.annualPrice)}
+                  <span className="text-xs font-bold text-text-main">Total a Facturar:</span>
+                  <span className="text-base font-black font-mono text-emerald-500">
+                    {formatCRC(
+                      selectedPlan.isCustom
+                        ? selectedPlan.monthlyPrice
+                        : calculateDisplayPrice(selectedPlan).price
+                    )}
+                    <span className="text-[10px] text-text-muted font-normal"> / mes</span>
                   </span>
                 </div>
               </div>
 
-              {/* Payment Methods in Costa Rica */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-                  Instrucciones de Pago (Costa Rica)
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div className="p-3 bg-surface-secondary border border-border rounded-xl space-y-1 text-xs">
-                    <div className="flex items-center gap-1.5 font-bold text-text-main">
-                      <Smartphone className="w-4 h-4 text-emerald-500" />
-                      SINPE Móvil Oficial
-                    </div>
-                    <p className="text-text-muted font-mono text-[11px]">Tel: +506 8888-9999</p>
-                    <p className="text-text-muted text-[10px]">A nombre de: Orbítica Studio S.A.</p>
-                  </div>
-
-                  <div className="p-3 bg-surface-secondary border border-border rounded-xl space-y-1 text-xs">
-                    <div className="flex items-center gap-1.5 font-bold text-text-main">
-                      <Building2 className="w-4 h-4 text-primary" />
-                      Transferencia IBAN BAC
-                    </div>
-                    <p className="text-text-muted font-mono text-[10px]">CR05010200009999999999</p>
-                    <p className="text-text-muted text-[10px]">Cédula: 3-101-999999</p>
-                  </div>
-                </div>
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-600 dark:text-emerald-400 font-medium space-y-1">
+                <p>✓ Facturación Electrónica Hacienda v4.4 activa.</p>
+                <p>✓ 14 días de prueba inicial sin compromiso.</p>
               </div>
 
-              {/* Contact actions */}
-              <div className="space-y-2 pt-2 border-t border-border">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <a
-                    href={`https://wa.me/50688889999?text=${encodeURIComponent(
-                      `Hola, deseo activar el Plan ${selectedPlan.name} (${billingCycle === "monthly" ? "Mensual" : "Anual"}) para mi negocio: ${settings.trade_name} (Cédula: ${settings.identification_number}).`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <Button variant="secondary" className="w-full text-xs font-bold">
-                      <Smartphone className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
-                      Contactar por WhatsApp
-                    </Button>
-                  </a>
-
-                  <a
-                    href={`mailto:ventas@orbitica.app?subject=Suscripci%C3%B3n%20Plan%20${encodeURIComponent(
-                      selectedPlan.name
-                    )}%20-%20${encodeURIComponent(settings.trade_name)}&body=Hola%2C%20deseo%20confirmar%20el%20Plan%20${encodeURIComponent(
-                      selectedPlan.name
-                    )}%20(${billingCycle === "monthly" ? "Mensual" : "Anual"})%20para%20la%20empresa%3A%20${encodeURIComponent(
-                      settings.trade_name
-                    )}%20con%20c%C3%A9dula%3A%20${encodeURIComponent(settings.identification_number)}.`}
-                    className="block"
-                  >
-                    <Button variant="secondary" className="w-full text-xs font-bold">
-                      Enviar por Correo
-                    </Button>
-                  </a>
-                </div>
-
-                <Button
-                  variant="primary"
-                  className="w-full font-bold py-3 bg-emerald-600 hover:bg-emerald-500 text-white"
-                  onClick={handleConfirmPlan}
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                  Confirmar y Activar Plan {selectedPlan.name}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <Button variant="secondary" onClick={() => setSelectedPlan(null)}>
+                  Cancelar
+                </Button>
+                <Button variant="primary" onClick={handleConfirmPlan}>
+                  {selectedPlan.isCustom ? "Solicitar Contacto" : "Confirmar y Activar Plan"}
                 </Button>
               </div>
             </div>
           </Modal>
         )}
 
-        {/* Success confirmation modal */}
+        {/* Success Modal */}
         {isSuccessModalOpen && (
           <Modal
             isOpen={true}
             onClose={() => setIsSuccessModalOpen(false)}
-            title="¡Plan Activado Exitosamente!"
+            title="¡Plan Actualizado con Éxito!"
             maxWidth="sm"
           >
-            <div className="text-center space-y-4 py-2">
-              <div className="w-14 h-14 rounded-3xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto border border-emerald-500/20">
-                <CheckCircle2 className="w-8 h-8" />
+            <div className="space-y-4 text-center py-2">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-text-main">
-                  Plan {PLANS.find(p => p.id === activePlanId)?.name} Habilitado
-                </h3>
+                <h3 className="text-base font-black text-text-main">Suscripción Activada</h3>
                 <p className="text-xs text-text-muted">
-                  Tu negocio <strong>{settings.trade_name}</strong> ahora cuenta con los beneficios y capacidades del plan contratado.
+                  Tu plan se ha actualizado correctamente. Todas las funciones correspondientes están disponibles para tu organización.
                 </p>
               </div>
-              <Button variant="primary" onClick={() => setIsSuccessModalOpen(false)} className="w-full">
-                Entendido, Continuar
-              </Button>
+              <div className="pt-2">
+                <Button variant="primary" className="w-full" onClick={() => setIsSuccessModalOpen(false)}>
+                  Entendido y Continuar
+                </Button>
+              </div>
             </div>
           </Modal>
         )}

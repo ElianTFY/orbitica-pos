@@ -24,6 +24,7 @@ import {
   BankTransaction,
   SuspendedSale,
   CartItem,
+  FoundersPromoConfig,
 } from "@/types";
 
 export interface BusinessSettings {
@@ -63,6 +64,8 @@ interface StoreContextType {
   bankAccounts: BankAccount[];
   bankTransactions: BankTransaction[];
   suspendedSales: SuspendedSale[];
+  foundersPromo: FoundersPromoConfig;
+  updateFoundersPromo: (config: Partial<FoundersPromoConfig>) => void;
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
   // Products
   addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
@@ -184,6 +187,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([]);
   const [suspendedSales, setSuspendedSales] = useState<SuspendedSale[]>([]);
+  const [foundersPromo, setFoundersPromo] = useState<FoundersPromoConfig>({
+    is_active: true,
+    discount_percentage: 20,
+    expires_at: "2026-10-31",
+    max_claims: 50,
+    claimed_count: 18,
+  });
   const [activeCashSession, setActiveCashSession] = useState<CashSession | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -294,6 +304,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const sSuspended = localStorage.getItem(`orbitica_suspended_${orgId}`);
       setSuspendedSales(sSuspended ? JSON.parse(sSuspended) : []);
+
+      const sPromo = localStorage.getItem("orbitica_founders_promo");
+      if (sPromo) setFoundersPromo(JSON.parse(sPromo));
 
       const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
       setActiveCashSession(sCash ? JSON.parse(sCash) : null);
@@ -785,6 +798,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSuspendedSales((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const updateFoundersPromo = (config: Partial<FoundersPromoConfig>) => {
+    setFoundersPromo((prev) => {
+      const next = { ...prev, ...config };
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("orbitica_founders_promo", JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+    logAudit(
+      "FOUNDERS_PROMO_UPDATED",
+      `Promoción Fundadores: ${config.is_active !== undefined ? (config.is_active ? "Activa" : "Inactiva") : "Configuración actualizada"}`
+    );
+  };
+
   // Purchases & Inventory
   const recordPurchase = ({
     supplierName,
@@ -1130,6 +1159,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         bankAccounts,
         bankTransactions,
         suspendedSales,
+        foundersPromo,
+        updateFoundersPromo,
         updateSettings,
         addProduct,
         updateProduct,

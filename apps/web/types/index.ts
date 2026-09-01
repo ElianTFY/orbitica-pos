@@ -341,3 +341,30 @@ export interface SuspendedSale {
   subtotal: number;
   total: number;
 }
+
+export interface FoundersPromoConfig {
+  is_active: boolean;
+  discount_percentage: number;
+  expires_at: string;
+  max_claims: number;
+  claimed_count: number;
+}
+
+export interface PricingPlanTier {
+  id: string;
+  name: string;
+  badge?: string;
+  popular?: boolean;
+  isCustom?: boolean;
+  monthlyPrice: number;
+  annualPrice: number;
+  foundersMonthlyPrice?: number;
+  description: string;
+  features: string[];
+  limits: {
+    users: string;
+    branches: string;
+    terminals: string;
+    invoices: string;
+  };
+}
