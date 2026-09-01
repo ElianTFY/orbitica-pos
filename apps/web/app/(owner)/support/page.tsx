@@ -397,10 +397,12 @@ export default function SupportCenterPage() {
                   </div>
                 )}
 
-                {/* Messages Thread */}
+                {/* Messages Thread (Internal notes strictly hidden from client) */}
                 <div className="space-y-3 max-h-[350px] overflow-y-auto pr-2">
-                  {activeTicket.messages.map((msg) => {
-                    const isClient = msg.sender_type === "CLIENT";
+                  {activeTicket.messages
+                    .filter((msg) => !msg.is_internal_note)
+                    .map((msg) => {
+                      const isClient = msg.sender_type === "CLIENT";
                     return (
                       <div
                         key={msg.id}
