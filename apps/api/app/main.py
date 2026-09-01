@@ -9,6 +9,7 @@ from app.core.exceptions import AppException
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.api.v1.router import api_v1_router
+from app.api.v1.health import router as health_router
 from app.db.session import async_engine
 from app.db.base import Base
 
@@ -16,7 +17,10 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create tables on startup if SQLite
+    # 1. Validate security & production readiness
+    settings.validate_production_readiness()
+    
+    # 2. Auto-create tables on startup in development SQLite
     if "sqlite" in settings.DATABASE_URL:
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -35,20 +39,13 @@ app = FastAPI(
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS Middleware
+# CORS Middleware with configurable origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000"
-    ],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:[0-9]+)?",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
@@ -94,9 +91,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "error": {
                 "code": "INTERNAL_SERVER_ERROR",
                 "message": "Ha ocurrido un error inesperado en el servidor",
-                "details": str(exc)
+                "details": str(exc) if settings.ENVIRONMENT != "production" else "Error interno del servidor"
             }
         }
     )
 
+# Direct root health probes
+app.include_router(health_router, prefix="")
+app.include_router(health_router, prefix="/health")
+
+# API v1 routes
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
