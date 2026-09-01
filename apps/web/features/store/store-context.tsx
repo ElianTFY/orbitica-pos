@@ -12,6 +12,8 @@ import {
   InvoiceRecord,
   CashSession,
   AuditLogEntry,
+  Employee,
+  Branch,
 } from "@/types";
 
 export interface BusinessSettings {
@@ -40,6 +42,8 @@ interface StoreContextType {
   invoices: InvoiceRecord[];
   auditLogs: AuditLogEntry[];
   activeCashSession: CashSession | null;
+  employees: Employee[];
+  branches: Branch[];
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
   // Products
   addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
@@ -53,6 +57,14 @@ interface StoreContextType {
   addSupplier: (supplier: Omit<Supplier, "id" | "organization_id">) => Supplier;
   updateSupplier: (id: string, supplier: Partial<Supplier>) => void;
   deleteSupplier: (id: string) => void;
+  // Employees
+  addEmployee: (employee: Omit<Employee, "id" | "organization_id" | "created_at">) => Employee;
+  updateEmployee: (id: string, employee: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
+  // Branches
+  addBranch: (branch: Omit<Branch, "id" | "organization_id" | "created_at">) => Branch;
+  updateBranch: (id: string, branch: Partial<Branch>) => void;
+  deleteBranch: (id: string) => void;
   // Purchases & Inventory
   recordPurchase: (data: {
     supplierName: string;
@@ -111,6 +123,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [sales, setSales] = useState<SaleRecord[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [activeCashSession, setActiveCashSession] = useState<CashSession | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -158,6 +172,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const sInvoices = localStorage.getItem(`orbitica_invoices_${orgId}`);
       setInvoices(sInvoices ? JSON.parse(sInvoices) : []);
 
+      const sEmployees = localStorage.getItem(`orbitica_employees_${orgId}`);
+      setEmployees(sEmployees ? JSON.parse(sEmployees) : []);
+
+      const sBranches = localStorage.getItem(`orbitica_branches_${orgId}`);
+      if (sBranches) {
+        setBranches(JSON.parse(sBranches));
+      } else {
+        const defaultBranch: Branch = {
+          id: `br_main_${Date.now()}`,
+          organization_id: orgId,
+          code: "001",
+          name: user?.branch_name || "Sucursal Central (001)",
+          address: "",
+          is_main: true,
+          is_active: true,
+          created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+        };
+        setBranches([defaultBranch]);
+        localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify([defaultBranch]));
+      }
+
       const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
       setActiveCashSession(sCash ? JSON.parse(sCash) : null);
 
@@ -195,6 +230,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`orbitica_movements_${orgId}`, JSON.stringify(movements));
       localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(sales));
       localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(invoices));
+      localStorage.setItem(`orbitica_employees_${orgId}`, JSON.stringify(employees));
+      localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify(branches));
       localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify(auditLogs));
       localStorage.setItem(`orbitica_settings_${orgId}`, JSON.stringify(settings));
       if (activeCashSession) {
@@ -203,7 +240,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(`orbitica_cash_${orgId}`);
       }
     } catch (e) {}
-  }, [products, customers, suppliers, purchases, movements, sales, invoices, auditLogs, settings, activeCashSession, orgId, isLoaded]);
+  }, [products, customers, suppliers, purchases, movements, sales, invoices, employees, branches, auditLogs, settings, activeCashSession, orgId, isLoaded]);
 
   const logAudit = (action: string, resource: string) => {
     const entry: AuditLogEntry = {
@@ -293,6 +330,56 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteSupplier = (id: string) => {
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
     logAudit("SUPPLIER_DELETED", `Proveedor ID: ${id}`);
+  };
+
+  // Employees
+  const addEmployee = (emp: Omit<Employee, "id" | "organization_id" | "created_at">): Employee => {
+    const newEmp: Employee = {
+      ...emp,
+      id: `emp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+    };
+    setEmployees((prev) => [newEmp, ...prev]);
+    logAudit("EMPLOYEE_CREATED", `Empleado: ${newEmp.full_name} (${newEmp.role})`);
+    return newEmp;
+  };
+
+  const updateEmployee = (id: string, updated: Partial<Employee>) => {
+    setEmployees((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, ...updated } : e))
+    );
+    logAudit("EMPLOYEE_UPDATED", `Empleado ID: ${id}`);
+  };
+
+  const deleteEmployee = (id: string) => {
+    setEmployees((prev) => prev.filter((e) => e.id !== id));
+    logAudit("EMPLOYEE_DELETED", `Empleado ID: ${id}`);
+  };
+
+  // Branches
+  const addBranch = (br: Omit<Branch, "id" | "organization_id" | "created_at">): Branch => {
+    const newBranch: Branch = {
+      ...br,
+      id: `br_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+    };
+    setBranches((prev) => [...prev, newBranch]);
+    logAudit("BRANCH_CREATED", `Sucursal: ${newBranch.name} (${newBranch.code})`);
+    return newBranch;
+  };
+
+  const updateBranch = (id: string, updated: Partial<Branch>) => {
+    setBranches((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...updated } : b))
+    );
+    logAudit("BRANCH_UPDATED", `Sucursal ID: ${id}`);
+  };
+
+  const deleteBranch = (id: string) => {
+    setBranches((prev) => prev.filter((b) => b.id !== id));
+    logAudit("BRANCH_DELETED", `Sucursal ID: ${id}`);
   };
 
   // Purchases & Inventory
@@ -629,6 +716,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         invoices,
         auditLogs,
         activeCashSession,
+        employees,
+        branches,
         updateSettings,
         addProduct,
         updateProduct,
@@ -639,6 +728,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addSupplier,
         updateSupplier,
         deleteSupplier,
+        addEmployee,
+        updateEmployee,
+        deleteEmployee,
+        addBranch,
+        updateBranch,
+        deleteBranch,
         recordPurchase,
         recordAdjustment,
         recordSale,

@@ -37,6 +37,7 @@ export interface Branch {
   phone?: string | null;
   is_main: boolean;
   is_active: boolean;
+  created_at?: string;
 }
 
 export interface Product {
@@ -182,4 +183,17 @@ export interface AuditLogEntry {
   action: string;
   resource: string;
   ip_address: string;
+}
+
+export interface Employee {
+  id: string;
+  organization_id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  role: "CASHIER" | "MANAGER" | "INVENTORY" | "ADMIN";
+  branch_name: string;
+  pin?: string;
+  is_active: boolean;
+  created_at: string;
 }
