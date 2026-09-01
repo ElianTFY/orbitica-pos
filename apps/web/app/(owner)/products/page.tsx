@@ -27,31 +27,37 @@ export default function ProductsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   // Form states
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [barcode, setBarcode] = useState("");
-  const [categoryName, setCategoryName] = useState("Abarrotes");
+  const [categoryName, setCategoryName] = useState("General");
   const [salePrice, setSalePrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [taxRate, setTaxRate] = useState("13");
-  const [stock, setStock] = useState("20");
+  const [stock, setStock] = useState("");
   const [minStockAlert, setMinStockAlert] = useState("5");
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const categories = ["ALL", "Bebidas", "Licores", "Snacks", "Canasta Básica", "Abarrotes", "Lácteos", "Carnes", "Limpieza", "Otros"];
+  // Dynamic categories from existing products + defaults
+  const uniqueCategories = Array.from(
+    new Set(["ALL", "General", "Bebidas", "Snacks", "Abarrotes", "Limpieza", ...products.map((p) => p.category_name).filter(Boolean)])
+  );
 
   const openCreateModal = () => {
     setEditingProduct(null);
     setName("");
-    setSku(`PROD-${Math.floor(100 + Math.random() * 900)}`);
+    setSku(`SKU-${Date.now().toString().slice(-6)}`);
     setBarcode("");
-    setCategoryName("Abarrotes");
+    setCategoryName("General");
     setSalePrice("");
     setCostPrice("");
     setTaxRate("13");
-    setStock("25");
+    setStock("0");
     setMinStockAlert("5");
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -60,24 +66,31 @@ export default function ProductsPage() {
     setName(p.name);
     setSku(p.sku || "");
     setBarcode(p.barcode || "");
-    setCategoryName(p.category_name || "Abarrotes");
+    setCategoryName(p.category_name || "General");
     setSalePrice(p.sale_price.toString());
-    setCostPrice(p.cost_price.toString());
+    setCostPrice((p.cost_price || 0).toString());
     setTaxRate(p.tax_rate.toString());
     setStock((p.stock ?? 0).toString());
     setMinStockAlert(p.min_stock_alert.toString());
+    setFormError(null);
     setIsModalOpen(true);
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const priceNum = parseFloat(salePrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setFormError("El precio de venta debe ser un número mayor a 0.");
+      return;
+    }
+
     if (editingProduct) {
       updateProduct(editingProduct.id, {
-        name,
-        sku: sku || null,
-        barcode: barcode || null,
-        category_name: categoryName,
-        sale_price: parseFloat(salePrice) || 0,
+        name: name.trim(),
+        sku: sku.trim() || null,
+        barcode: barcode.trim() || null,
+        category_name: categoryName.trim() || "General",
+        sale_price: priceNum,
         cost_price: parseFloat(costPrice) || 0,
         tax_rate: parseFloat(taxRate) || 13,
         stock: parseInt(stock, 10) || 0,
@@ -85,11 +98,11 @@ export default function ProductsPage() {
       });
     } else {
       addProduct({
-        name,
-        sku: sku || `SKU-${Date.now()}`,
-        barcode: barcode || null,
-        category_name: categoryName,
-        sale_price: parseFloat(salePrice) || 0,
+        name: name.trim(),
+        sku: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
+        barcode: barcode.trim() || null,
+        category_name: categoryName.trim() || "General",
+        sale_price: priceNum,
         cost_price: parseFloat(costPrice) || 0,
         tax_rate: parseFloat(taxRate) || 13,
         stock: parseInt(stock, 10) || 0,
@@ -97,6 +110,13 @@ export default function ProductsPage() {
       });
     }
     setIsModalOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (productToDelete) {
+      deleteProduct(productToDelete.id);
+      setProductToDelete(null);
+    }
   };
 
   const filteredProducts = products.filter((p) => {
@@ -141,15 +161,15 @@ export default function ProductsPage() {
 
           {/* Category Badges */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
-            {categories.map((cat) => (
+            {uniqueCategories.map((cat) => (
               <button
-                key={cat}
+                key={cat || "ALL"}
                 type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-primary ${
-                  selectedCategory === cat
+                onClick={() => setSelectedCategory(cat || "ALL")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap focus-visible:ring-2 focus-visible:ring-primary ${
+                  selectedCategory === (cat || "ALL")
                     ? "bg-primary text-white shadow-sm"
-                    : "bg-surface border border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
+                    : "bg-surface border border-border text-text-secondary hover:bg-surface-hover"
                 }`}
               >
                 {cat === "ALL" ? "Todos" : cat}
@@ -158,34 +178,34 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {/* Products Table or Professional Empty State */}
+        {/* Products Table */}
         {products.length === 0 ? (
           <Card className="p-12 text-center space-y-4">
             <div className="w-14 h-14 rounded-3xl bg-primary-subtle text-primary flex items-center justify-center mx-auto border border-primary/20">
-              <PackagePlus className="w-7 h-7" />
+              <Package className="w-7 h-7" />
             </div>
             <div className="space-y-1 max-w-md mx-auto">
-              <h2 className="text-base font-bold text-text-main">Todavía no tienes productos registrados</h2>
+              <h2 className="text-base font-bold text-text-main">No hay productos en el catálogo</h2>
               <p className="text-xs text-text-muted">
-                Agrega los productos o artículos que vendes en tu negocio para que estén disponibles al instante en el Punto de Venta (POS).
+                Registra tus productos con precios, stock en bodega y código de barras para poder venderlos en el Punto de Venta (POS).
               </p>
             </div>
             <Button variant="primary" onClick={openCreateModal}>
-              <Plus className="w-4 h-4 mr-2" />
-              Agregar Primer Producto
+              <Plus className="w-4 h-4 mr-1.5" />
+              Crear Primer Producto
             </Button>
           </Card>
         ) : (
           <Card>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs" aria-label="Tabla de inventario de productos">
+              <table className="w-full text-left text-xs" aria-label="Catálogo de productos">
                 <thead>
                   <tr className="text-text-muted border-b border-border">
                     <th scope="col" className="pb-3 font-bold">Producto</th>
-                    <th scope="col" className="pb-3 font-bold">SKU / Código</th>
+                    <th scope="col" className="pb-3 font-bold">SKU / Barras</th>
                     <th scope="col" className="pb-3 font-bold">Categoría</th>
-                    <th scope="col" className="pb-3 font-bold">Precio Venta (CRC)</th>
-                    <th scope="col" className="pb-3 font-bold">Tarifa IVA</th>
+                    <th scope="col" className="pb-3 font-bold">Precio Venta</th>
+                    <th scope="col" className="pb-3 font-bold">IVA</th>
                     <th scope="col" className="pb-3 font-bold">Stock</th>
                     <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
                   </tr>
@@ -193,25 +213,25 @@ export default function ProductsPage() {
                 <tbody className="divide-y divide-border">
                   {filteredProducts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-10 text-center text-text-muted">
-                        No se encontraron productos que coincidan con la búsqueda.
+                      <td colSpan={7} className="py-8 text-center text-text-muted">
+                        No se encontraron productos con los filtros seleccionados
                       </td>
                     </tr>
                   ) : (
                     filteredProducts.map((p) => (
                       <tr key={p.id} className="hover:bg-surface-hover transition-colors">
-                        <td className="py-3 font-bold text-text-main flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-primary-subtle border border-primary/20 flex items-center justify-center text-primary flex-shrink-0">
-                            <Package className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="truncate max-w-xs">{p.name}</span>
+                        <td className="py-3 font-bold text-text-main">{p.name}</td>
+                        <td className="py-3 font-mono text-text-muted">
+                          {p.sku || p.barcode || "—"}
                         </td>
-                        <td className="py-3 font-mono text-text-secondary text-[11px]">
-                          <div>{p.sku || "-"}</div>
-                          {p.barcode && <div className="text-text-muted text-[10px]">{p.barcode}</div>}
+                        <td className="py-3 text-text-secondary">
+                          <span className="px-2 py-0.5 bg-surface-secondary rounded-md border border-border text-[11px]">
+                            {p.category_name || "General"}
+                          </span>
                         </td>
-                        <td className="py-3 text-text-secondary">{p.category_name || "General"}</td>
-                        <td className="py-3 font-black text-text-main font-mono text-sm">{formatCRC(p.sale_price)}</td>
+                        <td className="py-3 font-black text-text-main font-mono">
+                          {formatCRC(p.sale_price)}
+                        </td>
                         <td className="py-3">
                           <Badge variant="blue">{p.tax_rate}% IVA</Badge>
                         </td>
@@ -221,7 +241,7 @@ export default function ProductsPage() {
                               (p.stock ?? 0) <= p.min_stock_alert ? "text-amber-500" : "text-emerald-500"
                             }`}
                           >
-                            {p.stock} uds
+                            {p.stock ?? 0} uds
                           </span>
                         </td>
                         <td className="py-3 text-right">
@@ -236,7 +256,7 @@ export default function ProductsPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => deleteProduct(p.id)}
+                              onClick={() => setProductToDelete(p)}
                               aria-label={`Eliminar ${p.name}`}
                               className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
                             >
@@ -262,6 +282,12 @@ export default function ProductsPage() {
         maxWidth="md"
       >
         <form onSubmit={handleSave} className="space-y-4">
+          {formError && (
+            <div className="p-3 bg-semantic-danger-bg border border-semantic-danger-border rounded-xl text-xs text-semantic-danger-text font-medium">
+              {formError}
+            </div>
+          )}
+
           <Input
             label="Nombre del Producto"
             placeholder="Ej: Leche Dos Pinos 1L Semidescremada"
@@ -274,7 +300,7 @@ export default function ProductsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="Código SKU"
-              placeholder="BEB-001"
+              placeholder="SKU-001"
               value={sku}
               onChange={(e) => setSku(e.target.value)}
             />
@@ -291,15 +317,19 @@ export default function ProductsPage() {
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
                 Categoría
               </label>
-              <select
+              <input
+                list="category-suggestions"
+                type="text"
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                {categories.filter((c) => c !== "ALL").map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                placeholder="Ej: Abarrotes"
+                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary shadow-sm"
+              />
+              <datalist id="category-suggestions">
+                {uniqueCategories.filter((c) => c !== "ALL").map((c) => (
+                  <option key={c} value={c} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="space-y-1.5">
@@ -342,7 +372,7 @@ export default function ProductsPage() {
             <Input
               label="Stock Inicial en Bodega"
               type="number"
-              placeholder="25"
+              placeholder="0"
               value={stock}
               onChange={(e) => setStock(e.target.value)}
               required
@@ -366,6 +396,32 @@ export default function ProductsPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {productToDelete && (
+        <Modal
+          isOpen={true}
+          onClose={() => setProductToDelete(null)}
+          title="Confirmar Eliminación"
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-text-muted leading-relaxed">
+              ¿Estás seguro de que deseas eliminar el producto{" "}
+              <strong className="text-text-main">{productToDelete.name}</strong>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" onClick={() => setProductToDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onClick={handleConfirmDelete}>
+                Eliminar Producto
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </OwnerLayout>
   );
 }

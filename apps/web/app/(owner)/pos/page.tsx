@@ -121,10 +121,10 @@ export default function POSPage() {
 
   const clearCart = useCallback(() => setCart([]), []);
 
-  const subtotal = cart.reduce((acc, item) => acc + item.product.sale_price * item.quantity, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
   const totalTax = cart.reduce((acc, item) => {
-    const itemSub = item.product.sale_price * item.quantity;
-    return acc + itemSub * (item.product.tax_rate / 100);
+    const itemSub = item.unitPrice * item.quantity;
+    return acc + itemSub * (item.taxRate / 100);
   }, 0);
   const total = subtotal + totalTax;
   const totalItemCount = cart.reduce((acc, it) => acc + it.quantity, 0);
@@ -132,8 +132,23 @@ export default function POSPage() {
   const numCash = parseFloat(cashReceived) || 0;
   const change = Math.max(0, numCash - total);
 
+  // Validation checks for completing sale
+  const isInvoiceMissingCustomer =
+    docType === "01" &&
+    (!customerName.trim() || customerName === "CLIENTE CONTADO" || !customerCedula.trim());
+
+  const isSinpeMissingRef = paymentMethod === "SINPE" && !sinpeRef.trim();
+
+  const isCashInsufficient = paymentMethod === "CASH_CRC" && numCash < total;
+
+  const canCompleteSale =
+    !isProcessing &&
+    !isInvoiceMissingCustomer &&
+    !isSinpeMissingRef &&
+    !isCashInsufficient;
+
   const completeSale = async () => {
-    if (isProcessing) return;
+    if (!canCompleteSale) return;
     setIsProcessing(true);
     try {
       // Small delay to prevent accidental double-tap
@@ -142,9 +157,9 @@ export default function POSPage() {
         items: cart.map((c) => ({ product: c.product, quantity: c.quantity })),
         paymentMethod,
         cashReceived: numCash,
-        sinpeRef,
-        customerName: customerName || "CLIENTE CONTADO",
-        customerCedula,
+        sinpeRef: sinpeRef.trim(),
+        customerName: customerName.trim() || "CLIENTE CONTADO",
+        customerCedula: customerCedula.trim() || undefined,
         docType,
       });
 
@@ -296,8 +311,7 @@ export default function POSPage() {
                       key={p.id}
                       type="button"
                       onClick={() => addToCart(p)}
-                      disabled={!isCashOpen}
-                      className="p-3 sm:p-3.5 bg-surface border border-border rounded-2xl hover:border-primary hover:bg-surface-hover transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[100px] shadow-sm focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-3 sm:p-3.5 bg-surface border border-border rounded-2xl hover:border-primary hover:bg-surface-hover transition-all text-left flex flex-col justify-between group active:scale-[0.97] touch-manipulation min-h-[100px] shadow-sm focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <div className="space-y-1 w-full">
                         <div className="flex justify-between items-start gap-1">
@@ -318,7 +332,7 @@ export default function POSPage() {
                           {formatCRC(p.sale_price)}
                         </span>
                         <span className="text-[9px] text-text-muted font-mono">
-                          Stock: {p.stock}
+                          Stock: {p.stock ?? 0}
                         </span>
                       </div>
                     </button>
@@ -647,15 +661,24 @@ export default function POSPage() {
             />
           )}
 
+          {isInvoiceMissingCustomer && (
+            <p className="text-[11px] text-amber-500 dark:text-amber-400 font-medium">
+              * Para Factura Electrónica (01) debe ingresar el nombre y cédula del cliente.
+            </p>
+          )}
+
+          {isSinpeMissingRef && (
+            <p className="text-[11px] text-amber-500 dark:text-amber-400 font-medium">
+              * Debe ingresar el número de teléfono o referencia SINPE.
+            </p>
+          )}
+
           <Button
             variant="primary"
             size="lg"
             onClick={completeSale}
-            disabled={
-              isProcessing ||
-              (paymentMethod === "CASH_CRC" && numCash < total)
-            }
-            className="w-full font-bold bg-emerald-600 hover:bg-emerald-500 border-0 text-white"
+            disabled={!canCompleteSale}
+            className="w-full font-bold bg-emerald-600 hover:bg-emerald-500 border-0 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessing ? (
               <>

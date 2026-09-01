@@ -53,17 +53,27 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredLogs.map((l) => (
-                  <tr key={l.id} className="hover:bg-surface-hover transition-colors">
-                    <td className="py-3 font-mono text-text-muted text-[11px]">{l.created_at}</td>
-                    <td className="py-3 font-bold text-text-main">{l.actor_name}</td>
-                    <td className="py-3">
-                      <Badge variant="blue">{l.action}</Badge>
+                {filteredLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-text-muted">
+                      {auditLogs.length === 0
+                        ? "No hay registros de auditoría aún. Las actividades del sistema se registrarán aquí automáticamente."
+                        : "No se encontraron eventos de auditoría que coincidan con la búsqueda."}
                     </td>
-                    <td className="py-3 font-mono text-text-secondary text-[11px]">{l.resource}</td>
-                    <td className="py-3 text-right font-mono text-text-muted text-[11px]">{l.ip_address}</td>
                   </tr>
-                ))}
+                ) : (
+                  filteredLogs.map((l) => (
+                    <tr key={l.id} className="hover:bg-surface-hover transition-colors">
+                      <td className="py-3 font-mono text-text-muted text-[11px]">{l.created_at}</td>
+                      <td className="py-3 font-bold text-text-main">{l.actor_name}</td>
+                      <td className="py-3">
+                        <Badge variant="blue">{l.action}</Badge>
+                      </td>
+                      <td className="py-3 font-mono text-text-secondary text-[11px]">{l.resource}</td>
+                      <td className="py-3 text-right font-mono text-text-muted text-[11px]">{l.ip_address}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

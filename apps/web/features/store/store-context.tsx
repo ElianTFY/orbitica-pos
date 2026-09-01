@@ -78,28 +78,28 @@ interface StoreContextType {
     docType?: "04" | "01";
   }) => { sale: SaleRecord; invoice: InvoiceRecord; receiptData: any };
   openCashSession: (initialAmount: number) => void;
-  closeCashSession: () => void;
+  closeCashSession: (actualCash?: number) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const orgId = user?.organization_id || "default_tenant";
+  const orgId = user?.organization_id || user?.email || "default_tenant";
 
   const [settings, setSettings] = useState<BusinessSettings>({
     trade_name: user?.organization_name || "Mi Negocio",
-    legal_name: user?.legal_name || user?.organization_name || "Comercial S.A.",
-    identification_number: user?.identification_number || "3101000000",
+    legal_name: user?.legal_name || user?.organization_name || "",
+    identification_number: user?.identification_number || "",
     identification_type: "JURIDICA",
-    email: user?.email || "facturacion@minegocio.cr",
-    phone: user?.phone || "+506 2200-0000",
-    address: "San José, Costa Rica",
+    email: user?.email || "",
+    phone: user?.phone || "",
+    address: "",
     branch_name: user?.branch_name || "Sucursal Central (001)",
     tax_regime: "TRADICIONAL",
     default_currency: "CRC",
     atv_environment: "STAGING",
-    atv_username: "cpf-01-1150-0888@stag.comprobanteselectronicos.go.cr",
+    atv_username: "",
   });
 
   // Zero-mock initial empty states
@@ -325,11 +325,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     // Update stock and create inventory movements
     items.forEach((it) => {
+      let prevStock = 0;
       if (it.productId) {
         setProducts((prev) =>
           prev.map((p) => {
             if (p.id === it.productId) {
-              const newStock = (p.stock ?? 0) + it.quantity;
+              prevStock = p.stock ?? 0;
+              const newStock = prevStock + it.quantity;
               return { ...p, stock: newStock, cost_price: it.unitCost };
             }
             return p;
@@ -344,8 +346,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         product_name: it.productName,
         movement_type: "IN_PURCHASE",
         quantity: it.quantity,
-        previous_quantity: 0,
-        new_quantity: it.quantity,
+        previous_quantity: prevStock,
+        new_quantity: prevStock + it.quantity,
         actor_name: user?.full_name || "Propietario",
         reason: `Compra factura #${invoiceNumber} (${supplierName})`,
       };
@@ -420,7 +422,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const seq = sales.length + 1;
     const saleNum = `V-${seq.toString().padStart(6, "0")}`;
     const consecutive = `00100001${docType}${seq.toString().padStart(10, "0")}`;
-    const key = `50629082600${settings.identification_number.padEnd(12, "0").slice(0, 12)}00100001${docType}${seq.toString().padStart(10, "0")}112345678`;
+
+    // Standard 50-digit Hacienda numeric key:
+    // Country (3) + Day (2) + Month (2) + Year (2) + Emisor Cedula (12) + Consecutive (20) + Situation (1) + Security Code (8)
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, "0");
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const y = String(now.getFullYear()).slice(-2);
+    const rawCedula = (settings.identification_number || "0").replace(/\D/g, "");
+    const cedula12 = rawCedula.padStart(12, "0").slice(-12);
+    const securityCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const key = `506${d}${m}${y}${cedula12}${consecutive}1${securityCode}`;
 
     const subtotal = items.reduce((acc, it) => acc + it.product.sale_price * it.quantity, 0);
     const tax = items.reduce(
@@ -580,12 +592,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     logAudit("CASH_SESSION_OPENED", `Apertura de Caja: ₡${initialAmount}`);
   };
 
-  const closeCashSession = () => {
+  const closeCashSession = (actualCash?: number) => {
     if (activeCashSession) {
+      const expectedCash = activeCashSession.initial_amount + activeCashSession.cash_sales;
+      const difference = actualCash !== undefined ? actualCash - expectedCash : 0;
       const closed: CashSession = {
         ...activeCashSession,
         closed_at: new Date().toISOString(),
         status: "CLOSED",
+        actual_cash: actualCash,
+        cash_difference: difference,
       };
       // Archive the session in history (never lose data)
       try {
@@ -595,7 +611,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       // Clear active session → next openCashSession will start fresh
       setActiveCashSession(null);
-      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: Ventas ₡${closed.total_sales.toFixed(2)}`);
+      const diff = difference !== 0 ? ` | Diferencia: ₡${difference.toFixed(2)}` : " | Cuadre exacto";
+      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: Ventas ₡${closed.total_sales.toFixed(2)}${diff}`);
     }
   };
 

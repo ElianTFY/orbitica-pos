@@ -16,7 +16,9 @@ export default function SuppliersPage() {
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
+  // Form states
   const [name, setName] = useState("");
   const [legalId, setLegalId] = useState("");
   const [legalIdType, setLegalIdType] = useState<"JURIDICA" | "FISICA" | "DIMEX">("JURIDICA");
@@ -24,6 +26,7 @@ export default function SuppliersPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const openCreateModal = () => {
     setEditingSupplier(null);
@@ -34,6 +37,7 @@ export default function SuppliersPage() {
     setPhone("");
     setEmail("");
     setAddress("");
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -46,33 +50,57 @@ export default function SuppliersPage() {
     setPhone(s.phone || "");
     setEmail(s.email || "");
     setAddress(s.address || "");
+    setFormError(null);
     setIsModalOpen(true);
+  };
+
+  const validateLegalId = (type: string, val: string): boolean => {
+    const clean = val.replace(/\D/g, "");
+    if (type === "FISICA") return clean.length === 9;
+    if (type === "JURIDICA") return clean.length === 10;
+    if (type === "DIMEX") return clean.length >= 11 && clean.length <= 12;
+    return clean.length >= 5;
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanId = legalId.replace(/\D/g, "");
+    if (!validateLegalId(legalIdType, cleanId)) {
+      if (legalIdType === "FISICA") setFormError("La cédula física debe tener exactamente 9 dígitos numéricos.");
+      else if (legalIdType === "JURIDICA") setFormError("La cédula jurídica debe tener exactamente 10 dígitos numéricos.");
+      else if (legalIdType === "DIMEX") setFormError("El DIMEX debe tener entre 11 y 12 dígitos numéricos.");
+      return;
+    }
+
     if (editingSupplier) {
       updateSupplier(editingSupplier.id, {
-        name,
-        legal_id: legalId,
+        name: name.trim(),
+        legal_id: cleanId,
         legal_id_type: legalIdType,
-        contact_person: contact || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        address: address || undefined,
+        contact_person: contact.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
       });
     } else {
       addSupplier({
-        name,
-        legal_id: legalId,
+        name: name.trim(),
+        legal_id: cleanId,
         legal_id_type: legalIdType,
-        contact_person: contact || undefined,
-        phone: phone || undefined,
-        email: email || undefined,
-        address: address || undefined,
+        contact_person: contact.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
       });
     }
     setIsModalOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (supplierToDelete) {
+      deleteSupplier(supplierToDelete.id);
+      setSupplierToDelete(null);
+    }
   };
 
   const filteredSuppliers = suppliers.filter(
@@ -135,7 +163,7 @@ export default function SuppliersPage() {
                 <thead>
                   <tr className="text-text-muted border-b border-border">
                     <th scope="col" className="pb-3 font-bold">Proveedor</th>
-                    <th scope="col" className="pb-3 font-bold">Cédula Jurídica</th>
+                    <th scope="col" className="pb-3 font-bold">Cédula / Identificación</th>
                     <th scope="col" className="pb-3 font-bold">Contacto / Agente</th>
                     <th scope="col" className="pb-3 font-bold">Teléfono / Correo</th>
                     <th scope="col" className="pb-3 font-bold">Dirección</th>
@@ -158,7 +186,10 @@ export default function SuppliersPage() {
                           </div>
                           <span className="truncate max-w-xs">{s.name}</span>
                         </td>
-                        <td className="py-3 font-mono text-text-secondary text-[11px]">{s.legal_id}</td>
+                        <td className="py-3 font-mono text-text-secondary text-[11px]">
+                          <div>{s.legal_id}</div>
+                          <span className="text-[10px] text-text-muted">{s.legal_id_type}</span>
+                        </td>
                         <td className="py-3 text-text-secondary">{s.contact_person || "-"}</td>
                         <td className="py-3 text-text-secondary">
                           {s.phone && <div className="text-[11px]">{s.phone}</div>}
@@ -177,7 +208,7 @@ export default function SuppliersPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => deleteSupplier(s.id)}
+                              onClick={() => setSupplierToDelete(s)}
                               aria-label={`Eliminar ${s.name}`}
                               className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
                             >
@@ -203,6 +234,12 @@ export default function SuppliersPage() {
         maxWidth="md"
       >
         <form onSubmit={handleSave} className="space-y-4">
+          {formError && (
+            <div className="p-3 bg-semantic-danger-bg border border-semantic-danger-border rounded-xl text-xs text-semantic-danger-text font-medium">
+              {formError}
+            </div>
+          )}
+
           <Input
             label="Nombre o Razón Social del Proveedor"
             placeholder="Ej: Distribuidora La Florida S.A."
@@ -277,6 +314,32 @@ export default function SuppliersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {supplierToDelete && (
+        <Modal
+          isOpen={true}
+          onClose={() => setSupplierToDelete(null)}
+          title="Confirmar Eliminación"
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-text-muted leading-relaxed">
+              ¿Estás seguro de que deseas eliminar al proveedor{" "}
+              <strong className="text-text-main">{supplierToDelete.name}</strong>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" onClick={() => setSupplierToDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onClick={handleConfirmDelete}>
+                Eliminar Proveedor
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </OwnerLayout>
   );
 }

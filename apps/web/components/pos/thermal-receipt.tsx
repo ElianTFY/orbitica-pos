@@ -59,15 +59,17 @@ export function ThermalReceipt({ data, onClose }: ThermalReceiptProps) {
     window.print();
   };
 
+  const qrUrl = data.hacienda.qr_url || `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${data.hacienda.numeric_key}`;
+
   return (
     <div className="space-y-4">
-      <div id="thermal-print-area" className="bg-white text-black p-6 rounded-xl font-mono text-xs max-w-sm mx-auto shadow-2xl border border-gray-200">
+      <div id="thermal-print-area" className="thermal-receipt bg-white text-black p-6 rounded-xl font-mono text-xs max-w-sm mx-auto shadow-2xl border border-gray-200">
         <div className="text-center space-y-1 pb-3 border-b border-dashed border-gray-400">
           <h2 className="text-base font-black tracking-tight uppercase">{data.store.name}</h2>
           <p className="text-[10px] text-gray-700">{data.store.legal_name}</p>
-          <p className="text-[10px] font-bold">Cédula Jurídica: {data.store.legal_id}</p>
-          <p className="text-[10px] text-gray-600">{data.store.address}</p>
-          <p className="text-[10px] text-gray-600">Tel: {data.store.phone} | {data.store.branch_name}</p>
+          <p className="text-[10px] font-bold">Cédula: {data.store.legal_id || "N/D"}</p>
+          <p className="text-[10px] text-gray-600">{data.store.address || "Costa Rica"}</p>
+          <p className="text-[10px] text-gray-600">{data.store.phone ? `Tel: ${data.store.phone} | ` : ""}{data.store.branch_name}</p>
         </div>
 
         <div className="py-2.5 border-b border-dashed border-gray-400 space-y-1 text-[10px]">
@@ -130,7 +132,7 @@ export function ThermalReceipt({ data, onClose }: ThermalReceiptProps) {
             </div>
           )}
           <div className="flex justify-between text-gray-700">
-            <span>IVA (13% / 4% / 2% / 1%):</span>
+            <span>IVA Devengado:</span>
             <span>{formatCRC(data.totals.tax)}</span>
           </div>
           <div className="flex justify-between text-base font-black border-t border-gray-400 pt-1 text-black">
@@ -150,10 +152,17 @@ export function ThermalReceipt({ data, onClose }: ThermalReceiptProps) {
         </div>
 
         <div className="pt-3 text-center space-y-2">
-          <div className="flex items-center justify-center">
-            <div className="p-2 border border-gray-300 rounded bg-white inline-block">
+          <div className="flex flex-col items-center justify-center">
+            <a
+              href={qrUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 border border-gray-300 rounded bg-white inline-block hover:border-blue-500 transition-colors"
+              title="Verificar en Ministerio de Hacienda"
+            >
               <QrCode className="w-16 h-16 text-black" />
-            </div>
+            </a>
+            <span className="text-[8px] text-gray-500 mt-1">Escanee o presione el QR para validar en ATV</span>
           </div>
           <p className="text-[9px] text-gray-600 leading-tight">
             {data.hacienda.resolution}
@@ -164,7 +173,7 @@ export function ThermalReceipt({ data, onClose }: ThermalReceiptProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 pt-2">
+      <div className="no-print flex items-center justify-end gap-2 pt-2">
         {onClose && (
           <Button variant="secondary" onClick={onClose}>
             Cerrar

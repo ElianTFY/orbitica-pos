@@ -24,12 +24,35 @@ export default function ReportsPage() {
   const { sales, products, purchases, settings } = useStore();
   const [period, setPeriod] = useState<"today" | "week" | "month">("month");
 
-  // Dynamic calculations from real tenant data
-  const grossSales = sales.reduce((acc, s) => acc + s.total, 0);
-  const totalSubtotal = sales.reduce((acc, s) => acc + s.subtotal, 0);
-  const totalTax = sales.reduce((acc, s) => acc + s.tax, 0);
+  // Filter sales by selected period
+  const now = new Date();
+  const filteredSales = sales.filter((s) => {
+    const saleDate = new Date(s.created_at);
+    if (period === "today") {
+      return (
+        saleDate.getFullYear() === now.getFullYear() &&
+        saleDate.getMonth() === now.getMonth() &&
+        saleDate.getDate() === now.getDate()
+      );
+    }
+    if (period === "week") {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(now.getDate() - 7);
+      return saleDate >= weekAgo;
+    }
+    // month
+    return (
+      saleDate.getFullYear() === now.getFullYear() &&
+      saleDate.getMonth() === now.getMonth()
+    );
+  });
 
-  // Total inventory valuation
+  // Dynamic calculations from real tenant data — filtered by period
+  const grossSales = filteredSales.reduce((acc, s) => acc + s.total, 0);
+  const totalSubtotal = filteredSales.reduce((acc, s) => acc + s.subtotal, 0);
+  const totalTax = filteredSales.reduce((acc, s) => acc + s.tax, 0);
+
+  // Total inventory valuation (not period-dependent)
   const inventoryValuation = products.reduce(
     (acc, p) => acc + (p.stock ?? 0) * (p.cost_price || 0),
     0
@@ -41,9 +64,9 @@ export default function ReportsPage() {
   const marginPct = grossSales > 0 ? Math.round((grossProfit / grossSales) * 100) : 0;
 
   // Payments breakdown
-  const sinpeSales = sales.filter((s) => s.payment_method === "SINPE").reduce((acc, s) => acc + s.total, 0);
-  const cardSales = sales.filter((s) => s.payment_method === "CARD").reduce((acc, s) => acc + s.total, 0);
-  const cashSales = sales.filter((s) => s.payment_method === "CASH_CRC").reduce((acc, s) => acc + s.total, 0);
+  const sinpeSales = filteredSales.filter((s) => s.payment_method === "SINPE").reduce((acc, s) => acc + s.total, 0);
+  const cardSales = filteredSales.filter((s) => s.payment_method === "CARD").reduce((acc, s) => acc + s.total, 0);
+  const cashSales = filteredSales.filter((s) => s.payment_method === "CASH_CRC").reduce((acc, s) => acc + s.total, 0);
 
   const sinpePct = grossSales > 0 ? Math.round((sinpeSales / grossSales) * 100) : 0;
   const cardPct = grossSales > 0 ? Math.round((cardSales / grossSales) * 100) : 0;
@@ -114,7 +137,7 @@ export default function ReportsPage() {
             </div>
             <div className="mt-3">
               <span className="text-2xl font-black text-text-main font-mono">{formatCRC(grossSales)}</span>
-              <span className="text-[11px] text-text-muted block mt-1">{sales.length} transacciones registradas</span>
+              <span className="text-[11px] text-text-muted block mt-1">{filteredSales.length} transacciones en el período</span>
             </div>
           </Card>
 
@@ -159,7 +182,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Detailed Breakdown or Clean Empty State */}
-        {sales.length === 0 ? (
+        {filteredSales.length === 0 ? (
           <Card className="p-12 text-center space-y-4">
             <div className="w-14 h-14 rounded-3xl bg-primary-subtle text-primary flex items-center justify-center mx-auto border border-primary/20">
               <BarChart3 className="w-7 h-7" />
@@ -189,7 +212,7 @@ export default function ReportsPage() {
                   <div>
                     <span className="text-xs font-bold text-text-main block">SINPE Móvil</span>
                     <span className="text-[10px] text-text-muted">
-                      {sales.filter((s) => s.payment_method === "SINPE").length} transacciones
+                      {filteredSales.filter((s) => s.payment_method === "SINPE").length} transacciones
                     </span>
                   </div>
                   <div className="text-right">
@@ -202,7 +225,7 @@ export default function ReportsPage() {
                   <div>
                     <span className="text-xs font-bold text-text-main block">Tarjetas de Débito / Crédito</span>
                     <span className="text-[10px] text-text-muted">
-                      {sales.filter((s) => s.payment_method === "CARD").length} transacciones
+                      {filteredSales.filter((s) => s.payment_method === "CARD").length} transacciones
                     </span>
                   </div>
                   <div className="text-right">
@@ -215,7 +238,7 @@ export default function ReportsPage() {
                   <div>
                     <span className="text-xs font-bold text-text-main block">Efectivo en Colones (CRC)</span>
                     <span className="text-[10px] text-text-muted">
-                      {sales.filter((s) => s.payment_method === "CASH_CRC").length} transacciones
+                      {filteredSales.filter((s) => s.payment_method === "CASH_CRC").length} transacciones
                     </span>
                   </div>
                   <div className="text-right">
@@ -228,7 +251,7 @@ export default function ReportsPage() {
 
             <Card className="space-y-4">
               <CardHeader>
-                <CardTitle>Resumen Tributario Hacienda v4.3</CardTitle>
+                <CardTitle>Resumen Tributario Hacienda v4.4</CardTitle>
               </CardHeader>
               <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
                 <div className="flex justify-between text-xs">

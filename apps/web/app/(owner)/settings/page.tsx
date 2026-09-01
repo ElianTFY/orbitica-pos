@@ -289,13 +289,15 @@ export default function SettingsPage() {
           <Card className="max-w-2xl space-y-6">
             <div className="flex items-center justify-between p-3.5 bg-surface-secondary rounded-2xl border border-border">
               <div className="flex items-center gap-2.5">
-                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                <ShieldCheck className={`w-5 h-5 ${atvUser ? "text-emerald-500" : "text-text-muted"}`} />
                 <div>
                   <span className="text-xs font-bold text-text-main block">Firmador Digital XAdES-BES & API ATV</span>
-                  <span className="text-[10px] text-text-muted">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda</span>
+                  <span className="text-[10px] text-text-muted">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda v4.4</span>
                 </div>
               </div>
-              <Badge variant="success">FIRMADO XAdES-BES ACTIVO</Badge>
+              <Badge variant={atvUser ? "success" : "default"}>
+                {atvUser ? "CREDENCIALES REGISTRADAS" : "CREDENCIALES PENDIENTES"}
+              </Badge>
             </div>
 
             <form onSubmit={handleSaveHacienda} className="space-y-4">
@@ -314,16 +316,20 @@ export default function SettingsPage() {
               </div>
 
               <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
-                <div className="flex items-center gap-2">
-                  <KeyRound className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-bold text-text-main">Llave Criptográfica (.p12 / .pfx)</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-bold text-text-main">Llave Criptográfica (.p12 / .pfx)</span>
+                  </div>
+                  <span className="text-[10px] text-text-muted">Certificado criptográfico de ATV</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] text-text-muted block mb-1">Archivo de Certificado</label>
+                    <label className="text-[11px] text-text-muted block mb-1">Archivo de Certificado (.p12 / .pfx)</label>
                     <input
                       type="file"
                       accept=".p12,.pfx"
+                      aria-label="Archivo de certificado llave criptográfica"
                       className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-surface file:text-text-main hover:file:bg-surface-hover cursor-pointer border border-border rounded-xl p-1"
                     />
                   </div>

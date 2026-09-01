@@ -21,15 +21,17 @@ export default function InventoryPage() {
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [adjType, setAdjType] = useState<"IN_PURCHASE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE">("ADJUSTMENT_IN");
-  const [adjQty, setAdjQty] = useState("10");
+  const [adjQty, setAdjQty] = useState("1");
   const [adjReason, setAdjReason] = useState("");
 
   const handleCreateAdjustment = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find((p) => p.id === selectedProductId) || products[0];
+    const prod = products.find((p) => p.id === selectedProductId);
     if (!prod) return;
 
-    const qty = parseFloat(adjQty) || 0;
+    const qty = parseFloat(adjQty);
+    if (isNaN(qty) || qty <= 0) return;
+
     const isNegative = adjType === "WASTE" || adjType === "ADJUSTMENT_OUT";
     const delta = isNegative ? -Math.abs(qty) : Math.abs(qty);
 
@@ -38,11 +40,11 @@ export default function InventoryPage() {
       productName: prod.name,
       movementType: adjType,
       quantity: delta,
-      reason: adjReason,
+      reason: adjReason.trim() || undefined,
     });
 
     setIsAdjustModalOpen(false);
-    setAdjQty("10");
+    setAdjQty("1");
     setAdjReason("");
   };
 
@@ -115,7 +117,13 @@ export default function InventoryPage() {
               </p>
             </div>
             {products.length > 0 && (
-              <Button variant="primary" onClick={() => setIsAdjustModalOpen(true)}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setSelectedProductId(products[0].id);
+                  setIsAdjustModalOpen(true);
+                }}
+              >
                 <Plus className="w-4 h-4 mr-2" />
                 Registrar Primer Ajuste
               </Button>

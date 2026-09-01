@@ -35,33 +35,57 @@ export default function RegisterPage() {
   const [ownerPassword, setOwnerPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [branchName, setBranchName] = useState("Sucursal Central (001)");
+  const [branchAddress, setBranchAddress] = useState("");
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  const validateCedula = (type: string, val: string): boolean => {
+    const clean = val.replace(/\D/g, "");
+    if (type === "FISICA") return clean.length === 9;
+    if (type === "JURIDICA") return clean.length === 10;
+    if (type === "DIMEX") return clean.length >= 11 && clean.length <= 12;
+    return clean.length >= 5;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
+
+    const cleanId = idNumber.replace(/\D/g, "");
+    if (!validateCedula(idType, cleanId)) {
+      if (idType === "FISICA") setError("La cédula física debe tener exactamente 9 dígitos numéricos.");
+      else if (idType === "JURIDICA") setError("La cédula jurídica debe tener exactamente 10 dígitos numéricos.");
+      else if (idType === "DIMEX") setError("El DIMEX debe tener entre 11 y 12 dígitos numéricos.");
+      else setError("Número de identificación inválido.");
+      return;
+    }
+
+    if (ownerPassword.length < 6) {
+      setError("La contraseña del administrador debe tener al menos 6 caracteres.");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const res = await api.request<any>("/organizations/register", {
         method: "POST",
         body: JSON.stringify({
-          legal_name: legalName,
-          trade_name: tradeName || legalName,
+          legal_name: legalName.trim(),
+          trade_name: tradeName.trim() || legalName.trim(),
           identification_type: idType,
-          identification_number: idNumber,
-          email: ownerEmail,
-          phone: phone || "+506 2200-0000",
+          identification_number: cleanId,
+          email: ownerEmail.trim(),
+          phone: phone.trim(),
           country_code: "CR",
           default_currency: "CRC",
-          initial_branch_name: branchName || "Sucursal Central (001)",
-          initial_branch_address: "San José, Costa Rica",
-          owner_email: ownerEmail,
+          initial_branch_name: branchName.trim() || "Sucursal Central (001)",
+          initial_branch_address: branchAddress.trim() || "Costa Rica",
+          owner_email: ownerEmail.trim(),
           owner_password: ownerPassword,
-          owner_full_name: ownerName,
+          owner_full_name: ownerName.trim(),
         }),
       });
 
@@ -124,7 +148,7 @@ export default function RegisterPage() {
                   Crear Cuenta para tu Negocio
                 </h1>
                 <p className="text-xs text-text-muted">
-                  Comienza tu prueba de 14 días con facturación electrónica Hacienda v4.3 y control de inventario
+                  Comienza tu prueba de 14 días con facturación electrónica Hacienda v4.4 y control de inventario
                 </p>
               </div>
 
@@ -204,6 +228,13 @@ export default function RegisterPage() {
                       required
                     />
                   </div>
+
+                  <Input
+                    label="Dirección de la Sucursal"
+                    placeholder="Ej: San José, Costa Rica"
+                    value={branchAddress}
+                    onChange={(e) => setBranchAddress(e.target.value)}
+                  />
                 </div>
 
                 <div className="space-y-3 pt-3 border-t border-border">

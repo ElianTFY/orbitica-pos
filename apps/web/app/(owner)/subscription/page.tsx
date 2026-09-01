@@ -40,7 +40,7 @@ export default function SubscriptionPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
               <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl">
                 <span className="text-[10px] text-text-muted uppercase font-bold">Sucursales</span>
-                <div className="text-lg font-black text-text-main mt-0.5 font-mono">1 / 5</div>
+                <div className="text-lg font-black text-text-main mt-0.5 font-mono">1 Activa</div>
                 <span className="text-[10px] text-text-muted">{settings.branch_name}</span>
               </div>
 
@@ -91,9 +91,14 @@ export default function SubscriptionPage() {
             </div>
 
             <div className="space-y-2">
-              <Button variant="primary" className="w-full">
-                Elegir Plan Definitivo
-              </Button>
+              <a
+                href={`mailto:ventas@orbitica.app?subject=Actualizar%20Plan%20-%20${encodeURIComponent(settings.trade_name)}&body=Hola%2C%20me%20interesa%20actualizar%20mi%20plan.%20Mi%20empresa%20es%3A%20${encodeURIComponent(settings.trade_name)}`}
+                className="block"
+              >
+                <Button variant="primary" className="w-full">
+                  Elegir Plan Definitivo
+                </Button>
+              </a>
             </div>
           </Card>
         </div>

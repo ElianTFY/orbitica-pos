@@ -54,7 +54,7 @@ export default function DashboardPage() {
           <Link href="/pos">
             <Button variant="primary" size="lg" className="font-bold tracking-wide bg-emerald-600 hover:bg-emerald-500 text-white">
               <ShoppingCart className="w-5 h-5 mr-2" />
-              Abrir Punto de Venta (F2)
+              Ir al Punto de Venta (POS)
             </Button>
           </Link>
         </div>
@@ -164,7 +164,15 @@ export default function DashboardPage() {
 
           <Card className="lg:col-span-2 space-y-4">
             <CardHeader>
-              <CardTitle>Últimas Ventas Realizadas</CardTitle>
+              <div className="flex items-center justify-between w-full">
+                <CardTitle>Últimas Ventas Realizadas</CardTitle>
+                {sales.length > 0 && (
+                  <Link href="/sales" className="text-xs text-primary font-bold hover:underline flex items-center gap-1">
+                    Ver todas ({sales.length})
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </Link>
+                )}
+              </div>
             </CardHeader>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs" aria-label="Tabla de últimas ventas">

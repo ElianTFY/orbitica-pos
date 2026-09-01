@@ -29,23 +29,23 @@ export default function PurchasesPage() {
   const [paymentType, setPaymentType] = useState<"CONTADO" | "CREDITO">("CONTADO");
   const [selectedProductId, setSelectedProductId] = useState("");
   const [productName, setProductName] = useState("");
-  const [quantity, setQuantity] = useState("20");
-  const [unitCost, setUnitCost] = useState("500");
+  const [quantity, setQuantity] = useState("1");
+  const [unitCost, setUnitCost] = useState("");
 
   const openCreateModal = () => {
-    setSupplierName(suppliers[0]?.name || "Proveedor General");
-    setInvoiceNumber(`FAC-${Math.floor(1000 + Math.random() * 9000)}`);
+    setSupplierName(suppliers[0]?.name || "");
+    setInvoiceNumber(`FAC-${Date.now().toString().slice(-6)}`);
     setPaymentType("CONTADO");
     if (products.length > 0) {
       setSelectedProductId(products[0].id);
       setProductName(products[0].name);
-      setUnitCost(products[0].cost_price.toString());
+      setUnitCost((products[0].cost_price || 0).toString());
     } else {
       setSelectedProductId("");
       setProductName("");
-      setUnitCost("500");
+      setUnitCost("");
     }
-    setQuantity("20");
+    setQuantity("1");
     setIsModalOpen(true);
   };
 
@@ -55,8 +55,8 @@ export default function PurchasesPage() {
     const pName = prod ? prod.name : productName || "Producto Comprado";
 
     recordPurchase({
-      supplierName: supplierName || "Proveedor General",
-      invoiceNumber: invoiceNumber || `FAC-${Date.now()}`,
+      supplierName: supplierName.trim() || "Proveedor General",
+      invoiceNumber: invoiceNumber.trim() || `FAC-${Date.now()}`,
       paymentType,
       items: [
         {

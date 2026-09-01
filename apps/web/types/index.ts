@@ -170,6 +170,8 @@ export interface CashSession {
   card_sales: number;
   total_sales: number;
   status: "OPEN" | "CLOSED";
+  actual_cash?: number;
+  cash_difference?: number;
 }
 
 export interface AuditLogEntry {

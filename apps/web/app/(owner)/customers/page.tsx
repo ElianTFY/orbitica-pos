@@ -26,6 +26,7 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
 
   const [name, setName] = useState("");
   const [idType, setIdType] = useState<"FISICA" | "JURIDICA" | "DIMEX" | "EXTRANJERO">("FISICA");
@@ -33,6 +34,7 @@ export default function CustomersPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const openCreateModal = () => {
     setEditingCustomer(null);
@@ -42,6 +44,7 @@ export default function CustomersPage() {
     setEmail("");
     setPhone("");
     setAddress("");
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -53,32 +56,57 @@ export default function CustomersPage() {
     setEmail(c.email || "");
     setPhone(c.phone || "");
     setAddress(c.address || "");
+    setFormError(null);
     setIsModalOpen(true);
+  };
+
+  const validateCedula = (type: string, val: string): boolean => {
+    const clean = val.replace(/\D/g, "");
+    if (type === "FISICA") return clean.length === 9;
+    if (type === "JURIDICA") return clean.length === 10;
+    if (type === "DIMEX") return clean.length >= 11 && clean.length <= 12;
+    return clean.length >= 5;
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanId = idNumber.replace(/\D/g, "");
+    if (!validateCedula(idType, cleanId)) {
+      if (idType === "FISICA") setFormError("La cédula física debe tener exactamente 9 dígitos numéricos.");
+      else if (idType === "JURIDICA") setFormError("La cédula jurídica debe tener exactamente 10 dígitos numéricos.");
+      else if (idType === "DIMEX") setFormError("El DIMEX debe tener entre 11 y 12 dígitos numéricos.");
+      else setFormError("El número de identificación debe tener al menos 5 caracteres.");
+      return;
+    }
+
     if (editingCustomer) {
       updateCustomer(editingCustomer.id, {
-        name,
+        name: name.trim(),
         identification_type: idType,
-        identification_number: idNumber,
-        email: email || undefined,
-        phone: phone || undefined,
-        address: address || undefined,
+        identification_number: cleanId,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined,
       });
     } else {
       addCustomer({
-        name,
+        name: name.trim(),
         identification_type: idType,
-        identification_number: idNumber,
-        email: email || undefined,
-        phone: phone || undefined,
-        address: address || undefined,
+        identification_number: cleanId,
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        address: address.trim() || undefined,
         is_active: true,
       });
     }
     setIsModalOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (customerToDelete) {
+      deleteCustomer(customerToDelete.id);
+      setCustomerToDelete(null);
+    }
   };
 
   const filteredCustomers = customers.filter(
@@ -186,7 +214,9 @@ export default function CustomersPage() {
                           {c.address || "-"}
                         </td>
                         <td className="py-3">
-                          <Badge variant="success">Activo</Badge>
+                          <Badge variant={c.is_active !== false ? "success" : "default"}>
+                            {c.is_active !== false ? "Activo" : "Inactivo"}
+                          </Badge>
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -200,7 +230,7 @@ export default function CustomersPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => deleteCustomer(c.id)}
+                              onClick={() => setCustomerToDelete(c)}
                               aria-label={`Eliminar ${c.name}`}
                               className="p-1.5 text-text-muted hover:text-red-500 hover:bg-semantic-danger-bg rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500"
                             >
@@ -226,6 +256,12 @@ export default function CustomersPage() {
         maxWidth="md"
       >
         <form onSubmit={handleSave} className="space-y-4">
+          {formError && (
+            <div className="p-3 bg-semantic-danger-bg border border-semantic-danger-border rounded-xl text-xs text-semantic-danger-text font-medium">
+              {formError}
+            </div>
+          )}
+
           <Input
             label="Nombre o Razón Social"
             placeholder="Ej: Distribuidora Sol Naciente S.A."
@@ -294,6 +330,32 @@ export default function CustomersPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {customerToDelete && (
+        <Modal
+          isOpen={true}
+          onClose={() => setCustomerToDelete(null)}
+          title="Confirmar Eliminación"
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-text-muted leading-relaxed">
+              ¿Estás seguro de que deseas eliminar al cliente{" "}
+              <strong className="text-text-main">{customerToDelete.name}</strong>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" onClick={() => setCustomerToDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="danger" onClick={handleConfirmDelete}>
+                Eliminar Cliente
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </OwnerLayout>
   );
 }

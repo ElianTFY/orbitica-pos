@@ -43,7 +43,16 @@ export default function SalesPage() {
     }
 
     // Fallback: reconstruct from available data (for older sales without snapshot)
-    const key = sale.numeric_key || `50629082600${settings.identification_number.padEnd(12, "0").slice(0, 12)}00100001040000000001112345678`;
+    const now = new Date(sale.created_at || Date.now());
+    const d = String(now.getDate()).padStart(2, "0");
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const y = String(now.getFullYear()).slice(-2);
+    const rawCedula = (settings.identification_number || "0").replace(/\D/g, "");
+    const cedula12 = rawCedula.padStart(12, "0").slice(-12);
+    const consecutive = sale.consecutive_number || `0010000104${(sale.id || "1").slice(-10).padStart(10, "0")}`;
+    const securityCode = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const key = sale.numeric_key || `506${d}${m}${y}${cedula12}${consecutive}1${securityCode}`;
+
     setReceiptData({
       sale_number: sale.sale_number,
       created_at: sale.created_at,
@@ -62,9 +71,9 @@ export default function SalesPage() {
       },
       hacienda: {
         doc_type: "Tiquete Electrónico (04)",
-        consecutive: sale.consecutive_number || "00100001040000000001",
+        consecutive: consecutive,
         numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019",
+        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019 (Esquema v4.4)",
         qr_url: `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${key}`,
       },
       items: sale.items_snapshot
@@ -72,7 +81,7 @@ export default function SalesPage() {
         : [
             {
               name: "Venta Registrada POS",
-              quantity: sale.items_count,
+              quantity: sale.items_count || 1,
               unit_price: sale.subtotal / (sale.items_count || 1),
               tax_amount: sale.tax,
               total: sale.total,
@@ -143,7 +152,9 @@ export default function SalesPage() {
                 {filteredSales.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-text-muted">
-                      No hay ventas registradas aún. Al realizar ventas en el Punto de Venta se listarán aquí en tiempo real.
+                      {sales.length === 0
+                        ? "No hay ventas registradas aún. Al realizar ventas en el Punto de Venta se listarán aquí en tiempo real."
+                        : "No se encontraron ventas que coincidan con la búsqueda."}
                     </td>
                   </tr>
                 ) : (

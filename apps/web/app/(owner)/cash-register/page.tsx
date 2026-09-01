@@ -31,7 +31,7 @@ export default function CashRegisterPage() {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
   // Form states
-  const [openAmount, setOpenAmount] = useState("50000");
+  const [openAmount, setOpenAmount] = useState("");
   const [actualCash, setActualCash] = useState("");
 
   const handleOpenSession = (e: React.FormEvent) => {
@@ -42,7 +42,7 @@ export default function CashRegisterPage() {
 
   const handleCloseSession = (e: React.FormEvent) => {
     e.preventDefault();
-    closeCashSession();
+    closeCashSession(parseFloat(actualCash) || 0);
     setIsCloseModalOpen(false);
     setActualCash("");
   };
@@ -67,10 +67,18 @@ export default function CashRegisterPage() {
 
           <div className="flex items-center gap-2">
             {activeCashSession?.status === "OPEN" ? (
-              <Button variant="danger" onClick={() => setIsCloseModalOpen(true)}>
-                <Lock className="w-4 h-4 mr-1.5" />
-                Cerrar Caja (Arqueo Z)
-              </Button>
+              <>
+                <a href="/pos">
+                  <Button variant="primary">
+                    <Banknote className="w-4 h-4 mr-1.5" />
+                    Ir a Vender (POS)
+                  </Button>
+                </a>
+                <Button variant="danger" onClick={() => setIsCloseModalOpen(true)}>
+                  <Lock className="w-4 h-4 mr-1.5" />
+                  Cerrar Caja (Arqueo Z)
+                </Button>
+              </>
             ) : (
               <Button variant="primary" onClick={() => setIsOpenModalOpen(true)}>
                 <Unlock className="w-4 h-4 mr-1.5" />
@@ -125,7 +133,7 @@ export default function CashRegisterPage() {
                     <div>
                       <CardTitle>Turno de Caja Abierto</CardTitle>
                       <p className="text-xs text-text-muted">
-                        Iniciado por: {user?.full_name || "Cajero"} • {activeCashSession.opened_at.replace("T", " ").substring(0, 19)}
+                        Iniciado por: {user?.full_name || "Cajero"} • {new Date(activeCashSession.opened_at).toLocaleString("es-CR")}
                       </p>
                     </div>
                   </div>

@@ -86,6 +86,15 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
 
+            <div className="flex justify-end">
+              <a
+                href="mailto:soporte@orbitica.app?subject=Recuperaci%C3%B3n%20de%20Contrase%C3%B1a%20Orb%C3%ADtica%20POS"
+                className="text-[11px] text-text-muted hover:text-primary transition-colors hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </a>
+            </div>
+
             <Button type="submit" variant="primary" className="w-full py-3 font-bold text-sm" disabled={isSubmitting}>
               {isSubmitting ? (
                 "Validando credenciales..."

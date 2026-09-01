@@ -61,9 +61,9 @@ export default function InvoicesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="blue" className="py-1.5 px-3">
+            <Badge variant={settings.atv_username ? "blue" : "default"} className="py-1.5 px-3">
               <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-              ATV v4.4 Conectado
+              {settings.atv_username ? `ATV v4.4 (${settings.atv_environment})` : "ATV v4.4 (Sin configurar)"}
             </Badge>
           </div>
         </div>
@@ -101,7 +101,9 @@ export default function InvoicesPage() {
                 {filteredInvoices.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-text-muted">
-                      No hay comprobantes emitidos aún. Al realizar ventas en el Punto de Venta se generarán automáticamente aquí.
+                      {invoices.length === 0
+                        ? "No hay comprobantes emitidos aún. Al realizar ventas en el Punto de Venta se generarán automáticamente aquí."
+                        : "No se encontraron comprobantes que coincidan con la búsqueda."}
                     </td>
                   </tr>
                 ) : (
@@ -120,9 +122,9 @@ export default function InvoicesPage() {
                       <td className="py-3 font-mono text-text-muted text-[11px]">{inv.created_at}</td>
                       <td className="py-3 font-black text-emerald-500 font-mono">{formatCRC(inv.total)}</td>
                       <td className="py-3">
-                        <Badge variant="success">
+                        <Badge variant={inv.status === "ACCEPTED" ? "success" : inv.status === "PENDING" ? "warning" : "danger"}>
                           <CheckCircle className="w-3 h-3 mr-1" />
-                          Aceptado
+                          {inv.status === "ACCEPTED" ? "Aceptado" : inv.status === "PENDING" ? "Pendiente" : "Rechazado"}
                         </Badge>
                       </td>
                       <td className="py-3 text-right">
