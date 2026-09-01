@@ -500,3 +500,185 @@ export interface TenantHealthAlert {
   occurred_at: string;
   resolved: boolean;
 }
+
+/* =========================================================================
+   ORBÍTICA HUB SUPERADMIN — DOMAIN MODELS & TYPES
+   ========================================================================= */
+
+export type SuperadminRole =
+  | "PLATFORM_OWNER"
+  | "OPERATIONS"
+  | "SUPPORT"
+  | "FINANCE"
+  | "SECURITY"
+  | "READ_ONLY";
+
+export type SuperadminPermission =
+  | "*"
+  | "tenants:view"
+  | "tenants:mutate"
+  | "tenants:delete"
+  | "subscriptions:manage"
+  | "pricing:edit"
+  | "refunds:execute"
+  | "support:impersonate"
+  | "feature_flags:toggle"
+  | "security:audit"
+  | "comms:broadcast"
+  | "automations:configure";
+
+export interface SuperadminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: SuperadminRole;
+  permissions: SuperadminPermission[];
+  is_2fa_enabled: boolean;
+  last_login?: string;
+  ip_restriction?: string[];
+}
+
+export interface PlatformAlert {
+  id: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  category:
+    | "PAYMENT_FAILED"
+    | "TRIAL_EXPIRING"
+    | "ACTIVATION_ISSUE"
+    | "HACIENDA_REJECTED"
+    | "HACIENDA_PENDING"
+    | "CREDENTIALS_EXPIRING"
+    | "URGENT_TICKET"
+    | "MIGRATION_FAILED"
+    | "WEBHOOK_FAILED"
+    | "SECURITY_ALERT"
+    | "STALE_REGISTER";
+  tenant_id: string;
+  tenant_name: string;
+  title: string;
+  description: string;
+  occurred_at: string;
+  assigned_to?: string | null;
+  recommended_action: string;
+  deep_link: string;
+  status: "OPEN" | "IN_PROGRESS" | "RESOLVED";
+  internal_notes?: string;
+  resolved_at?: string | null;
+}
+
+export interface PricePlanVersion {
+  id: string;
+  plan_id: string;
+  version_number: string;
+  monthly_price: number;
+  annual_price: number;
+  currency: "CRC" | "USD";
+  effective_date: string;
+  grandfathered_tenants_count: number;
+  scheduled_migration_date?: string;
+  is_active: boolean;
+  created_at: string;
+  created_by: string;
+}
+
+export interface FeatureFlagDefinition {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  status: "DISABLED" | "INTERNAL_TESTING" | "BETA" | "GRADUAL_ROLLOUT" | "ACTIVE" | "RETIRED";
+  scope: "GLOBAL" | "BY_PLAN" | "BY_TENANT" | "PERCENTAGE";
+  rollout_percentage?: number;
+  target_plans?: string[];
+  target_tenant_ids?: string[];
+  environment: "ALL" | "PRODUCTION" | "STAGING" | "DEVELOPMENT";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IdempotentPaymentTransaction {
+  id: string;
+  idempotency_key: string;
+  tenant_id: string;
+  tenant_name: string;
+  plan_id: string;
+  amount: number;
+  currency: "CRC" | "USD";
+  provider: "SIMULATED_SINPE" | "SIMULATED_CARD" | "BAC_CREDOMATIC" | "BNCR";
+  reference: string;
+  status: "SUCCESS" | "FAILED" | "PENDING" | "REFUNDED";
+  created_at: string;
+  retry_count: number;
+  provider_response?: string;
+}
+
+export interface PlatformBroadcast {
+  id: string;
+  title: string;
+  message: string;
+  type: "MAINTENANCE" | "FEATURE_ANNOUNCEMENT" | "SECURITY_NOTICE" | "GENERAL";
+  target_audience: "ALL" | "TRIAL_USERS" | "PAID_USERS" | "PLAN_INICIO" | "PLAN_CRECE" | "PLAN_ESCALA";
+  channels: ("IN_APP" | "EMAIL")[];
+  status: "DRAFT" | "SCHEDULED" | "SENT" | "CANCELLED";
+  scheduled_for?: string;
+  sent_at?: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface PlatformAutomationRule {
+  id: string;
+  name: string;
+  event_trigger:
+    | "TRIAL_EXPIRING_48H"
+    | "PAYMENT_FAILED"
+    | "INVOICE_REJECTED_HACIENDA"
+    | "STALE_CASH_REGISTER_18H"
+    | "INACTIVE_TENANT_14D";
+  action:
+    | "SEND_EMAIL_REMINDER"
+    | "TRIGGER_GRACE_PERIOD"
+    | "CREATE_CRITICAL_ALERT"
+    | "ESCALATE_TICKET";
+  is_enabled: boolean;
+  last_executed_at?: string;
+  execution_count: number;
+}
+
+export interface SuperadminAuditEntry {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_role: SuperadminRole;
+  action: string;
+  resource: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  reason?: string;
+  details_masked: Record<string, any>;
+  ip_address: string;
+  user_agent: string;
+  session_id: string;
+  is_critical: boolean;
+  step_up_confirmed: boolean;
+  created_at: string;
+}
+
+export interface TechnicalServiceHealth {
+  id: string;
+  name: string;
+  category:
+    | "FRONTEND"
+    | "API"
+    | "DATABASE"
+    | "HACIENDA_ATV"
+    | "OFFLINE_SYNC"
+    | "R2_STORAGE"
+    | "EMAIL_WORKERS"
+    | "PAYMENTS";
+  status: "OPERATIONAL" | "DEGRADED" | "OUTAGE" | "MAINTENANCE";
+  latency_ms: number;
+  uptime_percentage: number;
+  last_checked: string;
+  incident_notes?: string;
+}
