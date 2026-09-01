@@ -19,8 +19,24 @@ class User(Base, UUIDMixin, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    
+    # Lockout & Security
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # MFA TOTP
+    totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
+    # Password Recovery
+    recovery_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    recovery_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    # Email Verification
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_verification_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    email_verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verification_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     organization: Mapped["Organization | None"] = relationship("Organization", back_populates="users")
     branch_accesses: Mapped[list["UserBranchAccess"]] = relationship("UserBranchAccess", back_populates="user", cascade="all, delete-orphan")

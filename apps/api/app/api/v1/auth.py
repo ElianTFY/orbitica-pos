@@ -1,7 +1,16 @@
-from fastapi import APIRouter, Depends, Response, Request
+from fastapi import APIRouter, Depends, Response, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, TokenResponse, UserProfileResponse
+from app.schemas.auth import (
+    LoginRequest,
+    TokenResponse,
+    UserProfileResponse,
+    PasswordRecoveryRequest,
+    PasswordResetRequest,
+    EmailVerificationRequest,
+    StepUpAuthRequest,
+    StepUpAuthResponse
+)
 from app.schemas.common import StandardResponse
 from app.services.auth_service import AuthService
 from app.security.deps import get_current_user_context, CurrentUserContext
@@ -24,6 +33,7 @@ async def login(
     user, access_token, refresh_token = await service.authenticate_user(
         email=payload.email,
         password=payload.password,
+        totp_code=payload.totp_code,
         ip_address=ip_address,
         user_agent=user_agent
     )
@@ -110,9 +120,84 @@ async def get_me(
             full_name=context.user.full_name,
             phone=context.user.phone,
             role=context.user.role,
+            totp_enabled=context.user.totp_enabled,
+            email_verified=context.user.email_verified,
             organization_id=context.organization_id,
             organization_name=context.organization.trade_name if context.organization else "ORBÍTICA STUDIO",
             accessible_branches=context.accessible_branch_ids,
             permissions=perms
         )
+    )
+
+@router.post("/recovery", response_model=StandardResponse[dict])
+async def request_recovery(
+    payload: PasswordRecoveryRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    token = await service.request_password_recovery(payload.email)
+    return StandardResponse(
+        data={"sent": True},
+        message="Si el correo existe en la plataforma, se ha enviado un enlace de recuperación."
+    )
+
+@router.post("/reset-password", response_model=StandardResponse[dict])
+async def reset_password(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    await service.reset_password_with_token(payload.token, payload.new_password)
+    return StandardResponse(
+        data={"reset": True},
+        message="Contraseña restablecida con éxito. Inicia sesión con tu nueva contraseña."
+    )
+
+@router.post("/verify-email/request", response_model=StandardResponse[dict])
+async def request_email_verification(
+    context: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    await service.request_email_verification(context.user.id)
+    return StandardResponse(
+        data={"requested": True},
+        message="Código de verificación enviado al correo electrónico."
+    )
+
+@router.post("/verify-email/confirm", response_model=StandardResponse[dict])
+async def confirm_email_verification(
+    payload: EmailVerificationRequest,
+    context: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    await service.verify_email_code(context.user.id, payload.code)
+    return StandardResponse(
+        data={"verified": True},
+        message="Correo electrónico verificado exitosamente."
+    )
+
+@router.post("/step-up", response_model=StandardResponse[StepUpAuthResponse])
+async def issue_step_up_token(
+    payload: StepUpAuthRequest,
+    context: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    token = await service.issue_step_up_token(
+        user_id=context.user.id,
+        password=payload.password,
+        action=payload.action,
+        resource=payload.target_resource,
+        totp_code=payload.totp_code
+    )
+    return StandardResponse(
+        data=StepUpAuthResponse(
+            step_up_token=token,
+            expires_in=settings.STEP_UP_TOKEN_EXPIRE_MINUTES * 60,
+            action=payload.action,
+            target_resource=payload.target_resource
+        ),
+        message="Autorización Step-Up emitida con éxito"
     )
