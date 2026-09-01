@@ -13,6 +13,7 @@ from app.models.organization import Organization
 from app.models.branch import Branch, UserBranchAccess
 from app.models.catalog import TaxRate
 from app.security.password import hash_password
+from app.security.tokens import create_access_token
 from app.core.constants import UserRole
 
 @pytest_asyncio.fixture
@@ -56,11 +57,22 @@ async def superadmin_user(db_session: AsyncSession) -> User:
     return user
 
 @pytest_asyncio.fixture
+async def superadmin_token(superadmin_user: User) -> str:
+    return create_access_token(
+        subject=str(superadmin_user.id),
+        claims={
+            "org_id": None,
+            "role": superadmin_user.role,
+            "email": superadmin_user.email
+        }
+    )
+
+@pytest_asyncio.fixture
 async def sample_organization(db_session: AsyncSession) -> Organization:
     org = Organization(
         legal_name='Comercializadora El Sol S.A.',
         trade_name='Supermercado El Sol',
-        identification_type='JURIDICA',
+        identification_type='02',
         identification_number=f'3101{uuid.uuid4().hex[:6]}',
         email='contacto@elsol.cr',
         country_code='CR',
