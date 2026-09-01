@@ -130,8 +130,8 @@ const PLANS: PricingPlanTier[] = [
     name: "Orbítica Empresarial",
     badge: "A MEDIDA",
     isCustom: true,
-    monthlyPrice: 44900,
-    annualPrice: 449000,
+    monthlyPrice: 0,
+    annualPrice: 0,
     description: "Solución corporativa integral para cadenas, franquicias y distribuidoras.",
     limits: {
       users: "Sin Límites",
@@ -485,13 +485,11 @@ export default function SubscriptionPage() {
                     {pricing.isCustom ? (
                       <div className="py-1">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-xs text-text-muted font-bold">desde</span>
-                          <span className="text-2xl font-black text-text-main font-mono">
-                            {formatCRC(pricing.price)}
+                          <span className="text-xl font-black text-cyan-500 uppercase tracking-tight">
+                            Bajo Cotización
                           </span>
-                          <span className="text-[10px] text-text-muted font-medium">/ mes</span>
                         </div>
-                        <p className="text-[10px] text-text-muted mt-0.5">Cotización a la medida de tu escala</p>
+                        <p className="text-[10px] text-text-muted mt-0.5">Precio a la medida según sucursales y requerimientos</p>
                       </div>
                     ) : (
                       <div>
@@ -729,12 +727,14 @@ export default function SubscriptionPage() {
                 <div className="flex justify-between items-center pt-2 border-t border-border">
                   <span className="text-xs font-bold text-text-main">Total a Facturar:</span>
                   <span className="text-base font-black font-mono text-emerald-500">
-                    {formatCRC(
-                      selectedPlan.isCustom
-                        ? selectedPlan.monthlyPrice
-                        : calculateDisplayPrice(selectedPlan).price
+                    {selectedPlan.isCustom ? (
+                      "Bajo Cotización (A Medida)"
+                    ) : (
+                      <>
+                        {formatCRC(calculateDisplayPrice(selectedPlan).price)}
+                        <span className="text-[10px] text-text-muted font-normal"> / mes</span>
+                      </>
                     )}
-                    <span className="text-[10px] text-text-muted font-normal"> / mes</span>
                   </span>
                 </div>
               </div>
@@ -749,7 +749,7 @@ export default function SubscriptionPage() {
                   Cancelar
                 </Button>
                 <Button variant="primary" onClick={handleConfirmPlan}>
-                  {selectedPlan.isCustom ? "Solicitar Contacto" : "Confirmar y Activar Plan"}
+                  {selectedPlan.isCustom ? "Solicitar Cotización" : "Confirmar y Activar Plan"}
                 </Button>
               </div>
             </div>

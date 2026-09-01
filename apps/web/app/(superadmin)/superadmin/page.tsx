@@ -284,7 +284,7 @@ export default function SuperadminPage() {
             <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl space-y-1.5">
               <span className="text-[10px] font-bold uppercase text-text-muted block">Plan 4</span>
               <h3 className="text-sm font-black text-text-main">Orbítica Empresarial</h3>
-              <div className="text-base font-black text-cyan-400 font-mono">Desde ₡44.900 / mes</div>
+              <div className="text-base font-black text-cyan-400 font-mono">Bajo Cotización</div>
               <p className="text-[10px] text-text-muted">A medida, ERP/WMS, módulo contable, RRHH, asistencia y SLA 99.9%.</p>
             </div>
           </div>
