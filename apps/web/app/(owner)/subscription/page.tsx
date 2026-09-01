@@ -31,86 +31,121 @@ interface PlanTier {
   name: string;
   badge?: string;
   popular?: boolean;
+  isCustom?: boolean;
   monthlyPrice: number;
   annualPrice: number;
   description: string;
   features: string[];
   limits: {
+    users: string;
     branches: string;
     terminals: string;
     invoices: string;
-    products: string;
   };
 }
 
 const PLANS: PlanTier[] = [
   {
-    id: "basic",
-    name: "Emprendedor",
-    monthlyPrice: 15000,
-    annualPrice: 144000, // ₡12,000/mo (20% off)
-    description: "Ideal para pulperías, sodas, bazares y pequeños comercios que inician.",
+    id: "inicio",
+    name: "Orbítica Inicio",
+    monthlyPrice: 12900,
+    annualPrice: 129000, // 10 meses (2 meses gratis)
+    description: "Para pequeños comercios, sodas, pulperías y emprendimientos.",
     limits: {
+      users: "2 Usuarios",
       branches: "1 Sucursal",
       terminals: "1 Caja POS",
-      invoices: "Hasta 200 / mes",
-      products: "Hasta 500 SKUs",
+      invoices: "Facturación v4.4 Incluida",
     },
     features: [
       "Punto de Venta POS rápido y táctil",
-      "Facturación Electrónica v4.4 (01 y 04)",
-      "Control de Caja y Arqueo Z diario",
-      "Impresión de tiquetes térmicos 80mm",
-      "Catálogo de productos e inventario",
-      "Soporte por Correo Electrónico",
+      "Facturación Electrónica Hacienda v4.4",
+      "Cotizaciones y Proformas comerciales",
+      "Productos, Inventario y Clientes",
+      "Compras y Gastos operativos",
+      "Apertura y Cierre de Caja con Arqueo Z",
+      "Cuentas por cobrar básicas",
+      "10 Reportes esenciales",
+      "Soporte estándar por Correo",
     ],
   },
   {
-    id: "pro",
-    name: "Profesional",
+    id: "crece",
+    name: "Orbítica Crece",
     popular: true,
-    badge: "MÁS POPULAR",
-    monthlyPrice: 25000,
-    annualPrice: 240000, // ₡20,000/mo (20% off)
+    badge: "RECOMENDADO",
+    monthlyPrice: 22900,
+    annualPrice: 229000, // 10 meses (2 meses gratis)
     description: "Para restaurantes, tiendas, ferreterías y negocios en pleno crecimiento.",
     limits: {
-      branches: "Hasta 2 Sucursales",
-      terminals: "Cajas Ilimitadas",
-      invoices: "Hacienda Ilimitada",
-      products: "Productos Ilimitados",
+      users: "8 Usuarios",
+      branches: "Hasta 3 Sucursales",
+      terminals: "Múltiples Cajas",
+      invoices: "Facturación v4.4 Ilimitada",
     },
     features: [
-      "Todo lo incluido en Emprendedor",
-      "Facturación Hacienda v4.4 ILIMITADA",
-      "Múltiples cajas simultáneas en red",
-      "Kárdex de inventario y compras a proveedores",
-      "Reportes de ventas y utilidad bruta",
-      "Resumen tributario para declaración D-104",
-      "Directorio ilimitado de clientes y proveedores",
-      "Soporte Prioritario por WhatsApp y Email",
+      "Todo lo incluido en Inicio",
+      "Hasta 3 Sucursales y múltiples bodegas",
+      "Facturación y venta Offline con sincronización",
+      "Bancos, cuentas y conciliación",
+      "Cuentas por cobrar y pagar completas",
+      "Programa de Fidelidad y Cupones",
+      "Comisiones de vendedores",
+      "Citas y Órdenes de Trabajo / Reparación",
+      "Despachos y control de entregas",
+      "Reportes avanzados y resumen D-104",
+      "Soporte prioritario por WhatsApp y Email",
     ],
   },
   {
-    id: "corporate",
-    name: "Corporativo",
-    badge: "MULTI-SUCURSAL",
-    monthlyPrice: 45000,
-    annualPrice: 432000, // ₡36,000/mo (20% off)
-    description: "Para cadenas de tiendas, franquicias y distribuidoras comerciales.",
+    id: "escala",
+    name: "Orbítica Escala",
+    badge: "EMPRESARIAL AVANZADO",
+    monthlyPrice: 32900,
+    annualPrice: 329000, // 10 meses (2 meses gratis)
+    description: "Para cadenas de tiendas, distribuidoras y operaciones exigentes.",
     limits: {
-      branches: "Hasta 5 Sucursales",
-      terminals: "Cajas Ilimitadas",
-      invoices: "Hacienda Ilimitada",
-      products: "Ilimitados Multi-Bodega",
+      users: "Usuarios Ilimitados*",
+      branches: "Hasta 10 Sucursales",
+      terminals: "Cajas Ilimitadas en Red",
+      invoices: "Hacienda Ilimitada Multi-Emisor",
     },
     features: [
-      "Todo lo incluido en Profesional",
-      "Hasta 5 sucursales centralizadas",
-      "Gestión de empleados con roles y permisos",
-      "Kárdex multi-bodega y traslados de stock",
-      "Auditoría de seguridad y trazabilidad total",
-      "Asesoría técnica de conexión ATV Hacienda",
-      "Gerente de cuenta y Soporte VIP 24/7",
+      "Todo lo incluido en Crece",
+      "Hasta 10 Sucursales interconectadas",
+      "Facturación masiva mediante Excel/CSV",
+      "Ruteo de entregas y asignación de choferes",
+      "Membresías y campañas de marketing",
+      "Importación y validación de XML de proveedores",
+      "API y Webhooks para integraciones",
+      "Pronósticos de inventario y alertas inteligentes",
+      "Más de 30 reportes financieros y auditoría",
+      "Soporte prioritario VIP",
+    ],
+  },
+  {
+    id: "empresarial",
+    name: "Orbítica Empresarial",
+    badge: "A MEDIDA",
+    isCustom: true,
+    monthlyPrice: 0,
+    annualPrice: 0,
+    description: "Solución a medida para corporaciones, franquicias e instituciones.",
+    limits: {
+      users: "Sin límites",
+      branches: "Sucursales Ilimitadas",
+      terminals: "Infraestructura Dedicada",
+      invoices: "Emisión de Alto Volumen",
+    },
+    features: [
+      "Operación y sucursales a medida",
+      "Módulo de Contabilidad y Recursos Humanos",
+      "Control de asistencia de personal",
+      "Integraciones personalizadas con ERP / WMS",
+      "Migración asistida de información",
+      "Capacitación presencial/virtual y onboarding",
+      "SLA de disponibilidad garantizada 99.9%",
+      "Gerente de cuenta dedicado 24/7",
     ],
   },
 ];
@@ -237,7 +272,7 @@ export default function SubscriptionPage() {
         </div>
 
         {/* Pricing Tiers Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           {PLANS.map((plan) => {
             const price = billingCycle === "monthly" ? plan.monthlyPrice : Math.round(plan.annualPrice / 12);
             const isCurrentPlan = activePlanId === plan.id;
@@ -245,44 +280,61 @@ export default function SubscriptionPage() {
             return (
               <Card
                 key={plan.id}
-                className={`relative flex flex-col justify-between p-6 rounded-3xl transition-all ${
+                className={`relative flex flex-col justify-between p-5 rounded-3xl transition-all ${
                   plan.popular
                     ? "border-2 border-primary shadow-xl ring-1 ring-primary/20 bg-surface"
                     : "border border-border bg-surface"
                 }`}
               >
-                {/* Popular Badge */}
+                {/* Badge */}
                 {plan.badge && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="px-3 py-1 bg-primary text-white text-[10px] font-black tracking-wider uppercase rounded-full shadow-md">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <span className={`px-2.5 py-0.5 text-white text-[9px] font-black tracking-wider uppercase rounded-full shadow-md ${
+                      plan.popular ? "bg-primary" : "bg-cyan-600"
+                    }`}>
                       {plan.badge}
                     </span>
                   </div>
                 )}
 
-                <div className="space-y-5">
+                <div className="space-y-4">
                   <div className="space-y-1">
-                    <h3 className="text-lg font-black text-text-main">{plan.name}</h3>
-                    <p className="text-xs text-text-muted min-h-[32px]">{plan.description}</p>
+                    <h3 className="text-base font-black text-text-main">{plan.name}</h3>
+                    <p className="text-[11px] text-text-muted min-h-[30px]">{plan.description}</p>
                   </div>
 
                   {/* Price */}
                   <div className="pt-2 border-t border-border">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-black text-text-main font-mono">
-                        {formatCRC(price)}
-                      </span>
-                      <span className="text-xs text-text-muted font-medium">/ mes</span>
-                    </div>
-                    {billingCycle === "annual" && (
-                      <p className="text-[11px] text-emerald-500 font-bold mt-0.5">
-                        Cobro anual de {formatCRC(plan.annualPrice)} / año
-                      </p>
+                    {plan.isCustom ? (
+                      <div className="py-1">
+                        <span className="text-xl font-black text-primary uppercase tracking-tight">
+                          A Medida
+                        </span>
+                        <p className="text-[10px] text-text-muted mt-0.5">Cotización según escala</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-black text-text-main font-mono">
+                            {formatCRC(price)}
+                          </span>
+                          <span className="text-[10px] text-text-muted font-medium">/ mes</span>
+                        </div>
+                        {billingCycle === "annual" && (
+                          <p className="text-[10px] text-emerald-500 font-bold mt-0.5">
+                            {formatCRC(plan.annualPrice)} / año (10 meses)
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
                   {/* Limits summary */}
-                  <div className="p-3 bg-surface-secondary rounded-2xl border border-border text-xs space-y-1.5 font-medium">
+                  <div className="p-2.5 bg-surface-secondary rounded-xl border border-border text-[11px] space-y-1 font-medium">
+                    <div className="flex justify-between">
+                      <span className="text-text-muted">Usuarios:</span>
+                      <span className="text-text-main font-bold">{plan.limits.users}</span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-text-muted">Sucursales:</span>
                       <span className="text-text-main font-bold">{plan.limits.branches}</span>
@@ -295,21 +347,17 @@ export default function SubscriptionPage() {
                       <span className="text-text-muted">Hacienda CR:</span>
                       <span className="text-emerald-500 font-bold">{plan.limits.invoices}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-muted">Catálogo:</span>
-                      <span className="text-text-main font-bold">{plan.limits.products}</span>
-                    </div>
                   </div>
 
                   {/* Feature list */}
-                  <div className="space-y-2.5 pt-2">
-                    <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider block">
+                  <div className="space-y-2 pt-1">
+                    <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block">
                       Incluye:
                     </span>
-                    <ul className="space-y-2 text-xs text-text-secondary">
+                    <ul className="space-y-1.5 text-[11px] text-text-secondary">
                       {plan.features.map((feat, idx) => (
-                        <li key={idx} className="flex items-start gap-2">
-                          <Check className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <Check className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
                           <span>{feat}</span>
                         </li>
                       ))}
@@ -317,10 +365,10 @@ export default function SubscriptionPage() {
                   </div>
                 </div>
 
-                <div className="pt-6 mt-6 border-t border-border">
+                <div className="pt-4 mt-4 border-t border-border">
                   <Button
                     variant={plan.popular ? "primary" : "secondary"}
-                    className="w-full font-bold py-3 text-xs sm:text-sm"
+                    className="w-full font-bold py-2.5 text-xs"
                     onClick={() => handleSelectPlan(plan)}
                   >
                     {isCurrentPlan ? (
@@ -330,8 +378,8 @@ export default function SubscriptionPage() {
                       </span>
                     ) : (
                       <>
-                        Elegir Plan {plan.name}
-                        <ArrowRight className="w-4 h-4 ml-1.5" />
+                        {plan.isCustom ? "Contactar Asesor" : `Elegir ${plan.name}`}
+                        <ArrowRight className="w-3.5 h-3.5 ml-1" />
                       </>
                     )}
                   </Button>

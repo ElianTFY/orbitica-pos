@@ -197,3 +197,147 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
 }
+
+export interface QuoteItem {
+  product_id?: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  tax_amount: number;
+  subtotal: number;
+  total: number;
+}
+
+export interface Quote {
+  id: string;
+  organization_id: string;
+  quote_number: string;
+  customer_name: string;
+  customer_identification?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  items: QuoteItem[];
+  subtotal: number;
+  discount: number;
+  tax_total: number;
+  total: number;
+  valid_until: string;
+  notes?: string;
+  status: "DRAFT" | "SENT" | "ACCEPTED" | "REJECTED" | "CONVERTED";
+  created_at: string;
+}
+
+export interface Expense {
+  id: string;
+  organization_id: string;
+  expense_number: string;
+  category: "ALQUILER" | "SERVICIOS" | "SALARIOS" | "PROVEEDORES" | "SUMINISTROS" | "IMPUESTOS" | "MANTENIMIENTO" | "OTROS";
+  description: string;
+  amount: number;
+  payment_method: "CASH_CRC" | "SINPE" | "TRANSFER" | "CARD";
+  supplier_name?: string;
+  invoice_ref?: string;
+  branch_name: string;
+  status: "PAID" | "PENDING";
+  due_date?: string;
+  created_at: string;
+}
+
+export interface WorkOrder {
+  id: string;
+  organization_id: string;
+  order_number: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string;
+  service_type: "REPARACION" | "MANTENIMIENTO" | "INSTALACION" | "DIAGNOSTICO" | "CITA_SERVICIO" | "GARANTIA";
+  item_description: string; // Equipo, vehículo o artículo
+  issue_reported: string;
+  diagnosis?: string;
+  assigned_technician?: string;
+  estimated_cost: number;
+  advance_payment: number;
+  status: "RECEIVED" | "IN_DIAGNOSIS" | "IN_PROGRESS" | "READY" | "DELIVERED" | "CANCELLED";
+  branch_name: string;
+  created_at: string;
+  estimated_delivery?: string;
+}
+
+export interface DispatchOrder {
+  id: string;
+  organization_id: string;
+  dispatch_number: string;
+  sale_number: string;
+  customer_name: string;
+  customer_phone: string;
+  delivery_address: string;
+  driver_name?: string;
+  total_amount: number;
+  payment_status: "PAID" | "PENDING_CASH" | "PENDING_SINPE";
+  status: "PENDING" | "ASSIGNED" | "IN_ROUTE" | "DELIVERED" | "FAILED";
+  notes?: string;
+  created_at: string;
+  delivered_at?: string;
+}
+
+export interface Coupon {
+  id: string;
+  organization_id: string;
+  code: string;
+  description: string;
+  discount_type: "PERCENTAGE" | "FIXED_AMOUNT";
+  discount_value: number;
+  min_purchase: number;
+  max_uses: number;
+  current_uses: number;
+  valid_from: string;
+  valid_until: string;
+  is_active: boolean;
+}
+
+export interface LoyaltyMember {
+  id: string;
+  organization_id: string;
+  customer_id?: string;
+  customer_name: string;
+  customer_phone: string;
+  points_balance: number;
+  total_earned: number;
+  tier: "BRONCE" | "PLATA" | "ORO" | "DIAMANTE";
+  created_at: string;
+}
+
+export interface BankAccount {
+  id: string;
+  organization_id: string;
+  bank_name: string;
+  account_type: "CORRIENTE" | "AHORROS" | "SINPE_MOVIL";
+  iban: string;
+  currency: "CRC" | "USD";
+  current_balance: number;
+  account_holder: string;
+  is_active: boolean;
+}
+
+export interface BankTransaction {
+  id: string;
+  organization_id: string;
+  bank_account_id: string;
+  transaction_type: "DEPOSIT" | "WITHDRAWAL" | "TRANSFER_IN" | "TRANSFER_OUT" | "SALE_RECONCILIATION" | "EXPENSE_PAYMENT";
+  amount: number;
+  description: string;
+  reference_number?: string;
+  created_at: string;
+}
+
+export interface SuspendedSale {
+  id: string;
+  organization_id: string;
+  tag: string;
+  items: CartItem[];
+  customer_name?: string;
+  created_at: string;
+  subtotal: number;
+  total: number;
+}

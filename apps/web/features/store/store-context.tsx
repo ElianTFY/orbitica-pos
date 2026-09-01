@@ -14,6 +14,16 @@ import {
   AuditLogEntry,
   Employee,
   Branch,
+  Quote,
+  Expense,
+  WorkOrder,
+  DispatchOrder,
+  Coupon,
+  LoyaltyMember,
+  BankAccount,
+  BankTransaction,
+  SuspendedSale,
+  CartItem,
 } from "@/types";
 
 export interface BusinessSettings {
@@ -44,6 +54,15 @@ interface StoreContextType {
   activeCashSession: CashSession | null;
   employees: Employee[];
   branches: Branch[];
+  quotes: Quote[];
+  expenses: Expense[];
+  workOrders: WorkOrder[];
+  dispatchOrders: DispatchOrder[];
+  coupons: Coupon[];
+  loyaltyMembers: LoyaltyMember[];
+  bankAccounts: BankAccount[];
+  bankTransactions: BankTransaction[];
+  suspendedSales: SuspendedSale[];
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
   // Products
   addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
@@ -65,6 +84,37 @@ interface StoreContextType {
   addBranch: (branch: Omit<Branch, "id" | "organization_id" | "created_at">) => Branch;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
+  // Quotes
+  addQuote: (quote: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">) => Quote;
+  updateQuote: (id: string, quote: Partial<Quote>) => void;
+  deleteQuote: (id: string) => void;
+  // Expenses
+  addExpense: (expense: Omit<Expense, "id" | "organization_id" | "expense_number" | "created_at">) => Expense;
+  updateExpense: (id: string, expense: Partial<Expense>) => void;
+  deleteExpense: (id: string) => void;
+  // Work Orders
+  addWorkOrder: (order: Omit<WorkOrder, "id" | "organization_id" | "order_number" | "created_at">) => WorkOrder;
+  updateWorkOrder: (id: string, order: Partial<WorkOrder>) => void;
+  deleteWorkOrder: (id: string) => void;
+  // Dispatch Orders
+  addDispatchOrder: (order: Omit<DispatchOrder, "id" | "organization_id" | "dispatch_number" | "created_at">) => DispatchOrder;
+  updateDispatchOrder: (id: string, order: Partial<DispatchOrder>) => void;
+  deleteDispatchOrder: (id: string) => void;
+  // Coupons & Loyalty
+  addCoupon: (coupon: Omit<Coupon, "id" | "organization_id">) => Coupon;
+  updateCoupon: (id: string, coupon: Partial<Coupon>) => void;
+  deleteCoupon: (id: string) => void;
+  addLoyaltyPoints: (phone: string, customerName: string, points: number) => void;
+  redeemLoyaltyPoints: (phone: string, points: number) => boolean;
+  // Bank Accounts & Transactions
+  addBankAccount: (account: Omit<BankAccount, "id" | "organization_id">) => BankAccount;
+  updateBankAccount: (id: string, account: Partial<BankAccount>) => void;
+  deleteBankAccount: (id: string) => void;
+  addBankTransaction: (tx: Omit<BankTransaction, "id" | "organization_id" | "created_at">) => BankTransaction;
+  // Suspended Sales
+  suspendSale: (items: CartItem[], tag: string, customerName?: string) => SuspendedSale;
+  resumeSale: (id: string) => SuspendedSale | null;
+  deleteSuspendedSale: (id: string) => void;
   // Purchases & Inventory
   recordPurchase: (data: {
     supplierName: string;
@@ -125,6 +175,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [dispatchOrders, setDispatchOrders] = useState<DispatchOrder[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [loyaltyMembers, setLoyaltyMembers] = useState<LoyaltyMember[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([]);
+  const [suspendedSales, setSuspendedSales] = useState<SuspendedSale[]>([]);
   const [activeCashSession, setActiveCashSession] = useState<CashSession | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -193,6 +252,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify([defaultBranch]));
       }
 
+      const sQuotes = localStorage.getItem(`orbitica_quotes_${orgId}`);
+      setQuotes(sQuotes ? JSON.parse(sQuotes) : []);
+
+      const sExpenses = localStorage.getItem(`orbitica_expenses_${orgId}`);
+      setExpenses(sExpenses ? JSON.parse(sExpenses) : []);
+
+      const sWorkOrders = localStorage.getItem(`orbitica_work_orders_${orgId}`);
+      setWorkOrders(sWorkOrders ? JSON.parse(sWorkOrders) : []);
+
+      const sDispatch = localStorage.getItem(`orbitica_dispatch_${orgId}`);
+      setDispatchOrders(sDispatch ? JSON.parse(sDispatch) : []);
+
+      const sCoupons = localStorage.getItem(`orbitica_coupons_${orgId}`);
+      setCoupons(sCoupons ? JSON.parse(sCoupons) : []);
+
+      const sLoyalty = localStorage.getItem(`orbitica_loyalty_${orgId}`);
+      setLoyaltyMembers(sLoyalty ? JSON.parse(sLoyalty) : []);
+
+      const sBankAccounts = localStorage.getItem(`orbitica_bank_accounts_${orgId}`);
+      if (sBankAccounts) {
+        setBankAccounts(JSON.parse(sBankAccounts));
+      } else {
+        const defaultBank: BankAccount = {
+          id: `bank_main_${Date.now()}`,
+          organization_id: orgId,
+          bank_name: "SINPE Móvil Comercial",
+          account_type: "SINPE_MOVIL",
+          iban: "CR05010200000000000000",
+          currency: "CRC",
+          current_balance: 0,
+          account_holder: user?.legal_name || user?.organization_name || "Comercio",
+          is_active: true,
+        };
+        setBankAccounts([defaultBank]);
+        localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify([defaultBank]));
+      }
+
+      const sBankTx = localStorage.getItem(`orbitica_bank_tx_${orgId}`);
+      setBankTransactions(sBankTx ? JSON.parse(sBankTx) : []);
+
+      const sSuspended = localStorage.getItem(`orbitica_suspended_${orgId}`);
+      setSuspendedSales(sSuspended ? JSON.parse(sSuspended) : []);
+
       const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
       setActiveCashSession(sCash ? JSON.parse(sCash) : null);
 
@@ -232,6 +334,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(invoices));
       localStorage.setItem(`orbitica_employees_${orgId}`, JSON.stringify(employees));
       localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify(branches));
+      localStorage.setItem(`orbitica_quotes_${orgId}`, JSON.stringify(quotes));
+      localStorage.setItem(`orbitica_expenses_${orgId}`, JSON.stringify(expenses));
+      localStorage.setItem(`orbitica_work_orders_${orgId}`, JSON.stringify(workOrders));
+      localStorage.setItem(`orbitica_dispatch_${orgId}`, JSON.stringify(dispatchOrders));
+      localStorage.setItem(`orbitica_coupons_${orgId}`, JSON.stringify(coupons));
+      localStorage.setItem(`orbitica_loyalty_${orgId}`, JSON.stringify(loyaltyMembers));
+      localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify(bankAccounts));
+      localStorage.setItem(`orbitica_bank_tx_${orgId}`, JSON.stringify(bankTransactions));
+      localStorage.setItem(`orbitica_suspended_${orgId}`, JSON.stringify(suspendedSales));
       localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify(auditLogs));
       localStorage.setItem(`orbitica_settings_${orgId}`, JSON.stringify(settings));
       if (activeCashSession) {
@@ -240,7 +351,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(`orbitica_cash_${orgId}`);
       }
     } catch (e) {}
-  }, [products, customers, suppliers, purchases, movements, sales, invoices, employees, branches, auditLogs, settings, activeCashSession, orgId, isLoaded]);
+  }, [
+    products,
+    customers,
+    suppliers,
+    purchases,
+    movements,
+    sales,
+    invoices,
+    employees,
+    branches,
+    quotes,
+    expenses,
+    workOrders,
+    dispatchOrders,
+    coupons,
+    loyaltyMembers,
+    bankAccounts,
+    bankTransactions,
+    suspendedSales,
+    auditLogs,
+    settings,
+    activeCashSession,
+    orgId,
+    isLoaded,
+  ]);
 
   const logAudit = (action: string, resource: string) => {
     const entry: AuditLogEntry = {
@@ -380,6 +515,274 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteBranch = (id: string) => {
     setBranches((prev) => prev.filter((b) => b.id !== id));
     logAudit("BRANCH_DELETED", `Sucursal ID: ${id}`);
+  };
+
+  // Quotes
+  const addQuote = (q: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">): Quote => {
+    const num = `COT-${String(Date.now()).slice(-6)}`;
+    const newQuote: Quote = {
+      ...q,
+      id: `quote_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      quote_number: num,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+    };
+    setQuotes((prev) => [newQuote, ...prev]);
+    logAudit("QUOTE_CREATED", `Cotización: ${newQuote.quote_number} - ${newQuote.customer_name}`);
+    return newQuote;
+  };
+
+  const updateQuote = (id: string, updated: Partial<Quote>) => {
+    setQuotes((prev) =>
+      prev.map((q) => (q.id === id ? { ...q, ...updated } : q))
+    );
+    logAudit("QUOTE_UPDATED", `Cotización ID: ${id}`);
+  };
+
+  const deleteQuote = (id: string) => {
+    setQuotes((prev) => prev.filter((q) => q.id !== id));
+    logAudit("QUOTE_DELETED", `Cotización ID: ${id}`);
+  };
+
+  // Expenses
+  const addExpense = (exp: Omit<Expense, "id" | "organization_id" | "expense_number" | "created_at">): Expense => {
+    const num = `GAS-${String(Date.now()).slice(-6)}`;
+    const newExpense: Expense = {
+      ...exp,
+      id: `exp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      expense_number: num,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+    };
+    setExpenses((prev) => [newExpense, ...prev]);
+    logAudit("EXPENSE_CREATED", `Gasto: ${newExpense.expense_number} (₡${newExpense.amount}) - ${newExpense.category}`);
+    return newExpense;
+  };
+
+  const updateExpense = (id: string, updated: Partial<Expense>) => {
+    setExpenses((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, ...updated } : e))
+    );
+    logAudit("EXPENSE_UPDATED", `Gasto ID: ${id}`);
+  };
+
+  const deleteExpense = (id: string) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    logAudit("EXPENSE_DELETED", `Gasto ID: ${id}`);
+  };
+
+  // Work Orders
+  const addWorkOrder = (wo: Omit<WorkOrder, "id" | "organization_id" | "order_number" | "created_at">): WorkOrder => {
+    const num = `OT-${String(Date.now()).slice(-6)}`;
+    const newOrder: WorkOrder = {
+      ...wo,
+      id: `wo_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      order_number: num,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+    };
+    setWorkOrders((prev) => [newOrder, ...prev]);
+    logAudit("WORK_ORDER_CREATED", `Orden de Servicio: ${newOrder.order_number} - ${newOrder.customer_name}`);
+    return newOrder;
+  };
+
+  const updateWorkOrder = (id: string, updated: Partial<WorkOrder>) => {
+    setWorkOrders((prev) =>
+      prev.map((wo) => (wo.id === id ? { ...wo, ...updated } : wo))
+    );
+    logAudit("WORK_ORDER_UPDATED", `Orden ID: ${id}`);
+  };
+
+  const deleteWorkOrder = (id: string) => {
+    setWorkOrders((prev) => prev.filter((wo) => wo.id !== id));
+    logAudit("WORK_ORDER_DELETED", `Orden ID: ${id}`);
+  };
+
+  // Dispatch Orders
+  const addDispatchOrder = (dsp: Omit<DispatchOrder, "id" | "organization_id" | "dispatch_number" | "created_at">): DispatchOrder => {
+    const num = `DSP-${String(Date.now()).slice(-6)}`;
+    const newDispatch: DispatchOrder = {
+      ...dsp,
+      id: `dsp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      dispatch_number: num,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+    };
+    setDispatchOrders((prev) => [newDispatch, ...prev]);
+    logAudit("DISPATCH_CREATED", `Despacho: ${newDispatch.dispatch_number} - ${newDispatch.customer_name}`);
+    return newDispatch;
+  };
+
+  const updateDispatchOrder = (id: string, updated: Partial<DispatchOrder>) => {
+    setDispatchOrders((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, ...updated } : d))
+    );
+    logAudit("DISPATCH_UPDATED", `Despacho ID: ${id}`);
+  };
+
+  const deleteDispatchOrder = (id: string) => {
+    setDispatchOrders((prev) => prev.filter((d) => d.id !== id));
+    logAudit("DISPATCH_DELETED", `Despacho ID: ${id}`);
+  };
+
+  // Coupons & Loyalty
+  const addCoupon = (coup: Omit<Coupon, "id" | "organization_id">): Coupon => {
+    const newCoupon: Coupon = {
+      ...coup,
+      code: coup.code.toUpperCase().trim(),
+      id: `coup_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+    };
+    setCoupons((prev) => [newCoupon, ...prev]);
+    logAudit("COUPON_CREATED", `Cupón: ${newCoupon.code}`);
+    return newCoupon;
+  };
+
+  const updateCoupon = (id: string, updated: Partial<Coupon>) => {
+    setCoupons((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updated } : c))
+    );
+  };
+
+  const deleteCoupon = (id: string) => {
+    setCoupons((prev) => prev.filter((c) => c.id !== id));
+    logAudit("COUPON_DELETED", `Cupón ID: ${id}`);
+  };
+
+  const addLoyaltyPoints = (phone: string, customerName: string, points: number) => {
+    setLoyaltyMembers((prev) => {
+      const existingIdx = prev.findIndex((m) => m.customer_phone === phone);
+      if (existingIdx >= 0) {
+        const member = prev[existingIdx];
+        const newBalance = member.points_balance + points;
+        const newEarned = member.total_earned + points;
+        const tier = newEarned >= 5000 ? "DIAMANTE" : newEarned >= 1500 ? "ORO" : newEarned >= 500 ? "PLATA" : "BRONCE";
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...member,
+          points_balance: newBalance,
+          total_earned: newEarned,
+          tier,
+        };
+        return updated;
+      } else {
+        const tier = points >= 500 ? "PLATA" : "BRONCE";
+        const newMember: LoyaltyMember = {
+          id: `loy_${Date.now()}`,
+          organization_id: orgId,
+          customer_name: customerName,
+          customer_phone: phone,
+          points_balance: points,
+          total_earned: points,
+          tier,
+          created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+        };
+        return [newMember, ...prev];
+      }
+    });
+    logAudit("LOYALTY_POINTS_ADDED", `Puntos: +${points} para ${customerName} (${phone})`);
+  };
+
+  const redeemLoyaltyPoints = (phone: string, points: number): boolean => {
+    let success = false;
+    setLoyaltyMembers((prev) => {
+      const existingIdx = prev.findIndex((m) => m.customer_phone === phone);
+      if (existingIdx >= 0 && prev[existingIdx].points_balance >= points) {
+        success = true;
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          points_balance: updated[existingIdx].points_balance - points,
+        };
+        return updated;
+      }
+      return prev;
+    });
+    if (success) {
+      logAudit("LOYALTY_POINTS_REDEEMED", `Puntos canjeados: -${points} (${phone})`);
+    }
+    return success;
+  };
+
+  // Bank Accounts & Transactions
+  const addBankAccount = (acc: Omit<BankAccount, "id" | "organization_id">): BankAccount => {
+    const newAcc: BankAccount = {
+      ...acc,
+      id: `bank_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+    };
+    setBankAccounts((prev) => [...prev, newAcc]);
+    logAudit("BANK_ACCOUNT_CREATED", `Cuenta Bancaria: ${newAcc.bank_name} (${newAcc.iban})`);
+    return newAcc;
+  };
+
+  const updateBankAccount = (id: string, updated: Partial<BankAccount>) => {
+    setBankAccounts((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...updated } : b))
+    );
+  };
+
+  const deleteBankAccount = (id: string) => {
+    setBankAccounts((prev) => prev.filter((b) => b.id !== id));
+    logAudit("BANK_ACCOUNT_DELETED", `Cuenta Bancaria ID: ${id}`);
+  };
+
+  const addBankTransaction = (tx: Omit<BankTransaction, "id" | "organization_id" | "created_at">): BankTransaction => {
+    const newTx: BankTransaction = {
+      ...tx,
+      id: `btx_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      organization_id: orgId,
+      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
+    };
+    setBankTransactions((prev) => [newTx, ...prev]);
+
+    // Update account balance
+    setBankAccounts((prev) =>
+      prev.map((b) => {
+        if (b.id === tx.bank_account_id) {
+          const isCredit = ["DEPOSIT", "TRANSFER_IN", "SALE_RECONCILIATION"].includes(tx.transaction_type);
+          const newBal = isCredit ? b.current_balance + tx.amount : b.current_balance - tx.amount;
+          return { ...b, current_balance: newBal };
+        }
+        return b;
+      })
+    );
+
+    logAudit("BANK_TRANSACTION_RECORDED", `Movimiento Bancario: ${tx.transaction_type} ₡${tx.amount}`);
+    return newTx;
+  };
+
+  // Suspended Sales
+  const suspendSale = (items: CartItem[], tag: string, customerName?: string): SuspendedSale => {
+    const subtotal = items.reduce((acc, it) => acc + (it.product.sale_price * it.quantity * (1 - it.discountPercentage / 100)), 0);
+    const tax = items.reduce((acc, it) => acc + (it.product.sale_price * it.quantity * (1 - it.discountPercentage / 100) * (it.product.tax_rate / 100)), 0);
+    const suspended: SuspendedSale = {
+      id: `susp_${Date.now()}`,
+      organization_id: orgId,
+      tag: tag || `Ticket #${suspendedSales.length + 1}`,
+      items,
+      customer_name: customerName,
+      created_at: new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" }),
+      subtotal,
+      total: subtotal + tax,
+    };
+    setSuspendedSales((prev) => [suspended, ...prev]);
+    logAudit("SALE_SUSPENDED", `Venta en Espera: ${suspended.tag}`);
+    return suspended;
+  };
+
+  const resumeSale = (id: string): SuspendedSale | null => {
+    const found = suspendedSales.find((s) => s.id === id);
+    if (found) {
+      setSuspendedSales((prev) => prev.filter((s) => s.id !== id));
+      logAudit("SALE_RESUMED", `Venta Recuperada: ${found.tag}`);
+      return found;
+    }
+    return null;
+  };
+
+  const deleteSuspendedSale = (id: string) => {
+    setSuspendedSales((prev) => prev.filter((s) => s.id !== id));
   };
 
   // Purchases & Inventory
@@ -718,6 +1121,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         activeCashSession,
         employees,
         branches,
+        quotes,
+        expenses,
+        workOrders,
+        dispatchOrders,
+        coupons,
+        loyaltyMembers,
+        bankAccounts,
+        bankTransactions,
+        suspendedSales,
         updateSettings,
         addProduct,
         updateProduct,
@@ -734,6 +1146,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addBranch,
         updateBranch,
         deleteBranch,
+        addQuote,
+        updateQuote,
+        deleteQuote,
+        addExpense,
+        updateExpense,
+        deleteExpense,
+        addWorkOrder,
+        updateWorkOrder,
+        deleteWorkOrder,
+        addDispatchOrder,
+        updateDispatchOrder,
+        deleteDispatchOrder,
+        addCoupon,
+        updateCoupon,
+        deleteCoupon,
+        addLoyaltyPoints,
+        redeemLoyaltyPoints,
+        addBankAccount,
+        updateBankAccount,
+        deleteBankAccount,
+        addBankTransaction,
+        suspendSale,
+        resumeSale,
+        deleteSuspendedSale,
         recordPurchase,
         recordAdjustment,
         recordSale,

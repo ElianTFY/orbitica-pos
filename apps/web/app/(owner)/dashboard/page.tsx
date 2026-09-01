@@ -48,7 +48,7 @@ export default function DashboardPage() {
               {settings.trade_name} — Resumen Operativo
             </h1>
             <p className="text-xs text-text-muted">
-              {settings.branch_name} | Cédula: {settings.identification_number} | Moneda: {settings.default_currency}
+              {settings.branch_name} | Cédula: {settings.identification_number || "Por configurar"} | Moneda: {settings.default_currency}
             </p>
           </div>
           <Link href="/pos">
@@ -58,6 +58,88 @@ export default function DashboardPage() {
             </Button>
           </Link>
         </div>
+
+        {/* Onboarding Quick Setup Checklist */}
+        {(!settings.identification_number || products.length === 0 || sales.length === 0) && (
+          <Card className="p-5 bg-gradient-to-br from-primary-subtle/50 to-surface border border-primary/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-primary text-white flex items-center justify-center font-black text-xs">
+                  ★
+                </div>
+                <div>
+                  <h2 className="text-sm font-black text-text-main">Guía de Inicio Rápido para tu Negocio</h2>
+                  <p className="text-[11px] text-text-muted">Completa estos pasos para emitir tus primeras facturas electrónicas y operar tu comercio al 100%.</p>
+                </div>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-primary px-2.5 py-1 bg-surface rounded-lg border border-border">
+                {Number(Boolean(settings.identification_number)) + Number(Boolean(products.length > 0)) + Number(Boolean(sales.length > 0))} / 3 Pasos
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+              {/* Step 1 */}
+              <Link href="/settings" className="block">
+                <div className={`p-3 rounded-2xl border transition-all ${
+                  settings.identification_number
+                    ? "bg-emerald-500/5 border-emerald-500/30 text-text-main"
+                    : "bg-surface border-border hover:border-primary text-text-secondary"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">Paso 1</span>
+                    {settings.identification_number ? (
+                      <span className="text-[10px] font-bold text-emerald-500">✓ Listo</span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-primary">Configurar →</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold mt-1">Datos Fiscales y Hacienda</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Razón social, cédula y credenciales ATV</p>
+                </div>
+              </Link>
+
+              {/* Step 2 */}
+              <Link href="/products" className="block">
+                <div className={`p-3 rounded-2xl border transition-all ${
+                  products.length > 0
+                    ? "bg-emerald-500/5 border-emerald-500/30 text-text-main"
+                    : "bg-surface border-border hover:border-primary text-text-secondary"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">Paso 2</span>
+                    {products.length > 0 ? (
+                      <span className="text-[10px] font-bold text-emerald-500">✓ {products.length} SKUs</span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-primary">Agregar →</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold mt-1">Crear Productos en Catálogo</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Precios, impuestos (IVA) y stock inicial</p>
+                </div>
+              </Link>
+
+              {/* Step 3 */}
+              <Link href="/pos" className="block">
+                <div className={`p-3 rounded-2xl border transition-all ${
+                  sales.length > 0
+                    ? "bg-emerald-500/5 border-emerald-500/30 text-text-main"
+                    : "bg-surface border-border hover:border-primary text-text-secondary"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-text-muted">Paso 3</span>
+                    {sales.length > 0 ? (
+                      <span className="text-[10px] font-bold text-emerald-500">✓ {sales.length} Ventas</span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-primary">Abrir POS →</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold mt-1">Realizar Primera Venta POS</p>
+                  <p className="text-[10px] text-text-muted mt-0.5">Cobro en SINPE, Tarjeta o Efectivo</p>
+                </div>
+              </Link>
+            </div>
+          </Card>
+        )}
 
         {/* Metric Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

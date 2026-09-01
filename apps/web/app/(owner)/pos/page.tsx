@@ -20,6 +20,13 @@ import {
   Lock,
   AlertTriangle,
   Loader2,
+  Tag,
+  PauseCircle,
+  PlayCircle,
+  Wifi,
+  WifiOff,
+  User,
+  X,
 } from "lucide-react";
 import { POSLayout } from "@/components/layouts/owner-layout";
 import { Button } from "@/components/ui/button";
@@ -27,17 +34,36 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { ThermalReceipt } from "@/components/pos/thermal-receipt";
 import { useStore } from "@/features/store/store-context";
-import { Product, CartItem } from "@/types";
+import { Product, CartItem, Coupon, SuspendedSale } from "@/types";
 import { formatCRC } from "@/lib/utils";
 
 export default function POSPage() {
-  const { products, recordSale, settings, activeCashSession } = useStore();
+  const {
+    products,
+    recordSale,
+    settings,
+    activeCashSession,
+    coupons,
+    suspendedSales,
+    suspendSale,
+    resumeSale,
+    deleteSuspendedSale,
+    customers,
+  } = useStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeMobileTab, setActiveMobileTab] = useState<"catalog" | "cart">("catalog");
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isSuspendedModalOpen, setIsSuspendedModalOpen] = useState(false);
+  const [isSuspendConfirmOpen, setIsSuspendConfirmOpen] = useState(false);
+  const [suspendNote, setSuspendNote] = useState("");
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+
   const [paymentMethod, setPaymentMethod] = useState<"CASH_CRC" | "SINPE" | "CARD" | "MIXED">("CASH_CRC");
   const [cashReceived, setCashReceived] = useState<string>("");
   const [sinpeRef, setSinpeRef] = useState<string>("");
@@ -49,6 +75,18 @@ export default function POSPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isCashOpen = activeCashSession?.status === "OPEN";
+
+  useEffect(() => {
+    setIsOnline(typeof window !== "undefined" ? window.navigator.onLine : true);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -119,18 +157,85 @@ export default function POSPage() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId));
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
+  const clearCart = useCallback(() => {
+    setCart([]);
+    setAppliedCoupon(null);
+    setCouponCodeInput("");
+    setCouponError(null);
+  }, []);
 
-  const subtotal = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+  const rawSubtotal = cart.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+
+  // Calculate discount from applied coupon
+  let discountAmount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.discount_type === "PERCENTAGE") {
+      discountAmount = (rawSubtotal * appliedCoupon.discount_value) / 100;
+    } else {
+      discountAmount = Math.min(rawSubtotal, appliedCoupon.discount_value);
+    }
+  }
+
+  const subtotal = Math.max(0, rawSubtotal - discountAmount);
+
   const totalTax = cart.reduce((acc, item) => {
-    const itemSub = item.unitPrice * item.quantity;
-    return acc + itemSub * (item.taxRate / 100);
+    const itemRatio = rawSubtotal > 0 ? (item.unitPrice * item.quantity) / rawSubtotal : 0;
+    const itemDiscount = discountAmount * itemRatio;
+    const taxableAmount = Math.max(0, item.unitPrice * item.quantity - itemDiscount);
+    return acc + taxableAmount * (item.taxRate / 100);
   }, 0);
+
   const total = subtotal + totalTax;
   const totalItemCount = cart.reduce((acc, it) => acc + it.quantity, 0);
 
   const numCash = parseFloat(cashReceived) || 0;
   const change = Math.max(0, numCash - total);
+
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponError(null);
+    const codeClean = couponCodeInput.trim().toUpperCase();
+    if (!codeClean) return;
+
+    const found = coupons.find((c) => c.code.toUpperCase() === codeClean && c.is_active);
+    if (!found) {
+      setCouponError("Cupón no válido o inactivo.");
+      return;
+    }
+
+    if (found.min_purchase && rawSubtotal < found.min_purchase) {
+      setCouponError(`Compra mínima requerida: ${formatCRC(found.min_purchase)}.`);
+      return;
+    }
+
+    setAppliedCoupon(found);
+    setCouponError(null);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput("");
+    setCouponError(null);
+  };
+
+  const handleSuspendCurrentSale = () => {
+    if (cart.length === 0) return;
+    suspendSale(
+      cart,
+      suspendNote.trim() || `Ticket ${new Date().toLocaleTimeString("es-CR", { hour: "2-digit", minute: "2-digit" })}`,
+      customerName === "CLIENTE CONTADO" ? undefined : customerName
+    );
+    clearCart();
+    setSuspendNote("");
+    setIsSuspendConfirmOpen(false);
+  };
+
+  const handleResumeSale = (sale: SuspendedSale) => {
+    setCart(sale.items);
+    if (sale.customer_name) setCustomerName(sale.customer_name);
+    resumeSale(sale.id);
+    setIsSuspendedModalOpen(false);
+  };
 
   // Validation checks for completing sale
   const isInvoiceMissingCustomer =
@@ -349,27 +454,56 @@ export default function POSPage() {
             }`}
           >
             {/* Cart Header */}
-            <div className="flex-shrink-0 px-4 py-3 border-b border-border flex items-center justify-between bg-surface">
+            <div className="flex-shrink-0 px-4 py-2.5 border-b border-border flex items-center justify-between bg-surface gap-2">
               <div className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-primary" />
                 <h2 className="text-xs font-bold text-text-main uppercase tracking-wider">
-                  Detalle de Venta
+                  Ticket
                   {totalItemCount > 0 && (
                     <span className="ml-1.5 text-primary font-mono">({totalItemCount})</span>
                   )}
                 </h2>
               </div>
-              {cart.length > 0 && (
+
+              <div className="flex items-center gap-1.5">
+                {/* Suspended Sales List Button */}
                 <button
                   type="button"
-                  onClick={clearCart}
-                  aria-label="Vaciar todo el carrito"
-                  className="text-[11px] text-semantic-danger-text hover:underline flex items-center gap-1 font-bold focus-visible:ring-2 focus-visible:ring-red-500 rounded px-1"
+                  onClick={() => setIsSuspendedModalOpen(true)}
+                  className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition-colors flex items-center gap-1 ${
+                    suspendedSales.length > 0
+                      ? "bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20"
+                      : "bg-surface-secondary text-text-muted border-border hover:bg-surface-hover"
+                  }`}
+                  title="Ver tickets en espera"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Vaciar
+                  <PauseCircle className="w-3.5 h-3.5" />
+                  <span>En Espera ({suspendedSales.length})</span>
                 </button>
-              )}
+
+                {/* Suspend current sale button */}
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsSuspendConfirmOpen(true)}
+                    className="text-[11px] font-bold px-2 py-1 rounded-lg bg-surface-secondary text-text-secondary border border-border hover:bg-surface-hover transition-colors flex items-center gap-1"
+                    title="Pausar esta venta para atender a otro cliente"
+                  >
+                    Pausar
+                  </button>
+                )}
+
+                {cart.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearCart}
+                    aria-label="Vaciar todo el carrito"
+                    className="text-[11px] text-semantic-danger-text hover:underline flex items-center gap-1 font-bold rounded px-1"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Cart Items — scrollable */}
@@ -440,11 +574,64 @@ export default function POSPage() {
 
             {/* Totals & Checkout — fixed at bottom, never scrolls */}
             <div className="flex-shrink-0 border-t border-border bg-surface-secondary p-4 space-y-3 pb-safe">
+              {/* Coupon promo box */}
+              {cart.length > 0 && (
+                <div className="pt-0.5">
+                  {appliedCoupon ? (
+                    <div className="flex items-center justify-between p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold truncate">
+                        <Tag className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">
+                          Cupón: {appliedCoupon.code} (
+                          {appliedCoupon.discount_type === "PERCENTAGE"
+                            ? `-${appliedCoupon.discount_value}%`
+                            : `-${formatCRC(appliedCoupon.discount_value)}`}
+                          )
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="text-text-muted hover:text-semantic-danger-text p-1 flex-shrink-0"
+                        title="Quitar cupón"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleApplyCoupon} className="flex gap-1.5">
+                      <div className="relative flex-1">
+                        <Tag className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Cupón de descuento..."
+                          value={couponCodeInput}
+                          onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                          className="w-full pl-8 pr-2 py-1.5 bg-surface border border-border rounded-xl text-xs text-text-main placeholder-text-muted focus:outline-none focus:border-primary uppercase font-mono"
+                        />
+                      </div>
+                      <Button type="submit" variant="secondary" size="sm" className="text-xs px-2.5 py-1.5 h-auto">
+                        Aplicar
+                      </Button>
+                    </form>
+                  )}
+                  {couponError && (
+                    <p className="text-[10px] text-semantic-danger-text font-medium mt-1">{couponError}</p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1.5 text-xs text-text-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span className="font-mono font-bold text-text-main">{formatCRC(subtotal)}</span>
+                  <span className="font-mono font-bold text-text-main">{formatCRC(rawSubtotal)}</span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-500 font-medium">
+                    <span>Descuento Aplicado:</span>
+                    <span className="font-mono font-bold">-{formatCRC(discountAmount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>IVA Costa Rica:</span>
                   <span className="font-mono font-bold text-text-main">{formatCRC(totalTax)}</span>
@@ -477,8 +664,12 @@ export default function POSPage() {
                 )}
               </Button>
 
-              <div className="text-center text-[10px] text-text-muted font-mono">
-                F4 / Ctrl+Espacio = Cobrar • F2 = Buscar • Esc = Cancelar
+              <div className="flex items-center justify-between text-[10px] text-text-muted font-mono pt-1">
+                <span>F4 = Cobrar • F2 = Buscar</span>
+                <span className={`flex items-center gap-1 font-bold ${isOnline ? "text-emerald-500" : "text-amber-500"}`}>
+                  {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                  {isOnline ? "En Línea" : "Offline"}
+                </span>
               </div>
             </div>
           </div>
@@ -704,6 +895,119 @@ export default function POSPage() {
           maxWidth="md"
         >
           <ThermalReceipt data={lastReceiptData} onClose={() => setIsReceiptModalOpen(false)} />
+        </Modal>
+      )}
+
+      {/* ── Suspend Confirmation Modal ─────────────────────────────────── */}
+      {isSuspendConfirmOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setIsSuspendConfirmOpen(false)}
+          title="Pausar y Guardar Ticket en Espera"
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-text-secondary">
+              Esta acción guardará los <strong>{totalItemCount} productos</strong> del carrito actual para que puedas atender a otro cliente y retomar esta venta más adelante.
+            </p>
+
+            <div className="space-y-1.5">
+              <label htmlFor="suspend-note" className="block text-xs font-bold text-text-secondary">
+                Nota o Referencia (Opcional)
+              </label>
+              <input
+                id="suspend-note"
+                placeholder="Ej. Cliente fue por efectivo al cajero"
+                value={suspendNote}
+                onChange={(e) => setSuspendNote(e.target.value)}
+                className="w-full px-3 py-2 bg-surface-input border border-border rounded-xl text-xs text-text-main focus:outline-none focus:border-primary"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button variant="secondary" onClick={() => setIsSuspendConfirmOpen(false)}>
+                Cancelar
+              </Button>
+              <Button variant="primary" onClick={handleSuspendCurrentSale}>
+                <PauseCircle className="w-4 h-4 mr-1.5" />
+                Pausar Venta
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Suspended Sales List Modal ─────────────────────────────────── */}
+      {isSuspendedModalOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setIsSuspendedModalOpen(false)}
+          title={`Tickets en Espera (${suspendedSales.length})`}
+          maxWidth="md"
+        >
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+            {suspendedSales.length === 0 ? (
+              <div className="py-8 text-center text-text-muted space-y-2">
+                <PauseCircle className="w-8 h-8 mx-auto opacity-30" />
+                <p className="text-xs">No hay ventas pausadas en este momento.</p>
+              </div>
+            ) : (
+              suspendedSales.map((sale) => {
+                const saleTotal = sale.items.reduce((acc, it) => acc + it.product.sale_price * it.quantity, 0);
+                const itemCount = sale.items.reduce((acc, it) => acc + it.quantity, 0);
+
+                return (
+                  <div
+                    key={sale.id}
+                    className="p-3 bg-surface-secondary border border-border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-text-main">
+                          {sale.customer_name || "Cliente General"}
+                        </span>
+                        <span className="text-[10px] font-mono text-text-muted">
+                          {sale.created_at}
+                        </span>
+                      </div>
+                      {sale.tag && (
+                        <p className="text-[11px] text-amber-500 font-medium italic">
+                          "{sale.tag}"
+                        </p>
+                      )}
+                      <p className="text-[11px] text-text-muted">
+                        {itemCount} artículos: {sale.items.map((it) => `${it.quantity}x ${it.product.name}`).join(", ")}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 sm:flex-shrink-0">
+                      <span className="text-sm font-black font-mono text-emerald-500 mr-2">
+                        {formatCRC(saleTotal)}
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => deleteSuspendedSale(sale.id)}
+                        className="text-semantic-danger-text hover:bg-semantic-danger-bg p-2"
+                        title="Descartar ticket"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleResumeSale(sale)}
+                        className="gap-1 font-bold"
+                      >
+                        <PlayCircle className="w-3.5 h-3.5" />
+                        Recuperar
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </Modal>
       )}
     </POSLayout>

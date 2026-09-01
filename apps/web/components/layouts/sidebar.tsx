@@ -21,28 +21,78 @@ import {
   PackagePlus,
   UserCog,
   X,
+  FileCheck2,
+  Wrench,
+  Navigation,
+  Landmark,
+  TrendingDown,
+  CreditCard,
+  Tag,
 } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { cn } from "@/lib/utils";
 import { BrandIcon } from "@/components/ui/brand-logo";
 
-const NAV_ITEMS = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, perm: "org:read" },
-  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart, perm: "pos:read", highlight: true },
-  { name: "Ventas", href: "/sales", icon: Receipt, perm: "pos:read" },
-  { name: "Productos", href: "/products", icon: Package, perm: "catalog:read" },
-  { name: "Inventario", href: "/inventory", icon: Boxes, perm: "inventory:read" },
-  { name: "Compras / Stock", href: "/purchases", icon: PackagePlus, perm: "inventory:adjust" },
-  { name: "Proveedores", href: "/suppliers", icon: Truck, perm: "inventory:read" },
-  { name: "Clientes", href: "/customers", icon: Users, perm: "pos:read" },
-  { name: "Caja y Turnos", href: "/cash-register", icon: DollarSign, perm: "cash:open" },
-  { name: "Facturación Electrónica", href: "/invoices", icon: FileText, perm: "invoicing:read" },
-  { name: "Reportes", href: "/reports", icon: BarChart3, perm: "reports:read" },
-  { name: "Auditoría", href: "/audit", icon: ShieldCheck, perm: "audit:read" },
-  { name: "Empleados", href: "/employees", icon: UserCog, perm: "org:read" },
-  { name: "Sucursales", href: "/branches", icon: Building, perm: "branch:read" },
-  { name: "Suscripción", href: "/subscription", icon: Sparkles, perm: "org:read" },
-  { name: "Configuración", href: "/settings", icon: Settings, perm: "org:update" },
+interface NavGroup {
+  title: string;
+  items: {
+    name: string;
+    href: string;
+    icon: React.ComponentType<{ className?: string }>;
+    perm?: string;
+    highlight?: boolean;
+    badge?: string;
+  }[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: "OPERACIONES",
+    items: [
+      { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, perm: "org:read" },
+      { name: "Punto de Venta POS", href: "/pos", icon: ShoppingCart, perm: "pos:read", highlight: true, badge: "F2" },
+      { name: "Ventas & Historial", href: "/sales", icon: Receipt, perm: "pos:read" },
+      { name: "Cotizaciones / Proformas", href: "/quotes", icon: FileText, perm: "pos:read" },
+      { name: "Caja y Turnos Z", href: "/cash-register", icon: DollarSign, perm: "cash:open" },
+    ],
+  },
+  {
+    title: "CATÁLOGO E INVENTARIO",
+    items: [
+      { name: "Productos & Servicios", href: "/products", icon: Package, perm: "catalog:read" },
+      { name: "Inventario & Kárdex", href: "/inventory", icon: Boxes, perm: "inventory:read" },
+      { name: "Compras a Proveedores", href: "/purchases", icon: PackagePlus, perm: "inventory:adjust" },
+      { name: "Directorio Proveedores", href: "/suppliers", icon: Truck, perm: "inventory:read" },
+    ],
+  },
+  {
+    title: "COMERCIAL & CRM",
+    items: [
+      { name: "Clientes & Crédito", href: "/customers", icon: Users, perm: "pos:read" },
+      { name: "Fidelidad & Cupones", href: "/loyalty", icon: Tag, perm: "pos:read" },
+      { name: "Citas & Órdenes Servicio", href: "/work-orders", icon: Wrench, perm: "pos:read" },
+      { name: "Despachos & Rutas", href: "/dispatch", icon: Navigation, perm: "pos:read" },
+    ],
+  },
+  {
+    title: "FINANZAS & TRIBUTARIO",
+    items: [
+      { name: "Facturación Hacienda v4.4", href: "/invoices", icon: FileCheck2, perm: "invoicing:read" },
+      { name: "Gastos & Cuentas x Pagar", href: "/expenses", icon: TrendingDown, perm: "reports:read" },
+      { name: "Bancos & Conciliación", href: "/banking", icon: Landmark, perm: "reports:read" },
+      { name: "Reportes & Resumen D-104", href: "/reports", icon: BarChart3, perm: "reports:read" },
+    ],
+  },
+  {
+    title: "ADMINISTRACIÓN",
+    items: [
+      { name: "Empleados & Roles", href: "/employees", icon: UserCog, perm: "org:read" },
+      { name: "Sucursales & Cajas", href: "/branches", icon: Building, perm: "branch:read" },
+      { name: "Auditoría de Seguridad", href: "/audit", icon: ShieldCheck, perm: "audit:read" },
+      { name: "Planes & Suscripción", href: "/subscription", icon: CreditCard, perm: "org:read" },
+      { name: "Configuración General", href: "/settings", icon: Settings, perm: "org:update" },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -106,41 +156,63 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         {/* Navigation List — scrollable */}
         <nav
-          className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5 min-h-0"
+          className="flex-1 overflow-y-auto px-3 py-3 space-y-4 min-h-0"
           aria-label="Menú de navegación del sistema"
         >
-          {NAV_ITEMS.map((item) => {
-            if (item.perm && !hasPermission(item.perm)) return null;
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+          {NAV_GROUPS.map((group, gIdx) => {
+            const visibleItems = group.items.filter((it) => !it.perm || hasPermission(it.perm));
+            if (visibleItems.length === 0) return null;
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => onClose && onClose()}
-                aria-current={isActive ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group focus-visible:ring-2 focus-visible:ring-primary",
-                  isActive
-                    ? "bg-primary text-white shadow-sm shadow-primary/25"
-                    : "text-text-secondary hover:text-text-main hover:bg-surface-secondary",
-                  item.highlight && !isActive && "text-primary bg-primary-subtle border border-primary/30"
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "w-4 h-4 flex-shrink-0 transition-colors",
-                    isActive ? "text-white" : item.highlight ? "text-primary" : "text-text-muted group-hover:text-text-main"
-                  )}
-                />
-                <span className="truncate">{item.name}</span>
-                {item.highlight && !isActive && (
-                  <span className="ml-auto text-[9px] font-mono bg-primary/20 text-primary px-1.5 py-0.5 rounded font-bold flex-shrink-0">
-                    POS
-                  </span>
-                )}
-              </Link>
+              <div key={gIdx} className="space-y-1">
+                <p className="px-3 text-[10px] font-black uppercase tracking-wider text-text-muted/80">
+                  {group.title}
+                </p>
+                <div className="space-y-0.5">
+                  {visibleItems.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    const Icon = item.icon;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => onClose && onClose()}
+                        aria-current={isActive ? "page" : undefined}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all group focus-visible:ring-2 focus-visible:ring-primary",
+                          isActive
+                            ? "bg-primary text-white shadow-sm shadow-primary/25 font-bold"
+                            : "text-text-secondary hover:text-text-main hover:bg-surface-secondary",
+                          item.highlight && !isActive && "text-primary bg-primary-subtle/80 border border-primary/30"
+                        )}
+                      >
+                        <Icon
+                          className={cn(
+                            "w-4 h-4 flex-shrink-0 transition-colors",
+                            isActive ? "text-white" : item.highlight ? "text-primary" : "text-text-muted group-hover:text-text-main"
+                          )}
+                        />
+                        <span className="truncate">{item.name}</span>
+                        {item.badge && (
+                          <span
+                            className={cn(
+                              "ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded font-bold flex-shrink-0",
+                              isActive
+                                ? "bg-white/20 text-white"
+                                : item.highlight
+                                ? "bg-primary/20 text-primary"
+                                : "bg-surface-secondary text-text-muted"
+                            )}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>
