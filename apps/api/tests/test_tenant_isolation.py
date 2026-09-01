@@ -54,7 +54,42 @@ async def test_tenant_isolation(client: AsyncClient):
     # Verify distinct IDs
     assert branch1_id != branch2_id
 
-    # Org 2 tries to access Org 1's branch directly (IDOR check)
+    # Org 2 tries to access Org 1's branch directly (IDOR check) -> must return 404
     idor_resp = await client.get(f"/api/v1/branches/{branch1_id}", headers={"Authorization": f"Bearer {token2}"})
     assert idor_resp.status_code == 404
     assert idor_resp.json()["error"]["code"] == "NOT_FOUND"
+
+    # Org 1 creates a product
+    taxes1 = await client.get("/api/v1/tax-rates", headers={"Authorization": f"Bearer {token1}"})
+    tax1_id = taxes1.json()["data"][0]["id"]
+
+    p1_resp = await client.post(
+        "/api/v1/products",
+        headers={"Authorization": f"Bearer {token1}"},
+        json={
+            "name": "Arroz Tío Pelón 1kg",
+            "sku": "ARR-001",
+            "cost_price": 800.0,
+            "sale_price": 1130.0,
+            "tax_rate_id": tax1_id
+        }
+    )
+    assert p1_resp.status_code == 201
+    prod1_id = p1_resp.json()["data"]["id"]
+
+    # Org 2 tries to read Org 1's product -> must return 404 (IDOR check)
+    idor_p2 = await client.get(f"/api/v1/products/{prod1_id}", headers={"Authorization": f"Bearer {token2}"})
+    assert idor_p2.status_code == 404
+
+    # Org 2 tries to sell Org 1's product -> must fail with 404
+    fail_sale = await client.post(
+        "/api/v1/sales",
+        headers={"Authorization": f"Bearer {token2}"},
+        json={
+            "branch_id": branch2_id,
+            "currency": "CRC",
+            "items": [{"product_id": prod1_id, "quantity": 1, "discount_percentage": 0}],
+            "payments": [{"payment_method": "CASH_CRC", "amount": 1500.0}]
+        }
+    )
+    assert fail_sale.status_code == 404

@@ -27,10 +27,21 @@ class AuditLog(Base, UUIDMixin):
     action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     resource: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    
+    # Audit Security & Forensic Hashing
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    step_up_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
     payload_before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     payload_after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    
+    # Chained Cryptographic Verification (SHA-256)
+    previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    event_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

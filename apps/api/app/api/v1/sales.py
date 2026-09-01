@@ -52,7 +52,7 @@ async def get_sale(
     db: AsyncSession = Depends(get_db)
 ):
     service = SaleService(db, context.organization_id)
-    sale = await service.get_sale_by_id(sale_id)
+    sale = await service.get_sale(sale_id)
     return StandardResponse(data=SaleResponse.model_validate(sale))
 
 @router.get("/{sale_id}/receipt", response_model=StandardResponse[Dict[str, Any]])
