@@ -114,6 +114,7 @@ class SupportService:
         sender_id: uuid.UUID,
         sender_role: UserRole,
         message: str,
+        organization_id: Optional[uuid.UUID] = None,
         is_internal_note: bool = False
     ) -> SupportMessage:
         stmt = select(SupportTicket).where(SupportTicket.id == ticket_id)
@@ -121,6 +122,11 @@ class SupportService:
         ticket = res.scalar_one_or_none()
         if not ticket:
             raise NotFoundException("Ticket no encontrado")
+
+        # Multi-tenant isolation: non-superadmin clients can only post to their own organization's tickets
+        if sender_role not in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
+            if not organization_id or ticket.organization_id != organization_id:
+                raise ForbiddenException("Acceso denegado: el ticket pertenece a otra organización")
 
         if is_internal_note and sender_role not in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
             raise ForbiddenException("Solo el equipo de soporte de la plataforma puede agregar notas internas")

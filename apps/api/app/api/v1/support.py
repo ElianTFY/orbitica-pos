@@ -154,6 +154,7 @@ async def add_ticket_message(
         sender_id=context.user_id,
         sender_role=context.role,
         message=payload.message,
+        organization_id=context.organization_id,
         is_internal_note=payload.is_internal_note
     )
     return StandardResponse(
