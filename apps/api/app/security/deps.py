@@ -23,7 +23,11 @@ class CurrentUserContext:
         organization: Optional[Organization] = None,
         accessible_branch_ids: Optional[List[UUID]] = None,
         selected_branch_id: Optional[UUID] = None,
-        db: Optional[AsyncSession] = None
+        db: Optional[AsyncSession] = None,
+        is_delegated_session: bool = False,
+        delegated_grant_id: Optional[UUID] = None,
+        delegated_expires_at: Optional[datetime] = None,
+        delegated_reason: Optional[str] = None
     ):
         self.user = user
         self.user_id = user.id
@@ -34,6 +38,10 @@ class CurrentUserContext:
         self.accessible_branch_ids = accessible_branch_ids or []
         self.selected_branch_id = selected_branch_id
         self.db = db
+        self.is_delegated_session = is_delegated_session
+        self.delegated_grant_id = delegated_grant_id
+        self.delegated_expires_at = delegated_expires_at
+        self.delegated_reason = delegated_reason
 
 async def get_current_user_context(
     request: Request,
@@ -83,28 +91,85 @@ async def get_current_user_context(
         if not organization:
             raise UnauthorizedException("Organización no encontrada o inactiva")
 
+    # Check for Superadmin Delegated Session
+    is_delegated = False
+    delegated_grant_id = None
+    delegated_expires_at = None
+    delegated_reason = None
+
+    delegated_token_hdr = request.headers.get("X-Delegated-Token")
+    if delegated_token_hdr and user.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
+        import hashlib
+        from app.models.support import DelegatedAccessGrant
+        from app.services.audit_service import AuditService
+
+        token_hash = hashlib.sha256(delegated_token_hdr.strip().encode("utf-8")).hexdigest()
+        grant_stmt = select(DelegatedAccessGrant).where(
+            DelegatedAccessGrant.token_hash == token_hash,
+            DelegatedAccessGrant.is_revoked == False
+        )
+        grant_res = await db.execute(grant_stmt)
+        grant = grant_res.scalar_one_or_none()
+        if not grant:
+            raise ForbiddenException("Token de acceso delegado inválido o revocado")
+
+        now = datetime.now(timezone.utc)
+        exp = grant.expires_at.replace(tzinfo=timezone.utc) if grant.expires_at.tzinfo is None else grant.expires_at
+        if now > exp:
+            raise ForbiddenException("Sesión de acceso delegado expirada")
+
+        if not grant.support_agent_id:
+            grant.support_agent_id = user.id
+            await db.flush()
+
+        org_stmt = select(Organization).where(Organization.id == grant.organization_id, Organization.is_active == True)
+        org_result = await db.execute(org_stmt)
+        delegated_org = org_result.scalar_one_or_none()
+        if not delegated_org:
+            raise ForbiddenException("Organización delegada inactiva o no encontrada")
+
+        organization = delegated_org
+        is_delegated = True
+        delegated_grant_id = grant.id
+        delegated_expires_at = exp
+        delegated_reason = grant.reason
+
+        await AuditService.log_action(
+            db=db,
+            action="DELEGATED_ACCESS_USED",
+            resource="TenantOperation",
+            actor_id=user.id,
+            organization_id=delegated_org.id,
+            reason=f"Operación delegada de superadmin: {grant.reason}",
+            payload_after={
+                "grant_id": str(grant.id),
+                "expires_at": exp.isoformat(),
+                "path": request.url.path
+            }
+        )
+        await db.commit()
+
     branch_stmt = select(UserBranchAccess.branch_id).where(UserBranchAccess.user_id == user.id)
     branch_result = await db.execute(branch_stmt)
     branch_ids = list(branch_result.scalars().all())
     
     # Strict tenant isolation for X-Branch-ID:
-    # NEVER trust X-Branch-ID blindly. Verify that the requested branch strictly belongs to user.organization_id!
     selected_branch_id = None
     req_branch_header = request.headers.get("X-Branch-ID")
-    if req_branch_header:
+    effective_org_id = organization.id if organization else None
+    if req_branch_header and effective_org_id:
         try:
             req_b_uuid = UUID(req_branch_header)
-            if user.organization_id:
-                b_check_stmt = select(Branch).where(
-                    Branch.id == req_b_uuid,
-                    Branch.organization_id == user.organization_id,
-                    Branch.is_active == True
-                )
-                b_check_res = await db.execute(b_check_stmt)
-                valid_branch = b_check_res.scalar_one_or_none()
-                if valid_branch:
-                    if user.role in [UserRole.SUPERADMIN, UserRole.OWNER] or req_b_uuid in branch_ids:
-                        selected_branch_id = req_b_uuid
+            b_check_stmt = select(Branch).where(
+                Branch.id == req_b_uuid,
+                Branch.organization_id == effective_org_id,
+                Branch.is_active == True
+            )
+            b_check_res = await db.execute(b_check_stmt)
+            valid_branch = b_check_res.scalar_one_or_none()
+            if valid_branch:
+                if user.role in [UserRole.SUPERADMIN, UserRole.OWNER] or req_b_uuid in branch_ids:
+                    selected_branch_id = req_b_uuid
         except ValueError:
             pass
             
@@ -113,11 +178,18 @@ async def get_current_user_context(
         organization=organization,
         accessible_branch_ids=branch_ids,
         selected_branch_id=selected_branch_id,
-        db=db
+        db=db,
+        is_delegated_session=is_delegated,
+        delegated_grant_id=delegated_grant_id,
+        delegated_expires_at=delegated_expires_at,
+        delegated_reason=delegated_reason
     )
 
 def require_permissions(*required_permissions: str) -> Callable:
     def dependency(context: CurrentUserContext = Depends(get_current_user_context)) -> CurrentUserContext:
+        if context.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT] and not context.is_delegated_session:
+            raise ForbiddenException("Superadmin no puede operar un tenant sin una sesión delegada explícita y vigente")
+
         for perm in required_permissions:
             if not has_permission(context.role, perm):
                 raise ForbiddenException(f"Permiso requerido no concedido: {perm}")
@@ -131,10 +203,13 @@ def require_superadmin(context: CurrentUserContext = Depends(get_current_user_co
 
 def require_organization_access(context: CurrentUserContext = Depends(get_current_user_context)) -> CurrentUserContext:
     """
-    Enforces that the authenticated user belongs to an active tenant organization.
-    Superadmins without delegated access cannot bypass tenant boundaries.
+    Enforces that the user belongs to an active tenant organization.
+    Superadmins CANNOT operate on a tenant without an explicit, valid delegated session.
     """
-    if not context.organization_id and context.role != UserRole.SUPERADMIN:
+    if context.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
+        if not context.is_delegated_session or not context.organization_id:
+            raise ForbiddenException("Superadmin no puede operar un tenant sin una sesión delegada explícita y vigente")
+    elif not context.organization_id:
         raise ForbiddenException("Acceso denegado: usuario sin organización asignada")
     return context
 
