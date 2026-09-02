@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xs:schema xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/notaDebitoElectronica" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" targetNamespace="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/notaDebitoElectronica" elementFormDefault="qualified" attributeFormDefault="unqualified" version="4.4" vc:minVersion="1.1">
+<xs:schema xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/facturaElectronicaExportacion" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" targetNamespace="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/facturaElectronicaExportacion" elementFormDefault="qualified" attributeFormDefault="unqualified" version="4.4" vc:minVersion="1.1">
 	<xs:import namespace="http://www.w3.org/2000/09/xmldsig#" schemaLocation="../../xmldsig-core-schema.xsd"/>
-	<xs:element name="NotaDebitoElectronica">
+	<xs:element name="FacturaElectronicaExportacion">
 		<xs:annotation>
-			<xs:documentation>Elemento Raiz de la Nota de Débito</xs:documentation>
+			<xs:documentation>Elemento Raiz de la Facturacion Electrónica de exportacion</xs:documentation>
 		</xs:annotation>
 		<xs:complexType>
 			<xs:sequence>
@@ -25,24 +25,10 @@ electrónicos</xs:documentation>
 						</xs:restriction>
 					</xs:simpleType>
 				</xs:element>
-				<xs:element name="CodigoActividadEmisor" minOccurs="0">
+				<xs:element name="CodigoActividadEmisor">
 					<xs:annotation>
 						<xs:documentation>Se debe de indicar el código de la actividad económica inscrita a la
 cual corresponde el comprobante que se está generando</xs:documentation>
-					</xs:annotation>
-					<xs:simpleType>
-						<xs:restriction base="xs:string">
-							<xs:maxLength value="6"/>
-							<xs:minLength value="6"/>
-						</xs:restriction>
-					</xs:simpleType>
-				</xs:element>
-				<xs:element name="CodigoActividadReceptor" minOccurs="0">
-					<xs:annotation>
-						<xs:documentation>Se debe de indicar el código de la actividad económica inscrita del
-receptor a la cual corresponden los bienes o servicios que se le están
-facturando al receptor en caso de ser requerido para un crédito o un
-gasto deducible.</xs:documentation>
 					</xs:annotation>
 					<xs:simpleType>
 						<xs:restriction base="xs:string">
@@ -69,7 +55,7 @@ gasto deducible.</xs:documentation>
 				</xs:element>
 				<xs:element name="CondicionVenta">
 					<xs:annotation>
-						<xs:documentation>Condiciones de la venta: 01 Contado, 02 Crédito, 03 Consignación, 04 Apartado, 05 Arrendamiento con opción de compra, 06 Arrendamiento en función financiera, 07 Cobro a favor de un tercero, 08 servicxios prestados al estado a credito, 09 pago del servicio prestado al estado, 10 venta a credito hasta 90 dias,11 pago de venta a credito en IVA hasta 90 dias, 99 Otros</xs:documentation>
+						<xs:documentation>Condiciones de la venta: 01 Contado, 02 Crédito, 03 Consignación, 04 Apartado, 05 Arrendamiento con opción de compra, 06 Arrendamiento en función financiera, 07 Cobro a favor de un tercero, 08 servicxios prestados al estado a credito, 09 pago del servicio prestado al estado,10 venta a credito hasta 90 dias,11 pago de venta a credito en IVA hasta 90 dias, 99 Otros</xs:documentation>
 					</xs:annotation>
 					<xs:simpleType>
 						<xs:restriction base="xs:string">
@@ -113,24 +99,9 @@ gasto deducible.</xs:documentation>
 									<xs:documentation>Servicios prestados al Estado a crédito </xs:documentation>
 								</xs:annotation>
 							</xs:enumeration>
-							<xs:enumeration value="09">
-								<xs:annotation>
-									<xs:documentation>Pago del servicios prestado al Estado </xs:documentation>
-								</xs:annotation>
-							</xs:enumeration>
 							<xs:enumeration value="10">
 								<xs:annotation>
 									<xs:documentation>Venta a crédito en IVA hasta 90 días (Artículo 27, LIVA) </xs:documentation>
-								</xs:annotation>
-							</xs:enumeration>
-							<xs:enumeration value="11">
-								<xs:annotation>
-									<xs:documentation>Pago de venta a crédito en IVA hasta 90 días (Artículo 27, LIVA) </xs:documentation>
-								</xs:annotation>
-							</xs:enumeration>
-							<xs:enumeration value="12">
-								<xs:annotation>
-									<xs:documentation>Venta Mercancía No Nacionalizada</xs:documentation>
 								</xs:annotation>
 							</xs:enumeration>
 							<xs:enumeration value="13">
@@ -178,7 +149,7 @@ gasto deducible.</xs:documentation>
 						</xs:restriction>
 					</xs:simpleType>
 				</xs:element>
-				<xs:element name="DetalleServicio" minOccurs="0">
+				<xs:element name="DetalleServicio">
 					<xs:annotation>
 						<xs:documentation>Detalle del Servicio, Mercancía u otro</xs:documentation>
 					</xs:annotation>
@@ -209,7 +180,7 @@ gasto deducible.</xs:documentation>
 												</xs:restriction>
 											</xs:simpleType>
 										</xs:element>
-										<xs:element name="CodigoCABYS" minOccurs="0">
+										<xs:element name="CodigoCABYS">
 											<xs:annotation>
 												<xs:documentation>Código de Producto/servicio </xs:documentation>
 											</xs:annotation>
@@ -458,37 +429,6 @@ Validación: En caso de utilizarse el código 99, se verificará que este campo 
 																		<xs:documentation>Se obtiene de la resta del campo "Monto total componente surtido" menos "Monto de descuentos concedidos al componente de surtido"</xs:documentation>
 																	</xs:annotation>
 																</xs:element>
-																<xs:element name="IVACobradoFabricaSurtido" minOccurs="0">
-																	<xs:annotation>
-																		<xs:documentation>En este campo se indicará si el Impuesto al Valor Agregado fue cobrado a nivel de fábrica, por lo que deberá ser utilizado únicamente por los obligados tributarios a realizar el pago de esta forma.
-Se convierte en obligatorio cuando el IVA se cobra o se cobró a nivel de fábrica.
-Al hacer uso del presente campo el producto se entenderá exento para el código 02, por lo cual no deberá llenar el subnodo de impuestos para el cálculo del IVA.
- ▪Para el código 01 el emisor puede separar los impuestos
-que está cobrando en la fábrica.</xs:documentation>
-																	</xs:annotation>
-																	<xs:simpleType>
-																		<xs:restriction base="xs:string">
-																			<xs:maxLength value="2"/>
-																			<xs:minLength value="2"/>
-																			<xs:enumeration value="01">
-																				<xs:annotation>
-																					<xs:documentation>Venta de bienes con IVA según el sistema especial de determinación de IVA a nivel de fábrica (Se utiliza cuando se está cobrando el IVA a nivel de fábrica</xs:documentation>
-																				</xs:annotation>
-																			</xs:enumeration>
-																			<xs:enumeration value="02">
-																				<xs:annotation>
-																					<xs:documentation>Ventas exentas según el sistema especial de determinación de IVA a nivel de fábrica, mayorista y aduanas (se utiliza cuando el producto se encuentra exento ya que el bien soporto el cobro de impuestos a nivel de fábrica).
-</xs:documentation>
-																				</xs:annotation>
-																			</xs:enumeration>
-																		</xs:restriction>
-																	</xs:simpleType>
-																</xs:element>
-																<xs:element name="BaseImponibleSurtido" type="DecimalDineroType">
-																	<xs:annotation>
-																		<xs:documentation>Este campo será de condición obligatoria, cuando el producto este gravado con algún impuesto. Se obtiene de la suma entre el campo "Subtotal componente del surtido", más el impuesto selectivo de consumo (02), el Impuesto específico de Bebidas Alcohólicas (04) y el Impuesto Específico sobre las bebidas envasadas sin contenido alcohólico y jabones de tocador (05), cuando corresponda. Este campo se podrá editar cuando se seleccione en el campo "IVA cobrado a nivel de fábrica" el Código 01 o en el campo de "Código del impuesto" el código 07. Validación: En caso de utilizarse el código 01, en el campo de IVA cobrado a nivel de fábrica, se verificará que este campo se encuentre en el comprobante, caso contrario se rechazará. Además, se deberá incluir un valor mayor a "cero".</xs:documentation>
-																	</xs:annotation>
-																</xs:element>
 																<xs:element name="ImpuestoSurtido" maxOccurs="1000">
 																	<xs:complexType>
 																		<xs:sequence>
@@ -528,65 +468,6 @@ Validación: Se verificará el cumplimiento de nota 8.1. cuando se utilice el c�
 																					</xs:restriction>
 																				</xs:simpleType>
 																			</xs:element>
-																			<xs:element name="DatosImpuestoEspecificoSurtido" minOccurs="0">
-																				<xs:annotation>
-																					<xs:documentation>Datos para Impuestos Específicos para componente de surtido</xs:documentation>
-																				</xs:annotation>
-																				<xs:complexType>
-																					<xs:sequence>
-																						<xs:element name="CantidadUnidadMedidaSurtido">
-																							<xs:annotation>
-																								<xs:documentation>Cantidad de la unidad de medida a utilizar para componente de surtido. Este campo es de condición obligatoria, cuando se utilicen los códigos de impuesto 04, 05 y 06 de la nota 8</xs:documentation>
-																							</xs:annotation>
-																							<xs:simpleType>
-																								<xs:restriction base="xs:decimal">
-																									<xs:totalDigits value="7"/>
-																									<xs:fractionDigits value="2"/>
-																								</xs:restriction>
-																							</xs:simpleType>
-																						</xs:element>
-																						<xs:element name="PorcentajeSurtido" minOccurs="0">
-																							<xs:annotation>
-																								<xs:documentation>Porcentaje en componente de surtido.  Este campo es de condición obligatoria, cuando se utilice el código de impuesto 04 de la nota 8. Debe de expresarse el porcentaje como número entero (Ejemplo: la tarifa del 13% se debe de reflejar como 13, la tarifa del 1% como 1, o bien la tarifa del 0.5% como 0.5)</xs:documentation>
-																							</xs:annotation>
-																							<xs:simpleType>
-																								<xs:restriction base="xs:decimal">
-																									<xs:totalDigits value="4"/>
-																									<xs:fractionDigits value="2"/>
-																								</xs:restriction>
-																							</xs:simpleType>
-																						</xs:element>
-																						<xs:element name="ProporcionSurtido" minOccurs="0">
-																							<xs:annotation>
-																								<xs:documentation>Este campo es de condición obligatoria, cuando se utilice el código de impuesto 04 de la nota 8
-Este campo se obtiene de multiplicar la "Cantidad de la unidad de medida a utilizar" por el "Porcentaje"</xs:documentation>
-																							</xs:annotation>
-																							<xs:simpleType>
-																								<xs:restriction base="xs:decimal">
-																									<xs:totalDigits value="5"/>
-																									<xs:fractionDigits value="2"/>
-																								</xs:restriction>
-																							</xs:simpleType>
-																						</xs:element>
-																						<xs:element name="VolumenUnidadConsumoSurtido" minOccurs="0">
-																							<xs:annotation>
-																								<xs:documentation>Volumen por Unidad de Consumo componente de surtido.  Este campo es de condición obligatoria, cuando se utilice el código de impuesto 05 de la nota 8</xs:documentation>
-																							</xs:annotation>
-																							<xs:simpleType>
-																								<xs:restriction base="xs:decimal">
-																									<xs:fractionDigits value="2"/>
-																									<xs:totalDigits value="7"/>
-																								</xs:restriction>
-																							</xs:simpleType>
-																						</xs:element>
-																						<xs:element name="ImpuestoUnidadSurtido" type="DecimalDineroType">
-																							<xs:annotation>
-																								<xs:documentation>Este campo es de condición obligatoria, cuando se utilicen los códigos de impuesto 04, 05 y 06 de la nota 8</xs:documentation>
-																							</xs:annotation>
-																						</xs:element>
-																					</xs:sequence>
-																				</xs:complexType>
-																			</xs:element>
 																			<xs:element name="MontoImpuestoSurtido" type="DecimalDineroType">
 																				<xs:annotation>
 																					<xs:documentation>Este campo será de condición obligatoria, cuando el componente este gravado con algún impuesto. Es un número decimal compuesto por 13 enteros y 5 decimales</xs:documentation>
@@ -617,49 +498,9 @@ Este campo se obtiene de multiplicar la "Cantidad de la unidad de medida a utili
 												<xs:documentation>Se obtiene de la resta del campo monto total menos monto de descuento concedido</xs:documentation>
 											</xs:annotation>
 										</xs:element>
-										<xs:element name="IVACobradoFabrica" minOccurs="0">
-											<xs:annotation>
-												<xs:documentation>En este campo se indicará si el Impuesto al Valor Agregado fue cobrado a nivel de fábrica, por lo que deberá ser utilizado únicamente por los obligados tributarios a realizar el pago de
-esta forma. Se convierte en obligatorio cuando el IVA se cobra o se cobró a nivel de fábrica. Al hacer uso del presente campo el producto se entenderá exento para el código 02, por lo cual no deberá llenar el subnodo de impuestos para el cálculo del IVA. Para el código 01 el emisor puede separar los impuestos
-que está cobrando en la fábrica. </xs:documentation>
-											</xs:annotation>
-											<xs:simpleType>
-												<xs:restriction base="xs:string">
-													<xs:maxLength value="2"/>
-													<xs:minLength value="2"/>
-													<xs:enumeration value="01">
-														<xs:annotation>
-															<xs:documentation>Venta de bienes con IVA según el sistema especial de determinación de IVA a nivel de fábrica (Se utiliza cuando se está cobrando el IVA a nivel de fábrica</xs:documentation>
-														</xs:annotation>
-													</xs:enumeration>
-													<xs:enumeration value="02">
-														<xs:annotation>
-															<xs:documentation>Ventas exentas según el sistema especial de determinación de IVA a nivel de fábrica, mayorista y aduanas (se utiliza cuando el producto se encuentra exento ya que el bien soporto el cobro de impuestos a nivel de fábrica).
-</xs:documentation>
-														</xs:annotation>
-													</xs:enumeration>
-												</xs:restriction>
-											</xs:simpleType>
-										</xs:element>
-										<xs:element name="BaseImponible" type="DecimalDineroType">
-											<xs:annotation>
-												<xs:documentation>Base imponible especial</xs:documentation>
-											</xs:annotation>
-										</xs:element>
 										<xs:element name="Impuesto" type="ImpuestoType" maxOccurs="1000">
 											<xs:annotation>
 												<xs:documentation>Cuando el producto o servicio este gravado con algún impuesto se debe indicar cada uno de ellos.</xs:documentation>
-											</xs:annotation>
-										</xs:element>
-										<xs:element name="ImpuestoAsumidoEmisorFabrica" type="DecimalDineroType" minOccurs="0">
-											<xs:annotation>
-												<xs:documentation>Impuestos Asumidos por el Emisor o cobrado a Nivel de Fábrica</xs:documentation>
-											</xs:annotation>
-										</xs:element>
-										<xs:element name="ImpuestoNeto" type="DecimalDineroType">
-											<xs:annotation>
-												<xs:documentation>Este monto se obtiene al restar el campo “Monto del Impuesto” menos “Monto del Impuesto Exonerado” o el
-campo “Impuestos Asumidos por el Emisor o cobrado a Nivel de Fábrica” cuando corresponda.</xs:documentation>
 											</xs:annotation>
 										</xs:element>
 										<xs:element name="MontoTotalLinea" type="DecimalDineroType">
@@ -693,16 +534,6 @@ se obtiene de la sumatoria de los campos “Subtotal”, “Impuesto Neto”.</x
 									<xs:documentation>Total de los servicios exentos de IVA</xs:documentation>
 								</xs:annotation>
 							</xs:element>
-							<xs:element name="TotalServExonerado" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Total servicios exonerados del IVA</xs:documentation>
-								</xs:annotation>
-							</xs:element>
-							<xs:element name="TotalServNoSujeto" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Este campo será de condición obligatoria, cuando se seleccionen códigos CAByS que correspondan a un servicio y el servicio sea No Sujeto de IVA</xs:documentation>
-								</xs:annotation>
-							</xs:element>
 							<xs:element name="TotalMercanciasGravadas" type="DecimalDineroType" minOccurs="0">
 								<xs:annotation>
 									<xs:documentation>Total mercancias gravadas con IVA</xs:documentation>
@@ -713,19 +544,9 @@ se obtiene de la sumatoria de los campos “Subtotal”, “Impuesto Neto”.</x
 									<xs:documentation>Total mercancias exentas de IVA</xs:documentation>
 								</xs:annotation>
 							</xs:element>
-							<xs:element name="TotalMercExonerada" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Total mercancías exoneradas del IVA</xs:documentation>
-								</xs:annotation>
-							</xs:element>
-							<xs:element name="TotalMercNoSujeta" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Este campo será de condición obligatoria, cuando se seleccionen códigos CAByS que correspondan a una mercancía y la mercancía sea No Sujeta de IVA</xs:documentation>
-								</xs:annotation>
-							</xs:element>
 							<xs:element name="TotalGravado" type="DecimalDineroType" minOccurs="0">
 								<xs:annotation>
-									<xs:documentation>Total gravado. se obtiene de la suma del total servicios gravados con IVA + total mercancias gravadas con IVA</xs:documentation>
+									<xs:documentation>Total gravado. se obtiene de la suma del total servicios gravados con IV + total mercancias gravadas con IV</xs:documentation>
 								</xs:annotation>
 							</xs:element>
 							<xs:element name="TotalExento" type="DecimalDineroType" minOccurs="0">
@@ -733,19 +554,9 @@ se obtiene de la sumatoria de los campos “Subtotal”, “Impuesto Neto”.</x
 									<xs:documentation>Total Exento, se obtiene de la suma de los campos total servicios exentos IV mas total mercancias exentas IV</xs:documentation>
 								</xs:annotation>
 							</xs:element>
-							<xs:element name="TotalExonerado" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Se obtiene de la suma de los campos “total servicios exonerados de IVA” mas “total de mercancías exoneradas del IVA”.</xs:documentation>
-								</xs:annotation>
-							</xs:element>
-							<xs:element name="TotalNoSujeto" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>Se obtiene de la suma de los campos “Total servicios No Sujetos de IVA” mas “Total mercancías No Sujetas de IVA”.</xs:documentation>
-								</xs:annotation>
-							</xs:element>
 							<xs:element name="TotalVenta" type="DecimalDineroType">
 								<xs:annotation>
-									<xs:documentation>Se obtiene de la sumatoria de los campos “total gravado”, “total exento”, “Total Exonerado” y “Total No Sujeto”.</xs:documentation>
+									<xs:documentation>Se obtiene de la sumatoria de los campos “total gravado”, “total exento” y “Total Exonerado”.</xs:documentation>
 								</xs:annotation>
 							</xs:element>
 							<xs:element name="TotalDescuentos" type="DecimalDineroType" minOccurs="0">
@@ -786,11 +597,6 @@ se obtiene de la sumatoria de los campos “Subtotal”, “Impuesto Neto”.</x
 							<xs:element name="TotalImpAsumEmisorFabrica" type="DecimalDineroType" minOccurs="0">
 								<xs:annotation>
 									<xs:documentation>Este campo es de condición obligatoria, cuando existen producto/servicio gravados con algún impuesto en las líneas de detalle que sean asumidos por el emisor</xs:documentation>
-								</xs:annotation>
-							</xs:element>
-							<xs:element name="TotalIVADevuelto" type="DecimalDineroType" minOccurs="0">
-								<xs:annotation>
-									<xs:documentation>IVA Devuelto</xs:documentation>
 								</xs:annotation>
 							</xs:element>
 							<xs:element name="TotalOtrosCargos" type="DecimalDineroType" minOccurs="0">
@@ -877,7 +683,7 @@ se obtiene de la sumatoria de los campos “Subtotal”, “Impuesto Neto”.</x
 						</xs:sequence>
 					</xs:complexType>
 				</xs:element>
-				<xs:element name="InformacionReferencia" maxOccurs="10">
+				<xs:element name="InformacionReferencia" minOccurs="0" maxOccurs="10">
 					<xs:complexType>
 						<xs:sequence>
 							<xs:element name="TipoDocIR" type="TipoDocReferenciaType">
@@ -1020,9 +826,9 @@ alcohólicas, suministrado por la Dirección General de Aduanas</xs:documentatio
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:element>
-			<xs:element name="Ubicacion" type="UbicacionType" minOccurs="0"/>
+			<xs:element name="Ubicacion" type="UbicacionType"/>
 			<xs:element name="Telefono" type="TelefonoType" nillable="true" minOccurs="0"/>
-			<xs:element name="CorreoElectronico" minOccurs="0" maxOccurs="4">
+			<xs:element name="CorreoElectronico" maxOccurs="4">
 				<xs:annotation>
 					<xs:documentation>Debe cumplir con la siguiente estructura: 
  \s*\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*\s*
@@ -1061,7 +867,6 @@ alcohólicas, suministrado por la Dirección General de Aduanas</xs:documentatio
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:element>
-			<xs:element name="Ubicacion" type="UbicacionType" minOccurs="0"/>
 			<xs:element name="OtrasSenasExtranjero" minOccurs="0">
 				<xs:annotation>
 					<xs:documentation>Campo para incluir la direccion del extranjero, en caso de requerirse.</xs:documentation>
@@ -1212,118 +1017,45 @@ alcohólicas, suministrado por la Dirección General de Aduanas</xs:documentatio
 	</xs:complexType>
 	<xs:complexType name="ExoneracionType">
 		<xs:sequence>
-			<xs:element name="TipoDocumentoEX1" type="TipoExoneracionType">
+			<xs:element name="TipoDocumento">
 				<xs:annotation>
-					<xs:documentation>Tipo de documento de exoneración o autorización.</xs:documentation>
-				</xs:annotation>
-			</xs:element>
-			<xs:element name="TipoDocumentoOTRO" minOccurs="0">
-				<xs:annotation>
-					<xs:documentation>Será obligatorio en caso de utilizar el código 99 de “Otros” de la nota 10.1. Se debe describir puntualmente el tipo de documento o autorización utilizado</xs:documentation>
+					<xs:documentation>Tipo de documento de exoneración o autorización. 01 Compras Autorizadas, 02 Ventas exentas a diplomáticos, 03 Autorizado por Ley Especial, 04 Exenciones Dirección General de Hacienda, 05 Transitorio V, 06 Transitorio IX, 07 Transitorio XVII, 99 Otros</xs:documentation>
 				</xs:annotation>
 				<xs:simpleType>
 					<xs:restriction base="xs:string">
-						<xs:minLength value="5"/>
-						<xs:maxLength value="100"/>
-					</xs:restriction>
-				</xs:simpleType>
-			</xs:element>
-			<xs:element name="NumeroDocumento">
-				<xs:annotation>
-					<xs:documentation>Número de documento de exoneración o autorización</xs:documentation>
-				</xs:annotation>
-				<xs:simpleType>
-					<xs:restriction base="xs:string">
-						<xs:maxLength value="40"/>
-						<xs:minLength value="3"/>
-					</xs:restriction>
-				</xs:simpleType>
-			</xs:element>
-			<xs:element name="Articulo" minOccurs="0">
-				<xs:annotation>
-					<xs:documentation>Número de artículo que establece la exoneración o autorización</xs:documentation>
-				</xs:annotation>
-				<xs:simpleType>
-					<xs:restriction base="xs:integer">
-						<xs:totalDigits value="6"/>
-					</xs:restriction>
-				</xs:simpleType>
-			</xs:element>
-			<xs:element name="Inciso" minOccurs="0">
-				<xs:annotation>
-					<xs:documentation>Número de inciso que establece la exoneración o autorización</xs:documentation>
-				</xs:annotation>
-				<xs:simpleType>
-					<xs:restriction base="xs:integer">
-						<xs:totalDigits value="6"/>
-					</xs:restriction>
-				</xs:simpleType>
-			</xs:element>
-			<xs:element name="NombreInstitucion">
-				<xs:annotation>
-					<xs:documentation>Nombre de la institución o dependencia que emitió la exoneración</xs:documentation>
-				</xs:annotation>
-				<xs:simpleType>
-					<xs:restriction base="xs:string">
-						<xs:maxLength value="2"/>
 						<xs:enumeration value="01">
 							<xs:annotation>
-								<xs:documentation>Ministerio de Hacienda</xs:documentation>
+								<xs:documentation>Compras Autorizadas</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="02">
 							<xs:annotation>
-								<xs:documentation>Ministerio de Relaciones Exteriores y Culto</xs:documentation>
+								<xs:documentation>Ventas exentas a diplomáticos</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="03">
 							<xs:annotation>
-								<xs:documentation>Ministerio de Agricultura y Ganadería</xs:documentation>
+								<xs:documentation>Autorizado por Ley Especial</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="04">
 							<xs:annotation>
-								<xs:documentation>Ministerio de Economía, Industria y Comercio</xs:documentation>
+								<xs:documentation>Exenciones Direccion General de Hacienda</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="05">
 							<xs:annotation>
-								<xs:documentation>Cruz Roja Costarricense</xs:documentation>
+								<xs:documentation>Transitorio V</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="06">
 							<xs:annotation>
-								<xs:documentation>Benemérito Cuerpo de Bomberos de Costa Rica</xs:documentation>
+								<xs:documentation>Transitorio IX</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="07">
 							<xs:annotation>
-								<xs:documentation>Asociación Obras del Espíritu Santo</xs:documentation>
-							</xs:annotation>
-						</xs:enumeration>
-						<xs:enumeration value="08">
-							<xs:annotation>
-								<xs:documentation>Federación Cruzada Nacional de protección al Anciano (Fecrunapa)</xs:documentation>
-							</xs:annotation>
-						</xs:enumeration>
-						<xs:enumeration value="09">
-							<xs:annotation>
-								<xs:documentation>Escuela de Agricultura de la Región Húmeda (EARTH)</xs:documentation>
-							</xs:annotation>
-						</xs:enumeration>
-						<xs:enumeration value="10">
-							<xs:annotation>
-								<xs:documentation>Instituto Centroamericano de Administración de Empresas (INCAE)</xs:documentation>
-							</xs:annotation>
-						</xs:enumeration>
-						<xs:enumeration value="11">
-							<xs:annotation>
-								<xs:documentation>Junta de Protección Social (JPS)</xs:documentation>
-							</xs:annotation>
-						</xs:enumeration>
-						<xs:enumeration value="12">
-							<xs:annotation>
-								<xs:documentation>Autoridad Reguladora de los Servicios Públicos (Aresep)</xs:documentation>
+								<xs:documentation>Transitorio XVII</xs:documentation>
 							</xs:annotation>
 						</xs:enumeration>
 						<xs:enumeration value="99">
@@ -1334,23 +1066,32 @@ alcohólicas, suministrado por la Dirección General de Aduanas</xs:documentatio
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:element>
-			<xs:element name="NombreInstitucionOtros" minOccurs="0">
+			<xs:element name="NumeroDocumento">
 				<xs:annotation>
-					<xs:documentation>Detalle Nombre de institución o dependencia que emitió la exoneración OTRO</xs:documentation>
+					<xs:documentation>Número de documento de exoneración o autorización</xs:documentation>
 				</xs:annotation>
 				<xs:simpleType>
 					<xs:restriction base="xs:string">
-						<xs:minLength value="5"/>
+						<xs:maxLength value="40"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:element>
+			<xs:element name="NombreInstitucion">
+				<xs:annotation>
+					<xs:documentation>Nombre de la institución o dependencia que emitió la exoneración</xs:documentation>
+				</xs:annotation>
+				<xs:simpleType>
+					<xs:restriction base="xs:string">
 						<xs:maxLength value="160"/>
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:element>
-			<xs:element name="FechaEmisionEX" type="xs:dateTime">
+			<xs:element name="FechaEmision" type="xs:dateTime">
 				<xs:annotation>
 					<xs:documentation>Fecha y hora de la emisión del documento de exoneración o autorización.</xs:documentation>
 				</xs:annotation>
 			</xs:element>
-			<xs:element name="TarifaExonerada">
+			<xs:element name="PorcentajeExoneracion">
 				<xs:annotation>
 					<xs:documentation>Tarifa exonerada</xs:documentation>
 				</xs:annotation>
@@ -1417,67 +1158,6 @@ Cuando en el código de impuesto se defina IVA Bienes Usados se deberá utilizar
 					</xs:restriction>
 				</xs:simpleType>
 			</xs:element>
-			<xs:element name="DatosImpuestoEspecifico" minOccurs="0">
-				<xs:annotation>
-					<xs:documentation>Tipo complejo con el detalle para calcular impuestos específicos no tarifarios. Este campo es de condición obligatoria, cuando se utilicen
-los códigos de impuesto 03, 04, 05, 06 de la nota 8 y agrupará los campos requeridos para el cálculo de estos impuestos</xs:documentation>
-				</xs:annotation>
-				<xs:complexType>
-					<xs:sequence>
-						<xs:element name="CantidadUnidadMedida">
-							<xs:annotation>
-								<xs:documentation>En el caso que se utilice el nodo “Detalle de productos del surtido, paquetes o combos”, no se deberá utilizar este
-campo, para los códigos de impuesto 04, 05, 06 de la nota 8, ya que el impuesto se calcula como la suma de los montos de impuestos individuales de las líneas de detalle de
-componentes del surtido que se deben incluir en estos casos</xs:documentation>
-							</xs:annotation>
-							<xs:simpleType>
-								<xs:restriction base="xs:decimal">
-									<xs:totalDigits value="7"/>
-									<xs:fractionDigits value="2"/>
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Porcentaje" minOccurs="0">
-							<xs:annotation>
-								<xs:documentation>Este campo es de condición obligatoria, cuando se utilice el código de impuesto 04 de la nota 8</xs:documentation>
-							</xs:annotation>
-							<xs:simpleType>
-								<xs:restriction base="xs:decimal">
-									<xs:totalDigits value="4"/>
-									<xs:fractionDigits value="2"/>
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="Proporcion" minOccurs="0">
-							<xs:annotation>
-								<xs:documentation>Este campo es de condición obligatoria, cuando se utilice el código de impuesto 04 de la nota 8 Este campo se obtiene de multiplicar la “Cantidad de la unidad de medida a utilizar” por el “Porcentaje”</xs:documentation>
-							</xs:annotation>
-							<xs:simpleType>
-								<xs:restriction base="xs:decimal">
-									<xs:totalDigits value="5"/>
-									<xs:fractionDigits value="2"/>
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="VolumenUnidadConsumo" minOccurs="0">
-							<xs:annotation>
-								<xs:documentation>Este campo es de condición obligatoria, cuando se utilice el código de impuesto 05 de la nota 8</xs:documentation>
-							</xs:annotation>
-							<xs:simpleType>
-								<xs:restriction base="xs:decimal">
-									<xs:totalDigits value="7"/>
-									<xs:fractionDigits value="2"/>
-								</xs:restriction>
-							</xs:simpleType>
-						</xs:element>
-						<xs:element name="ImpuestoUnidad" type="DecimalDineroType">
-							<xs:annotation>
-								<xs:documentation>Este campo es de condición obligatoria, cuando se utilicen los códigos de impuesto 03, 04, 05 y 06 de la nota 8</xs:documentation>
-							</xs:annotation>
-						</xs:element>
-					</xs:sequence>
-				</xs:complexType>
-			</xs:element>
 			<xs:element name="Monto" type="DecimalDineroType">
 				<xs:annotation>
 					<xs:documentation>Monto del impuesto</xs:documentation>
@@ -1488,7 +1168,6 @@ componentes del surtido que se deben incluir en estos casos</xs:documentation>
 					<xs:documentation>Uso exclusivo para exportación de mercancías que apliquen impuestos especiales. También podrá ser utilizado en las notas de crédito y débito según corresponda. Cuando se utilicen CAByS de servicios no se verificará</xs:documentation>
 				</xs:annotation>
 			</xs:element>
-			<xs:element name="Exoneracion" type="ExoneracionType" minOccurs="0"/>
 		</xs:sequence>
 	</xs:complexType>
 	<xs:complexType name="CodigoType">
@@ -1509,8 +1188,6 @@ ser verificables en los catálogos disponibles en la industria.</xs:documentatio
 				</xs:annotation>
 				<xs:simpleType>
 					<xs:restriction base="xs:string">
-						<xs:minLength value="2"/>
-						<xs:maxLength value="2"/>
 						<xs:enumeration value="01">
 							<xs:annotation>
 								<xs:documentation>Código del producto del vendedor</xs:documentation>
@@ -1663,7 +1340,7 @@ Además, cuando se seleccione el código 04, 08, 09 y 10 de la nota 16 en “Tip
 		<xs:sequence>
 			<xs:element name="CodigoMoneda">
 				<xs:annotation>
-					<xs:documentation>Código de la moneda de acuerdo al ISO 4217</xs:documentation>
+					<xs:documentation>Código de la moneda</xs:documentation>
 				</xs:annotation>
 				<xs:simpleType>
 					<xs:restriction base="xs:string">
@@ -2634,73 +2311,6 @@ Además, cuando se seleccione el código 04, 08, 09 y 10 de la nota 16 en “Tip
 			<xs:enumeration value="11">
 				<xs:annotation>
 					<xs:documentation>Tarifa 0% sin derecho a crédito</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-		</xs:restriction>
-	</xs:simpleType>
-	<xs:simpleType name="TipoExoneracionType">
-		<xs:restriction base="xs:string">
-			<xs:minLength value="2"/>
-			<xs:maxLength value="2"/>
-			<xs:enumeration value="01">
-				<xs:annotation>
-					<xs:documentation>Compras autorizadas por la Dirección General de Tributación</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="02">
-				<xs:annotation>
-					<xs:documentation>Ventas exentas a diplomáticos</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="03">
-				<xs:annotation>
-					<xs:documentation>Autorizado por Ley Especial</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="04">
-				<xs:annotation>
-					<xs:documentation>Exenciones Dirección General de Hacienda Autorización Local Genérica</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="05">
-				<xs:annotation>
-					<xs:documentation>Exenciones Dirección General de Hacienda Transitorio V (servicios de ingeniería, arquitectura, topografía obra civil)
-</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="06">
-				<xs:annotation>
-					<xs:documentation>Servicios turísticos inscritos ante el Instituto Costarricense de Turismo (ICT)</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="07">
-				<xs:annotation>
-					<xs:documentation>Transitorio XVII (Recolección, Clasificación, almacenamiento de Reciclaje y reutilizable)</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="08">
-				<xs:annotation>
-					<xs:documentation>Exoneración a Zona Franca</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="09">
-				<xs:annotation>
-					<xs:documentation>Exoneración de servicios complementarios para la exportación articulo 11 RLIVA</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="10">
-				<xs:annotation>
-					<xs:documentation>Órgano de las corporaciones municipales</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="11">
-				<xs:annotation>
-					<xs:documentation>Exenciones Dirección General de Hacienda Autorización de Impuesto Local Concreta</xs:documentation>
-				</xs:annotation>
-			</xs:enumeration>
-			<xs:enumeration value="99">
-				<xs:annotation>
-					<xs:documentation>Otros</xs:documentation>
 				</xs:annotation>
 			</xs:enumeration>
 		</xs:restriction>
