@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.serialization import pkcs12, Encoding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 import cryptography.x509 as crypto_x509
+from app.core.exceptions import BadRequestException
 
 XMLDSIG_NS = "http://www.w3.org/2000/09/xmldsig#"
 XADES_NS = "http://uri.etsi.org/01903/v1.3.2#"
@@ -39,7 +40,26 @@ class XAdESSignerV44:
         """
         private_key, cert, _ = pkcs12.load_key_and_certificates(p12_bytes, pin.encode("utf-8"))
         if not cert or not private_key:
-            raise ValueError("Certificado o clave privada no válidos en el archivo .p12")
+            raise BadRequestException("Certificado o clave privada no válidos en el archivo .p12")
+
+        # Validate certificate validity window
+        now_utc = datetime.now(timezone.utc)
+        not_after = getattr(cert, "not_valid_after_utc", None)
+        if not_after is None:
+            not_after = cert.not_valid_after.replace(tzinfo=timezone.utc)
+
+        not_before = getattr(cert, "not_valid_before_utc", None)
+        if not_before is None:
+            not_before = cert.not_valid_before.replace(tzinfo=timezone.utc)
+
+        if now_utc > not_after:
+            raise BadRequestException(
+                f"Certificado criptográfico PKCS#12 expirado en fecha {not_after.strftime('%Y-%m-%d %H:%M:%S UTC')}. Operación bloqueada."
+            )
+        if now_utc < not_before:
+            raise BadRequestException(
+                f"Certificado criptográfico PKCS#12 aún no entra en vigencia hasta {not_before.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+            )
 
         doc = etree.fromstring(xml_content.encode("utf-8"))
 
