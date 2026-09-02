@@ -44,12 +44,16 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
 @pytest_asyncio.fixture
 async def superadmin_user(db_session: AsyncSession) -> User:
+    import pyotp
+    secret = pyotp.random_base32()
     user = User(
         email='superadmin@orbitica.cr',
         password_hash=hash_password('SuperSecret123!'),
         full_name='Superadmin Orbítica',
         role=UserRole.SUPERADMIN,
-        organization_id=None
+        organization_id=None,
+        totp_secret=secret,
+        totp_enabled=True
     )
     db_session.add(user)
     await db_session.commit()

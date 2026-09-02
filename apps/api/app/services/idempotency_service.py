@@ -60,18 +60,37 @@ class IdempotencyService:
                 await self.db.commit()
                 return False, record
 
-        # Create new record
-        new_record = IdempotencyRecord(
-            organization_id=self.organization_id,
-            operation=operation,
-            idempotency_key=idempotency_key,
-            request_hash=request_hash,
-            status="IN_PROGRESS",
-            expires_at=now + timedelta(minutes=ttl_minutes)
-        )
-        self.db.add(new_record)
-        await self.db.commit()
-        return False, new_record
+        # Create new record with atomic collision handling
+        try:
+            new_record = IdempotencyRecord(
+                organization_id=self.organization_id,
+                operation=operation,
+                idempotency_key=idempotency_key,
+                request_hash=request_hash,
+                status="IN_PROGRESS",
+                expires_at=now + timedelta(minutes=ttl_minutes)
+            )
+            self.db.add(new_record)
+            await self.db.commit()
+            return False, new_record
+        except Exception:
+            await self.db.rollback()
+            # A concurrent transaction inserted the record simultaneously! Re-query with lock:
+            retry_stmt = select(IdempotencyRecord).where(
+                IdempotencyRecord.organization_id == self.organization_id,
+                IdempotencyRecord.operation == operation,
+                IdempotencyRecord.idempotency_key == idempotency_key
+            ).with_for_update()
+            retry_res = await self.db.execute(retry_stmt)
+            collided = retry_res.scalar_one_or_none()
+            if collided:
+                if collided.status == "COMPLETED":
+                    if collided.request_hash != request_hash:
+                        raise ConflictException("La clave de idempotencia fue utilizada previamente con un payload diferente.")
+                    return True, collided
+                elif collided.status == "IN_PROGRESS":
+                    raise ConflictException("La operación solicitada está actualmente en procesamiento por otra solicitud concurrente.")
+            raise ConflictException("Conflicto de concurrencia al registrar la clave de idempotencia.")
 
     async def complete_idempotent_operation(
         self,

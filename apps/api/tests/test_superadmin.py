@@ -5,9 +5,15 @@ from app.models.organization import Organization
 
 @pytest.mark.asyncio
 async def test_superadmin_platform_management(client: AsyncClient, superadmin_user: User, sample_organization: Organization):
+    import pyotp
+    totp = pyotp.TOTP(superadmin_user.totp_secret)
     login_resp = await client.post(
         "/api/v1/auth/login",
-        json={"email": "superadmin@orbitica.cr", "password": "SuperSecret123!"}
+        json={
+            "email": "superadmin@orbitica.cr",
+            "password": "SuperSecret123!",
+            "totp_code": totp.now()
+        }
     )
     assert login_resp.status_code == 200
     sa_token = login_resp.json()["data"]["access_token"]
