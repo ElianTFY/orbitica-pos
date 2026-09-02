@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/features/auth/auth-context";
+import { api } from "@/lib/api-client";
 import {
   Product,
   Customer,
@@ -75,6 +76,12 @@ interface StoreContextType {
   foundersPromo: FoundersPromoConfig;
   updateFoundersPromo: (config: Partial<FoundersPromoConfig>) => void;
   updateSettings: (newSettings: Partial<BusinessSettings>) => void;
+  // Real State Machine Statuses
+  fetchStatus: "idle" | "loading" | "error" | "empty" | "unauthorized" | "offline";
+  errorMessage: string | null;
+  retryFetch: () => Promise<void>;
+  isOffline: boolean;
+  fiscalContingencyNotice: string | null;
   // Control Center Extensions
   subscription: SubscriptionDetails;
   updateSubscription: (details: Partial<SubscriptionDetails>) => void;
@@ -282,184 +289,94 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  // Load tenant-isolated state
-  useEffect(() => {
-    if (typeof window === "undefined" || !orgId) return;
+  // Real State Machine Statuses
+  const [fetchStatus, setFetchStatus] = useState<"idle" | "loading" | "error" | "empty" | "unauthorized" | "offline">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [fiscalContingencyNotice, setFiscalContingencyNotice] = useState<string | null>(null);
+
+  // Authoritative Backend API Sync
+  const fetchBusinessData = useCallback(async () => {
+    if (!orgId) return;
+    setFetchStatus("loading");
+    setErrorMessage(null);
 
     try {
-      const sSettings = localStorage.getItem(`orbitica_settings_${orgId}`);
-      if (sSettings) setSettings((prev) => ({ ...prev, ...JSON.parse(sSettings) }));
+      const [
+        productsRes,
+        customersRes,
+        invoicesRes,
+        salesRes,
+        purchasesRes,
+        cashRes,
+        supportRes
+      ] = await Promise.allSettled([
+        api.request<any[]>("/products"),
+        api.request<any[]>("/customers"),
+        api.request<any[]>("/invoices"),
+        api.request<any[]>("/sales"),
+        api.request<any[]>("/purchases"),
+        api.request<any>("/cash-register/current"),
+        api.request<any[]>("/support/tickets"),
+      ]);
 
-      const sProducts = localStorage.getItem(`orbitica_products_${orgId}`);
-      setProducts(sProducts ? JSON.parse(sProducts) : []);
+      let hasData = false;
 
-      const sCustomers = localStorage.getItem(`orbitica_customers_${orgId}`);
-      setCustomers(sCustomers ? JSON.parse(sCustomers) : []);
-
-      const sSuppliers = localStorage.getItem(`orbitica_suppliers_${orgId}`);
-      setSuppliers(sSuppliers ? JSON.parse(sSuppliers) : []);
-
-      const sPurchases = localStorage.getItem(`orbitica_purchases_${orgId}`);
-      setPurchases(sPurchases ? JSON.parse(sPurchases) : []);
-
-      const sMovements = localStorage.getItem(`orbitica_movements_${orgId}`);
-      setMovements(sMovements ? JSON.parse(sMovements) : []);
-
-      const sSales = localStorage.getItem(`orbitica_sales_${orgId}`);
-      setSales(sSales ? JSON.parse(sSales) : []);
-
-      const sInvoices = localStorage.getItem(`orbitica_invoices_${orgId}`);
-      setInvoices(sInvoices ? JSON.parse(sInvoices) : []);
-
-      const sEmployees = localStorage.getItem(`orbitica_employees_${orgId}`);
-      setEmployees(sEmployees ? JSON.parse(sEmployees) : []);
-
-      const sBranches = localStorage.getItem(`orbitica_branches_${orgId}`);
-      if (sBranches) {
-        setBranches(JSON.parse(sBranches));
-      } else {
-        const defaultBranch: Branch = {
-          id: `br_main_${Date.now()}`,
-          organization_id: orgId,
-          code: "001",
-          name: user?.branch_name || "Sucursal Central (001)",
-          address: "",
-          is_main: true,
-          is_active: true,
-          created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
-        };
-        setBranches([defaultBranch]);
-        localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify([defaultBranch]));
+      if (productsRes.status === "fulfilled" && productsRes.value?.data) {
+        setProducts(productsRes.value.data);
+        if (productsRes.value.data.length > 0) hasData = true;
+      }
+      if (customersRes.status === "fulfilled" && customersRes.value?.data) {
+        setCustomers(customersRes.value.data);
+      }
+      if (invoicesRes.status === "fulfilled" && invoicesRes.value?.data) {
+        setInvoices(invoicesRes.value.data);
+      }
+      if (salesRes.status === "fulfilled" && salesRes.value?.data) {
+        setSales(salesRes.value.data);
+        if (salesRes.value.data.length > 0) hasData = true;
+      }
+      if (purchasesRes.status === "fulfilled" && purchasesRes.value?.data) {
+        setPurchases(purchasesRes.value.data);
+      }
+      if (cashRes.status === "fulfilled" && cashRes.value?.data) {
+        setActiveCashSession(cashRes.value.data);
+      }
+      if (supportRes.status === "fulfilled" && supportRes.value?.data) {
+        setSupportTickets(supportRes.value.data);
       }
 
-      const sQuotes = localStorage.getItem(`orbitica_quotes_${orgId}`);
-      setQuotes(sQuotes ? JSON.parse(sQuotes) : []);
-
-      const sExpenses = localStorage.getItem(`orbitica_expenses_${orgId}`);
-      setExpenses(sExpenses ? JSON.parse(sExpenses) : []);
-
-      const sWorkOrders = localStorage.getItem(`orbitica_work_orders_${orgId}`);
-      setWorkOrders(sWorkOrders ? JSON.parse(sWorkOrders) : []);
-
-      const sDispatch = localStorage.getItem(`orbitica_dispatch_${orgId}`);
-      setDispatchOrders(sDispatch ? JSON.parse(sDispatch) : []);
-
-      const sCoupons = localStorage.getItem(`orbitica_coupons_${orgId}`);
-      setCoupons(sCoupons ? JSON.parse(sCoupons) : []);
-
-      const sLoyalty = localStorage.getItem(`orbitica_loyalty_${orgId}`);
-      setLoyaltyMembers(sLoyalty ? JSON.parse(sLoyalty) : []);
-
-      const sBankAccounts = localStorage.getItem(`orbitica_bank_accounts_${orgId}`);
-      if (sBankAccounts) {
-        setBankAccounts(JSON.parse(sBankAccounts));
+      setIsOffline(false);
+      setFiscalContingencyNotice(null);
+      setFetchStatus(hasData ? "idle" : "empty");
+    } catch (err: any) {
+      if (err?.status === 401) {
+        setFetchStatus("unauthorized");
+        setErrorMessage("Sesión no autorizada o expirada.");
       } else {
-        const defaultBank: BankAccount = {
-          id: `bank_main_${Date.now()}`,
-          organization_id: orgId,
-          bank_name: "SINPE Móvil Comercial",
-          account_type: "SINPE_MOVIL",
-          iban: "CR05010200000000000000",
-          currency: "CRC",
-          current_balance: 0,
-          account_holder: user?.legal_name || user?.organization_name || "Comercio",
-          is_active: true,
-        };
-        setBankAccounts([defaultBank]);
-        localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify([defaultBank]));
+        setFetchStatus("offline");
+        setIsOffline(true);
+        setFiscalContingencyNotice(
+          "Sin conexión con el servidor central de Orbítica. Por disposición tributaria de la DGT, la emisión fiscal automática requiere validación en línea. En caso de contingencia prolongada, debe utilizar comprobantes físicos preimpresos autorizados."
+        );
+        setErrorMessage("Sin conexión con el backend central.");
       }
-
-      const sBankTx = localStorage.getItem(`orbitica_bank_tx_${orgId}`);
-      setBankTransactions(sBankTx ? JSON.parse(sBankTx) : []);
-
-      const sSuspended = localStorage.getItem(`orbitica_suspended_${orgId}`);
-      setSuspendedSales(sSuspended ? JSON.parse(sSuspended) : []);
-
-      const sPromo = localStorage.getItem("orbitica_founders_promo");
-      if (sPromo) setFoundersPromo(JSON.parse(sPromo));
-
-      const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
-      setActiveCashSession(sCash ? JSON.parse(sCash) : null);
-
-      const sSub = localStorage.getItem(`orbitica_subscription_${orgId}`);
-      if (sSub) setSubscription(JSON.parse(sSub));
-
-      const sOnb = localStorage.getItem(`orbitica_onboarding_${orgId}`);
-      if (sOnb) setOnboarding(JSON.parse(sOnb));
-
-      const sImp = localStorage.getItem(`orbitica_import_batches_${orgId}`);
-      setImportBatches(sImp ? JSON.parse(sImp) : []);
-
-      const sTickets = localStorage.getItem(`orbitica_support_tickets_${orgId}`);
-      setSupportTickets(sTickets ? JSON.parse(sTickets) : []);
-
-      const sGrant = localStorage.getItem(`orbitica_support_grant_${orgId}`);
-      setActiveSupportGrant(sGrant ? JSON.parse(sGrant) : null);
-
-      const sAlerts = localStorage.getItem(`orbitica_health_alerts_${orgId}`);
-      setHealthAlerts(sAlerts ? JSON.parse(sAlerts) : []);
-
-      const sAudit = localStorage.getItem(`orbitica_audit_${orgId}`);
-      if (sAudit) {
-        setAuditLogs(JSON.parse(sAudit));
-      } else {
-        const initialAudit: AuditLogEntry = {
-          id: `aud_${Date.now()}`,
-          organization_id: orgId,
-          created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-          actor_name: user?.full_name || "Propietario",
-          action: "ORGANIZATION_PROVISIONED",
-          resource: `Organization: ${user?.organization_name || "Mi Negocio"}`,
-          ip_address: "127.0.0.1",
-        };
-        setAuditLogs([initialAudit]);
-        localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify([initialAudit]));
-      }
-    } catch (e) {
-      console.warn("Error loading isolated tenant data:", e);
     } finally {
       setIsLoaded(true);
     }
   }, [orgId]);
 
-  // Save changes isolated by organization_id
   useEffect(() => {
-    if (!isLoaded || typeof window === "undefined" || !orgId) return;
+    fetchBusinessData();
+  }, [fetchBusinessData]);
+
+  // Persist only non-business UI draft preferences (promotions, draft cart)
+  useEffect(() => {
+    if (typeof window === "undefined" || !orgId) return;
     try {
-      localStorage.setItem(`orbitica_products_${orgId}`, JSON.stringify(products));
-      localStorage.setItem(`orbitica_customers_${orgId}`, JSON.stringify(customers));
-      localStorage.setItem(`orbitica_suppliers_${orgId}`, JSON.stringify(suppliers));
-      localStorage.setItem(`orbitica_purchases_${orgId}`, JSON.stringify(purchases));
-      localStorage.setItem(`orbitica_movements_${orgId}`, JSON.stringify(movements));
-      localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(sales));
-      localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(invoices));
-      localStorage.setItem(`orbitica_employees_${orgId}`, JSON.stringify(employees));
-      localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify(branches));
-      localStorage.setItem(`orbitica_quotes_${orgId}`, JSON.stringify(quotes));
-      localStorage.setItem(`orbitica_expenses_${orgId}`, JSON.stringify(expenses));
-      localStorage.setItem(`orbitica_work_orders_${orgId}`, JSON.stringify(workOrders));
-      localStorage.setItem(`orbitica_dispatch_${orgId}`, JSON.stringify(dispatchOrders));
-      localStorage.setItem(`orbitica_coupons_${orgId}`, JSON.stringify(coupons));
-      localStorage.setItem(`orbitica_loyalty_${orgId}`, JSON.stringify(loyaltyMembers));
-      localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify(bankAccounts));
-      localStorage.setItem(`orbitica_bank_tx_${orgId}`, JSON.stringify(bankTransactions));
       localStorage.setItem(`orbitica_suspended_${orgId}`, JSON.stringify(suspendedSales));
-      localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify(auditLogs));
-      localStorage.setItem(`orbitica_settings_${orgId}`, JSON.stringify(settings));
-      if (activeCashSession) {
-        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(activeCashSession));
-      } else {
-        localStorage.removeItem(`orbitica_cash_${orgId}`);
-      }
     } catch (e) {}
-  }, [
-    products,
-    customers,
-    suppliers,
-    purchases,
-    movements,
-    sales,
-    invoices,
+  }, [suspendedSales, orgId]);
     employees,
     branches,
     quotes,
@@ -1582,6 +1499,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         foundersPromo,
         updateFoundersPromo,
         updateSettings,
+        fetchStatus,
+        errorMessage,
+        retryFetch: fetchBusinessData,
+        isOffline,
+        fiscalContingencyNotice,
         subscription,
         updateSubscription,
         onboarding,

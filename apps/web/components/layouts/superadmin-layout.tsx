@@ -55,6 +55,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { BrandIcon } from "@/components/ui/brand-logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { api } from "@/lib/api-client";
 
 interface NavItem {
   id: HubSection;
@@ -152,13 +153,13 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
     }
     const timer = setTimeout(() => {
       setIsSearching(true);
-      fetch(`/api/v1/superadmin/search?q=${encodeURIComponent(searchQuery)}`)
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success && json.data) {
+      api
+        .request<{ companies: any[]; tickets: any[] }>(`/superadmin/search?q=${encodeURIComponent(searchQuery)}`)
+        .then((res) => {
+          if (res.data) {
             setSearchResults({
-              companies: json.data.companies || [],
-              tickets: json.data.tickets || [],
+              companies: res.data.companies || [],
+              tickets: res.data.tickets || [],
             });
           }
         })

@@ -32,6 +32,8 @@ export function Topbar({ onToggleMobileMenu }: TopbarProps) {
     subscription,
     activeSupportGrant,
     revokeSupportAccess,
+    isOffline,
+    fiscalContingencyNotice,
   } = useStore();
 
   const businessName = user?.organization_name || settings.trade_name || "Mi Negocio";
@@ -94,6 +96,17 @@ export function Topbar({ onToggleMobileMenu }: TopbarProps) {
               <span>Prueba Crece: {trialDays ?? 14}d restantes</span>
             </Badge>
           </Link>
+        )}
+
+        {/* Real Fiscal Contingency Mode Badge */}
+        {isOffline && (
+          <div
+            title={fiscalContingencyNotice || "Régimen de contingencia tributaria activo"}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 rounded-xl text-[11px] font-bold animate-pulse"
+          >
+            <ShieldAlert className="w-3.5 h-3.5" />
+            <span>Contingencia Fiscal (Sin Conexión)</span>
+          </div>
         )}
 
         {/* Delegated Support Impersonation Banner */}

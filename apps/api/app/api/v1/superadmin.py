@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.organization import OrganizationResponse
@@ -43,3 +43,13 @@ async def get_platform_metrics(
     service = SuperadminService(db)
     stats = await service.get_platform_stats()
     return StandardResponse(data=stats)
+
+@router.get("/search", response_model=StandardResponse[Dict[str, Any]])
+async def search_platform_entities(
+    q: str = Query(..., min_length=1),
+    context: CurrentUserContext = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db)
+):
+    service = SuperadminService(db)
+    results = await service.search_platform(q)
+    return StandardResponse(data=results)
