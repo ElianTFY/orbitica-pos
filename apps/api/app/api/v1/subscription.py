@@ -44,7 +44,7 @@ async def get_subscription_details(
         features=[
             "Multisucursal hasta 5 puntos de venta",
             "Punto de Venta POS de alta velocidad",
-            "Facturación Electrónica Hacienda Costa Rica v4.3 ilimitada",
+            "Facturación Electrónica Hacienda Costa Rica v4.4 ilimitada",
             "Control de Cajas y Arqueos Ciegos",
             "Libro Mayor de Inventario Inmutable",
             "Reportes Financieros y Métricas en Tiempo Real",

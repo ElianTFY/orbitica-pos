@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     SOFTWARE_PROVIDER_NAME: str = Field(default="ORBITICA STUDIO S.A.", alias="SOFTWARE_PROVIDER_NAME")
     HACIENDA_PROVEEDOR_ID: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_ID")
     HACIENDA_PROVEEDOR_NAME: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_NAME")
+
+    # Safety Guardrails: Fiscal Emission Block
+    # Block live production fiscal emission until ATV Sandbox validation is complete and confirmed.
+    HACIENDA_LIVE_EMISSION_ENABLED: bool = Field(default=False, alias="HACIENDA_LIVE_EMISSION_ENABLED")
+    HACIENDA_SANDBOX_VALIDATED: bool = Field(default=False, alias="HACIENDA_SANDBOX_VALIDATED")
     
     # Cookie Configuration
     COOKIE_DOMAIN: Optional[str] = None
@@ -126,6 +131,10 @@ class Settings(BaseSettings):
             # 4. CORS validation
             if not self.BACKEND_CORS_ORIGINS or "*" in self.BACKEND_CORS_ORIGINS:
                 errors.append("BACKEND_CORS_ORIGINS / CORS_ORIGINS cannot be empty or '*' in production.")
+                
+            # 5. Fiscal emission guardrail
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.HACIENDA_SANDBOX_VALIDATED:
+                errors.append("HACIENDA_LIVE_EMISSION_ENABLED cannot be activated in production without prior HACIENDA_SANDBOX_VALIDATED=True.")
                 
             if errors:
                 error_msg = "\n[CRITICAL STARTUP ERROR] Production configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)

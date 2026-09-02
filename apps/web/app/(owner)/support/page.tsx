@@ -35,7 +35,7 @@ const FAQS = [
   },
   {
     q: "¿Qué sucede si se cae el internet mientras estoy vendiendo en el POS?",
-    a: "Orbítica POS cuenta con modo Offline automático en los planes Crece y Escala. Puedes seguir emitiendo tiquetes de venta y el sistema los almacenará localmente en IndexedDB para firmarlos y enviarlos a Hacienda en cuanto se restablezca la conexión.",
+    a: "Para garantizar la atomicidad del inventario y la asignación estricta de consecutivos fiscales sin colisiones, la emisión electrónica requiere conexión activa con el servidor. En caso de corte prolongado, debe aplicarse el régimen de contingencia fiscal mediante comprobantes físicos preimpresos según la normativa de la DGT.",
   },
   {
     q: "¿Cómo aplico la promoción de Lanzamiento Precio Fundadores (-20%)?",

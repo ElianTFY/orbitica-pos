@@ -176,7 +176,7 @@ export default function SuperadminMasterHubPage() {
   const CANNED_RESPONSES = [
     { key: "hacienda_pin", label: "🔑 Error Llave/PIN Hacienda", text: "Hemos revisado tus credenciales ATV. Por favor verifica que tu usuario de 50 caracteres esté sin espacios y que el PIN de 4 dígitos corresponda a la llave criptográfica descargada en ATV." },
     { key: "csv_import", label: "📊 Ayuda con CSV / Excel", text: "Puedes descargar nuestra plantilla oficial desde /migration. Asegúrate de guardar el archivo en formato UTF-8 para que las tildes y caracteres especiales se reconozcan correctamente." },
-    { key: "offline_sync", label: "⚡ Modo Offline y Contingencia", text: "Tus ventas se han guardado de forma segura en tu navegador local (IndexedDB). Tan pronto se estabilice tu conexión, Orbítica las enviará automáticamente a Hacienda con el consecutivo correspondiente." },
+    { key: "offline_contingency", label: "📄 Régimen de Contingencia", text: "Por disposición tributaria oficial, las ventas en contingencia física deben emitirse mediante talonario preimpreso autorizado por la DGT cuando no exista conectividad con el servidor central." },
   ];
 
   // Action Handlers with Step-Up Interception

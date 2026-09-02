@@ -1,70 +1,64 @@
-# Matriz de Remediación Técnica — Tercera Auditoría de Producción ORBÍTICA POS
+# Matriz de Remediación Técnica — Auditoría de Producción ORBÍTICA POS
 
-Este documento registra el estado técnico detallado, reproducible y verificable de todos los hallazgos de la Tercera Auditoría de ORBÍTICA POS.
+> [!WARNING]
+> **ESTADO DEL DOCUMENTO: SUPERADO E INVALIDADO PREVENTIVAMENTE**
+> Las versiones previas que declararon 19 o 20 controles resueltos fueron invalidadas en la revisión técnica profunda.
+> El estado real y honesto de partida para la remediación final ejecutable contiene los 22 controles oficiales intactos:
+> - **2 Corregidos**
+> - **9 Parciales**
+> - **10 Abiertos**
+> - **1 Bloqueado por Integración Externa**
 
-**Rama de Trabajo:** `fix/third-audit-production-blockers`  
-**Commit de Partida:** `bcf828970c7c7701b1067430ec19124b4894954b`  
-**Convención de Estados Oficiales:**
-- `OPEN`
-- `IN_PROGRESS`
-- `BLOCKED_EXTERNAL`
-- `FIXED_VERIFIED`
+**Rama de Trabajo Activa:** `fix/final-production-readiness`  
+**Commit de Partida:** `b728d7ce8a8a205fd490584aa08c5af7a9291050`  
 
 ---
 
-## 1. Resumen Ejecutivo de Estado de Auditoría
+## 1. Resumen de Estados por Severidad (22 Controles Oficiales)
 
-| Categoría | Total Hallazgos | FIXED_VERIFIED | IN_PROGRESS | BLOCKED_EXTERNAL | OPEN |
+| Severidad | Total | Corregido | Parcial | Abierto | Bloqueado Ext. |
 |---|---|---|---|---|---|
-| **Seguridad y Control de Acceso (SEC)** | 5 | 5 | 0 | 0 | 0 |
-| **Facturación Electrónica Hacienda v4.4 (FISC)** | 6 | 6 | 0 | 0 | 0 |
-| **Base de Datos y Persistencia (DATA)** | 4 | 4 | 0 | 0 | 0 |
-| **Operaciones y Confiabilidad (OPS)** | 3 | 3 | 0 | 0 | 0 |
-| **Soporte y Control de Acceso Delegado (SUP)** | 1 | 1 | 0 | 0 | 0 |
-| **Validaciones Externas en Vivo (EXT)** | 1 | 0 | 0 | 1 | 0 |
-| **TOTAL** | **20** | **19** | **0** | **1** | **0** |
+| **🔴 Críticos (CR-01 a CR-06)** | 6 | 1 | 2 | 3 | 0 |
+| **🟠 Altos (AL-01 a AL-10)** | 10 | 1 | 4 | 4 | 1 |
+| **🟡 Medios (ME-01 a ME-06)** | 6 | 0 | 3 | 3 | 0 |
+| **TOTAL** | **22** | **2** | **9** | **10** | **1** |
 
 ---
 
-## 2. Matriz Detallada de Remediación
+## 2. Matriz Oficial de los 22 Controles
 
-| ID | Hallazgo / Requisito | Estado | Archivos Modificados / Creados | Evidencia de Verificación |
+| ID | Severidad | Descripción del Hallazgo | Estado Real | Bloqueadores Técnicos Confirmados |
 |---|---|---|---|---|
-| **SEC-01** | Enrollment explícito MFA TOTP, validación previa a activación y códigos hasheados | `FIXED_VERIFIED` | `apps/api/app/services/auth_service.py`, `apps/api/app/api/v1/auth.py` | `tests/test_third_audit_remediation.py::test_mfa_totp_enrollment_and_activation` (PASSED) |
-| **SEC-02** | Prevención de Inyección SQL y parametrización ORM completa | `FIXED_VERIFIED` | `apps/api/app/services/` (ORM SQLAlchemy 2.0 select()) | `tests/test_rbac.py`, `tests/test_catalog.py` (PASSED) |
-| **SEC-03** | Aislamiento Multi-Tenant estricto en Sucursales, Proveedores, Caja, Compras | `FIXED_VERIFIED` | `apps/api/app/security/deps.py`, `apps/api/app/services/` | `tests/test_tenant_isolation.py`, `tests/test_auth_security_hardening.py` (PASSED) |
-| **SEC-04** | Detección de Reutilización de Refresh Tokens y revocación de toda la familia | `FIXED_VERIFIED` | `apps/api/app/models/user.py`, `apps/api/app/services/auth_service.py` | `tests/test_third_audit_remediation.py::test_refresh_token_family_reuse_revocation` (PASSED) |
-| **SEC-05** | Custodia y Cifrado Fernet de Llaves Privadas .p12 y PIN ATV | `FIXED_VERIFIED` | `apps/api/app/services/fiscal_security_service.py`, `apps/api/app/models/fiscal_credential.py` | `tests/test_xades_and_hacienda_live.py::test_p12_metadata_and_encryption_custody` (PASSED) |
-| **FISC-01** | Esquemas Oficiales XSD v4.4 de Hacienda ATV y Validación Local | `FIXED_VERIFIED` | `OFFICIAL_HACIENDA_V44_SOURCES.md`, `apps/api/app/schemas_xml/v4.4/` | `tests/test_xades_and_hacienda_live.py::test_xml_generation_with_xsd_validation_and_cabys_enforcement` (PASSED) |
-| **FISC-02** | Validación estricta CAByS (13 dígitos) y snapshot fiscal inmutable en venta | `FIXED_VERIFIED` | `apps/api/app/models/sale.py`, `apps/api/app/schemas/catalog.py`, `apps/api/app/services/sale_service.py` | `tests/test_hacienda_and_purchases.py` (PASSED) |
-| **FISC-03** | Posicionamiento exacto de `ProveedorSistemas` en XML v4.4 | `FIXED_VERIFIED` | `apps/api/app/services/hacienda_xml_generator_v44.py` | `tests/test_hacienda_and_purchases.py` (PASSED) |
-| **FISC-04** | Consecutivos y Claves Atómicas mediante `SELECT ... FOR UPDATE` (Cero colisiones) | `FIXED_VERIFIED` | `apps/api/app/services/consecutive_service.py`, `apps/api/app/models/consecutive_sequence.py` | `tests/test_pos_concurrency.py` (PASSED) |
-| **FISC-05** | Firma Digital XAdES-EPES v4.4 con Digest de Política Oficial | `FIXED_VERIFIED` | `apps/api/app/services/xades_signer_v44.py` | `tests/test_xades_and_hacienda_live.py::test_xades_epes_signature_and_verification` (PASSED) |
-| **FISC-06** | Máquina de Estados Fiscal Real sin Aceptaciones Simuladas | `FIXED_VERIFIED` | `apps/api/app/models/invoice.py`, `apps/api/app/models/outbox.py`, `apps/api/app/workers/hacienda_outbox_worker.py` | `tests/test_customer_invoices.py`, `tests/test_hacienda_and_purchases.py` (PASSED) |
-| **DATA-01** | Paridad 100% Modelos SQLAlchemy vs Migraciones Alembic (0 Drift) | `FIXED_VERIFIED` | `apps/api/app/db/migrations/versions/0001_initial_production_schema.py` | `alembic check` -> "No new upgrade operations detected" (PASSED) |
-| **DATA-02** | Módulo Transaccional de Compras con Incremento Atómico de Stock | `FIXED_VERIFIED` | `apps/api/app/models/purchase.py`, `apps/api/app/services/purchase_service.py`, `apps/api/app/api/v1/purchases.py` | `tests/test_hacienda_and_purchases.py` (PASSED) |
-| **DATA-03** | Tabla de Idempotencia Persistente y Prevención de Doble Cobro en POS | `FIXED_VERIFIED` | `apps/api/app/models/idempotency.py`, `apps/api/app/services/idempotency_service.py`, `apps/api/app/api/v1/sales.py` | `tests/test_third_audit_remediation.py::test_idempotency_service_behavior` (PASSED) |
-| **DATA-04** | Persistencia Frontend Desconectada de localStorage hacia REST API | `FIXED_VERIFIED` | `apps/web/features/store/store-context.tsx`, `apps/web/lib/api-client.ts` | Typecheck & API endpoints listos |
-| **OPS-01** | Worker Asíncrono Outbox con Backoff Exponencial y Reconciliación ATV | `FIXED_VERIFIED` | `apps/api/app/workers/hacienda_outbox_worker.py`, `apps/api/app/models/outbox.py` | Código validado, integrado con `HaciendaAPIClient` |
-| **OPS-02** | Configuración Unificada con Tipado Estricto y Validación de Entorno | `FIXED_VERIFIED` | `apps/api/app/core/config.py` | Pydantic Settings con validación de credenciales |
-| **OPS-03** | Cadena Criptográfica de Auditoría Inmutable (SHA-256 Chained Hash) | `FIXED_VERIFIED` | `apps/api/app/services/audit_service.py`, `apps/api/app/models/audit_log.py` | `tests/test_support_and_audit_chain.py::test_forensic_audit_chain_verification_and_tampering_detection` (PASSED) |
-| **SUP-01** | Tickets de Soporte y Acceso Delegado Temporal con Caducidad | `FIXED_VERIFIED` | `apps/api/app/models/support.py`, `apps/api/app/services/support_service.py` | `tests/test_support_and_audit_chain.py::test_delegated_access_grant` (PASSED) |
-| **EXT-01** | Envío a Sandbox ATV en Vivo con Credenciales Reales del Piloto | `BLOCKED_EXTERNAL` | `apps/api/app/services/hacienda_client.py` | Requiere llave criptográfica `.p12` y credenciales emitidas por el cliente piloto en ATV Staging |
+| **CR-01** | **CRÍTICO** | Rutas mock en Next.js interceptaban `/api/v1/auth` con cookies inseguras. | `FIXED` | Rutas mock eliminadas en Next.js; auth centralizada en FastAPI. |
+| **CR-02** | **CRÍTICO** | `store-context.tsx` utilizaba `localStorage` como base de datos empresarial de productos, ventas y caja. | `OPEN` | Pantallas de UI aún leen y escriben en `localStorage` en lugar de consumir API REST. |
+| **CR-03** | **CRÍTICO** | Hub Superadmin y soporte operaban con estado local en cliente y fixtures ficticios. | `OPEN` | Hub contiene servicios con 99.99% uptime ficticio, IPs fijas y tickets quemados en código. |
+| **CR-04** | **CRÍTICO** | Facturación electrónica usaba rutas simuladas que marcaban `ACCEPTED` y mencionaban v4.3. | `OPEN` | Ruta `send_to_hacienda_simulated` activa; XSDs en repo son versiones simplificadas (8.8 KB). |
+| **CR-05** | **CRÍTICO** | `role` como string libre permitía escalamiento vertical a `superadmin`. | `FIXED` | Matriz `ASSIGNABLE_ROLES` en servidor restringe estrictamente asignación de roles. |
+| **CR-06** | **CRÍTICO** | Aislamiento multi-tenant e IDOR en sucursales, inventario, ventas, compras y soporte. | `PARTIAL` | Modelos tienen `organization_id`, pero faltan dependencias centrales obligatorias y validación de sucursal. |
+| **AL-01** | **ALTO** | Consecutivos calculados con `COUNT + 1` generando colisiones concurrentes. | `PARTIAL` | Existe `consecutive_sequences`, pero falta secuencia transaccional para compras y manejo de carrera inicial con upsert. |
+| **AL-02** | **ALTO** | Falta de transaccionalidad atómica y bloqueo en ventas concurrentes de inventario. | `PARTIAL` | `SELECT ... FOR UPDATE` añadido en backend, pero requiere validación en PostgreSQL 16 con concurrencia real. |
+| **AL-03** | **ALTO** | Auditoría permite modificaciones o eliminaciones sin trigger append-only en base de datos. | `OPEN` | Falta trigger PostgreSQL que rechace `UPDATE` y `DELETE` sobre `audit_logs` y regla para rol de app. |
+| **AL-04** | **ALTO** | `next.config.js` apuntaba a `localhost:8000` estático en producción Vercel. | `PARTIAL` | Configuración dinámica agregada, pero fallan variables de entorno en runtime Docker. |
+| **AL-05** | **ALTO** | MFA Superadmin se autoactiva en primer login sin verificar y códigos de recuperación. | `OPEN` | Primer login genera secreto y marca `totp_enabled=True` sin verificar primer código con challenge. |
+| **AL-06** | **ALTO** | Secretos de desarrollo e infraestructura Docker abortan en producción. | `OPEN` | Dockerfile usa Python 3.13; docker-compose tiene contraseñas fijas y faltan variables requeridas. |
+| **AL-07** | **ALTO** | Migraciones Alembic no verificadas contra PostgreSQL 16 limpio. | `PARTIAL` | Migración inicial existe, pero debe ser ejecutada y probada contra PostgreSQL 16 real. |
+| **AL-08** | **ALTO** | Scripts E2E simulaban almacenamiento en memoria; CI fuera de `.github/workflows`. | `OPEN` | Workflow debe residir exclusivamente en `.github/workflows/ci.yml` y ejecutar suite Playwright completa. |
+| **AL-09** | **ALTO** | Dependencias Python sin fijar (`requirements.txt` con `>=`) y lockfile de npm. | `PARTIAL` | `npm audit` limpio, pero dependencias Python requieren constraints/lock y `pip check` verificado. |
+| **AL-10** | **ALTO** | Compras y stock intake sin persistencia relacional completa. | `PARTIAL` | Modelos `Purchase` y `PurchaseItem` creados en backend; falta integración con frontend y secuencias. |
+| **ME-01** | **MEDIO** | Falta de rate limiting centralizado y cabeceras de seguridad. | `PARTIAL` | Cabeceras añadidas en middleware; falta rate limiter coordinado por IP/cuenta. |
+| **ME-02** | **MEDIO** | Manejo de excepciones expone detalles internos en endpoints públicos. | `PARTIAL` | Handlers creados; healthcheck no debe filtrar detalles de infraestructura pública. |
+| **ME-03** | **MEDIO** | Normalización de variables de entorno y Pydantic Settings. | `PARTIAL` | Variables alineadas parcialmente; falta validación estricta `${VARIABLE:?required}` en Compose. |
+| **ME-04** | **MEDIO** | Generador XML v4.4 utiliza CAByS fijos o inventados (`5211010000100`). | `OPEN` | Se requiere catálogo oficial completo v4.4, mapeo exacto de impuestos y golden files. |
+| **ME-05** | **MEDIO** | Firma digital XAdES-EPES sin digest verificado independientemente con xmlsec1. | `OPEN` | Se requiere política oficial verificada con SHA-256 exacto y pruebas negativas con herramienta externa. |
+| **ME-06** | **MEDIO** | Reclamaciones de UI falsas ("IndexedDB Offline Sync operativo", uptime 100%, etc.). | `OPEN` | Eliminar afirmaciones engañosas en dashboard, soporte, tickets y Hub Superadmin. |
+| **EXT-01** | **EXTERNO**| Envío en vivo a Sandbox ATV de Hacienda Costa Rica. | `BLOCKED_EXTERNAL` | Requiere llave criptográfica `.p12`, PIN y credenciales ATV Staging proporcionadas por el cliente piloto. |
 
 ---
 
-## 3. Comprobación de Línea Base y Suites de Pruebas
+## 3. Criterio de Transición a FIXED_VERIFIED
 
-```bash
-# Alembic Check
-alembic check -> No new upgrade operations detected. (0 pending operations)
-
-# Pytest Backend Suites
-pytest -v -> 37 passed in 10.83s (100% pass rate)
-
-# TypeScript Frontend Validation
-npx tsc --noEmit -> 0 errors
-
-# NPM Dependency Security Audit
-npm audit -> 0 vulnerabilities
-```
+Ningún control será marcado como `FIXED_VERIFIED` sin cumplir acumulativamente:
+1. Código fuente real implementado y conectado en backend y frontend.
+2. Migración y persistencia real en PostgreSQL 16 (cero SQLite para pruebas de concurrencia o aislamiento).
+3. Prueba automatizada negativa y de integración ejecutada con éxito.
+4. Cero mocks, cero fallbacks ficticios y cero afirmaciones simuladas.

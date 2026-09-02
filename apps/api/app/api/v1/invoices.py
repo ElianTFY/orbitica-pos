@@ -30,8 +30,8 @@ async def send_to_hacienda(
     db: AsyncSession = Depends(get_db)
 ):
     service = InvoiceService(db, context.organization_id)
-    inv = await service.send_to_hacienda_simulated(invoice_id)
+    inv = await service.queue_invoice_for_transmission(invoice_id)
     return StandardResponse(
         data=InvoiceResponse.model_validate(inv),
-        message="Comprobante procesado por Hacienda Costa Rica v4.3"
+        message="Comprobante encolado en outbox para transmisión y validación con Hacienda Costa Rica v4.4"
     )
