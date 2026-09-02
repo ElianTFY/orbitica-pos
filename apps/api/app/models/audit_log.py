@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, ForeignKey, DateTime, JSON
+from sqlalchemy import String, Text, ForeignKey, DateTime, JSON, event, DDL
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, UUIDMixin, GUID
 
@@ -48,3 +48,60 @@ class AuditLog(Base, UUIDMixin):
         nullable=False,
         index=True
     )
+
+# ==============================================================================
+# Database-Level Immutability Triggers (Append-Only Enforcement)
+# ==============================================================================
+
+# PostgreSQL Trigger: Blocks any UPDATE or DELETE at the database engine level
+pg_trigger_func = DDL("""
+CREATE OR REPLACE FUNCTION block_audit_log_modifications()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'AuditLog is append-only. UPDATE and DELETE operations are strictly prohibited by compliance policy.';
+END;
+$$ LANGUAGE plpgsql;
+""")
+
+pg_trigger_create = DDL("""
+DROP TRIGGER IF EXISTS trg_block_audit_log_modifications ON audit_logs;
+CREATE TRIGGER trg_block_audit_log_modifications
+BEFORE UPDATE OR DELETE ON audit_logs
+FOR EACH ROW
+EXECUTE FUNCTION block_audit_log_modifications();
+""")
+
+event.listen(AuditLog.__table__, "after_create", pg_trigger_func.execute_if(dialect="postgresql"))
+event.listen(AuditLog.__table__, "after_create", pg_trigger_create.execute_if(dialect="postgresql"))
+
+# SQLite Triggers: Blocks any UPDATE or DELETE at the engine level for local dev & unit tests
+sqlite_trg_update = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_block_audit_log_update
+BEFORE UPDATE ON audit_logs
+BEGIN
+    SELECT RAISE(FAIL, 'AuditLog is append-only. UPDATE operations are strictly prohibited.');
+END;
+""")
+
+sqlite_trg_delete = DDL("""
+CREATE TRIGGER IF NOT EXISTS trg_block_audit_log_delete
+BEFORE DELETE ON audit_logs
+BEGIN
+    SELECT RAISE(FAIL, 'AuditLog is append-only. DELETE operations are strictly prohibited.');
+END;
+""")
+
+event.listen(AuditLog.__table__, "after_create", sqlite_trg_update.execute_if(dialect="sqlite"))
+event.listen(AuditLog.__table__, "after_create", sqlite_trg_delete.execute_if(dialect="sqlite"))
+
+# ==============================================================================
+# ORM-Level Immutability Hooks
+# ==============================================================================
+
+@event.listens_for(AuditLog, "before_update", propagate=True)
+def prevent_audit_log_orm_update(mapper, connection, target):
+    raise PermissionError("AuditLog records are append-only. UPDATE operations are strictly forbidden.")
+
+@event.listens_for(AuditLog, "before_delete", propagate=True)
+def prevent_audit_log_orm_delete(mapper, connection, target):
+    raise PermissionError("AuditLog records are append-only. DELETE operations are strictly forbidden.")

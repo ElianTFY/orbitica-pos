@@ -155,3 +155,6 @@ class AuditService:
             expected_prev_hash = entry.event_hash
 
         return True, len(logs), None
+
+    # Alias for integrity verification
+    verify_chain_integrity = verify_audit_chain
