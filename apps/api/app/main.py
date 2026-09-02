@@ -20,8 +20,8 @@ async def lifespan(app: FastAPI):
     # 1. Validate security & production readiness
     settings.validate_production_readiness()
     
-    # 2. Auto-create tables on startup in development SQLite
-    if "sqlite" in settings.DATABASE_URL:
+    # 2. Auto-create tables strictly restricted to local development environment
+    if settings.ENVIRONMENT == "development" and "sqlite" in settings.DATABASE_URL.lower():
         async with async_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
     yield
