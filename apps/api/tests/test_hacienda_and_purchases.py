@@ -47,7 +47,7 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
             "name": "Jugo Naranja 500ml",
             "sku": "JUGO-500",
             "barcode": "744100998877",
-            "cabys_code": "5211010000100",
+            "cabys_code": "6339900000000",
             "unit_of_measure": "Unid",
             "cost_price": 500,
             "sale_price": 850,

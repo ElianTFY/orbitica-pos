@@ -73,7 +73,7 @@ class HaciendaService:
             items_payload.append({
                 "name": it.product_name,
                 "sku": it.product_sku,
-                "cabys_code": getattr(it, "cabys_code", "5211010000100"),
+                "cabys_code": getattr(it, "cabys_code", "6339900000000"),
                 "quantity": float(it.quantity),
                 "unit_price": float(it.unit_price),
                 "tax_rate_percent": float(it.tax_rate),

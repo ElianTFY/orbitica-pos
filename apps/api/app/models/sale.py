@@ -75,7 +75,7 @@ class SaleItem(Base, UUIDMixin):
     product_sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
     
     # Costa Rica Fiscal Snapshot (Immutable per Sale)
-    cabys_code: Mapped[str] = mapped_column(String(13), default="5211010000100", nullable=False)
+    cabys_code: Mapped[str] = mapped_column(String(13), default="6339900000000", nullable=False)
     unit_of_measure: Mapped[str] = mapped_column(String(10), default="Unid", nullable=False)
     tax_rate_code: Mapped[str] = mapped_column(String(2), default="08", nullable=False)  # 08=13% General DGT
     

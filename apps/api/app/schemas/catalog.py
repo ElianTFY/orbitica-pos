@@ -41,7 +41,7 @@ class ProductCreate(BaseModel):
     tax_rate_id: UUID
     sku: Optional[str] = None
     barcode: Optional[str] = None
-    cabys_code: str = Field(default="5211010000100", min_length=13, max_length=13)
+    cabys_code: str = Field(default="6339900000000", min_length=13, max_length=13)
     unit_of_measure: str = Field(default="Unid", max_length=10)
     description: Optional[str] = None
     cost_price: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -54,11 +54,9 @@ class ProductCreate(BaseModel):
 
     @field_validator("cabys_code")
     def validate_cabys(cls, v: str) -> str:
+        from app.core.cabys_catalog import validate_cabys_and_rate
         cleaned = v.strip()
-        if not cleaned.isdigit() or len(cleaned) != 13:
-            raise ValueError("El código CAByS debe tener exactamente 13 dígitos numéricos oficiales.")
-        if cleaned == "0000000000000":
-            raise ValueError("El código CAByS '0000000000000' es inválido en Hacienda v4.4.")
+        validate_cabys_and_rate(cleaned, Decimal("13.00"), "Unid")
         return cleaned
 
 class ProductUpdate(BaseModel):

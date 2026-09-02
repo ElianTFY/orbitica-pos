@@ -117,7 +117,7 @@ async def test_xml_generation_with_xsd_validation_and_cabys_enforcement(
         line_total=Decimal("1130.00")
     )
     # Assign valid 13-digit CAByS
-    item.cabys_code = "5211010000100"
+    item.cabys_code = "6339900000000"
     item.unit_of_measure = "Unid"
     sale.items = [item]
 
@@ -132,7 +132,7 @@ async def test_xml_generation_with_xsd_validation_and_cabys_enforcement(
         validate_xsd=True
     )
     assert "<TiqueteElectronico" in xml_str
-    assert "<CodigoCabys>5211010000100</CodigoCabys>" in xml_str
+    assert "<CodigoCabys>6339900000000</CodigoCabys>" in xml_str
     assert "<CodigoTarifa>08</CodigoTarifa>" in xml_str
 
     # 2. Reject dummy CAByS 0000000000000
@@ -178,7 +178,7 @@ async def test_xades_epes_signature_and_verification():
     <DetalleServicio>
         <LineaDetalle>
             <NumeroLinea>1</NumeroLinea>
-            <CodigoCabys>5211010000100</CodigoCabys>
+            <CodigoCabys>6339900000000</CodigoCabys>
             <Cantidad>1.000</Cantidad>
             <UnidadMedida>Unid</UnidadMedida>
             <Detalle>Arroz Grano Entero 1kg</Detalle>

@@ -37,7 +37,7 @@ async def test_idempotency_service_behavior(client: AsyncClient, sample_organiza
             "name": "Pan Baguette Artesanal",
             "sku": "PAN-01",
             "barcode": "744100990011",
-            "cabys_code": "5211010000100",
+            "cabys_code": "2322000000000",
             "unit_of_measure": "Unid",
             "cost_price": 300,
             "sale_price": 500,

@@ -40,7 +40,7 @@ def fmt_money(val: Decimal, dec: int = 5) -> str:
 def fmt_money_2(val: Decimal) -> str:
     return str(val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
-def map_tax_rate_code(rate_pct: Decimal) -> Tuple[str, str]:
+def map_tax_rate_code(rate_pct: Decimal, is_exonerated: bool = False, without_credit: bool = False) -> Tuple[str, str]:
     """
     Returns (CodigoImpuesto, CodigoTarifa) according to Hacienda Costa Rica v4.4 catalogue:
     08 = Tarifa general 13%
@@ -48,21 +48,12 @@ def map_tax_rate_code(rate_pct: Decimal) -> Tuple[str, str]:
     04 = Tarifa reducida 4%
     03 = Tarifa reducida 2%
     02 = Tarifa reducida 1%
+    09 = Tarifa reducida 0.5%
     01 = Tarifa 0% (Exento)
+    10 = Exonerado / Sin crédito fiscal
     """
-    pct = rate_pct.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    if pct >= Decimal("13.00"):
-        return "01", "08"
-    elif pct >= Decimal("8.00"):
-        return "01", "07"
-    elif pct >= Decimal("4.00"):
-        return "01", "04"
-    elif pct >= Decimal("2.00"):
-        return "01", "03"
-    elif pct >= Decimal("1.00"):
-        return "01", "02"
-    else:
-        return "01", "01"
+    from app.core.cabys_catalog import map_fiscal_v44_tax_tariff
+    return map_fiscal_v44_tax_tariff(rate_pct, is_exonerated=is_exonerated, without_credit=without_credit)
 
 class HaciendaXMLGeneratorV44:
     @classmethod
