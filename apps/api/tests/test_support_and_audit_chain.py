@@ -99,19 +99,17 @@ async def test_forensic_audit_chain_verification_and_tampering_detection(
     assert count >= 2
     assert err is None
 
-    # 2. Tamper with an audit record in the database
+    # 2. Tampering via commit is strictly blocked by database append-only triggers
     first_log_res = await db_session.execute(select(AuditLog).order_by(AuditLog.created_at.asc()).limit(1))
     first_log = first_log_res.scalar_one()
-    
     original_action = first_log.action
     first_log.action = "TAMPERED_MALICIOUS_ACTION"
-    await db_session.commit()
+    
+    # 3. Chain verification in identity map MUST fail and detect the tampering!
+    with db_session.no_autoflush:
+        is_tampered_valid, count, err = await AuditService.verify_audit_chain(db_session)
+        assert is_tampered_valid is False
+        assert "Firma de evento alterada" in err or "Ruptura de cadena" in err
 
-    # 3. Chain verification MUST fail and detect the tampering!
-    is_tampered_valid, count, err = await AuditService.verify_audit_chain(db_session)
-    assert is_tampered_valid is False
-    assert "Firma de evento alterada" in err or "Ruptura de cadena" in err
-
-    # Restore original action for clean teardown
+    # Restore original action
     first_log.action = original_action
-    await db_session.commit()

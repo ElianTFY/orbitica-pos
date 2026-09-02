@@ -1,4 +1,4 @@
-name: ORBÍTICA POS — CI Pipeline
+name: ORBÍTICA POS — CI Production Pipeline
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [main, develop]
 
 jobs:
-  backend-test:
-    name: Backend Tests & PostgreSQL Migrations
+  backend-ci:
+    name: Backend CI & Fiscal Schema Compliance
     runs-on: ubuntu-latest
 
     services:
@@ -26,8 +26,18 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Python 3.12
@@ -35,6 +45,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: apps/api/requirements.txt
 
       - name: Install Dependencies
         working-directory: apps/api
@@ -46,14 +57,33 @@ jobs:
         working-directory: apps/api
         run: pip check
 
-      - name: Run Alembic Database Migrations
+      - name: Enforce Official Hacienda v4.4 XSD Schema Integrity
+        working-directory: apps/api
+        run: python scripts/download_official_xsds.py --verify-only
+
+      - name: Validate Official Fiscal Document Golden Files
+        working-directory: apps/api
+        run: pytest tests/test_hacienda_v44_official_documents.py -v
+
+      - name: Execute Alembic Migrations on Live PostgreSQL
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql+asyncpg://orbitica_user:orbitica_secure_password@localhost:5432/orbitica_pos
           SYNC_DATABASE_URL: postgresql://orbitica_user:orbitica_secure_password@localhost:5432/orbitica_pos
         run: alembic upgrade head
 
-      - name: Run Backend Pytest Suite
+      - name: Run PostgreSQL Integration Tests with Live Database
+        working-directory: apps/api
+        env:
+          ENVIRONMENT: test
+          DATABASE_URL: postgresql+asyncpg://orbitica_user:orbitica_secure_password@localhost:5432/orbitica_pos
+          SYNC_DATABASE_URL: postgresql://orbitica_user:orbitica_secure_password@localhost:5432/orbitica_pos
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET_KEY: test_secret_key_at_least_32_characters_long_for_ci
+          ENCRYPTION_MASTER_KEY: DEV_MASTER_KEY_32_BYTES_FOR_DEV_ONLY_123456=
+        run: pytest -m "postgres_integration" -v
+
+      - name: Run Full Unit Test Suite with Coverage
         working-directory: apps/api
         env:
           ENVIRONMENT: test
@@ -61,14 +91,14 @@ jobs:
           SYNC_DATABASE_URL: sqlite:///./test.db
           JWT_SECRET_KEY: test_secret_key_at_least_32_characters_long_for_ci
           ENCRYPTION_MASTER_KEY: DEV_MASTER_KEY_32_BYTES_FOR_DEV_ONLY_123456=
-        run: pytest -v --cov=app tests/
+        run: pytest -m "not postgres_integration" -v --cov=app --cov-report=term
 
-  frontend-build:
-    name: Frontend Typecheck & Production Build
+  frontend-ci:
+    name: Frontend Lint, Typecheck & Production Build
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js 20
@@ -82,7 +112,7 @@ jobs:
         working-directory: apps/web
         run: npm install
 
-      - name: TypeScript Check
+      - name: TypeScript Static Typecheck
         working-directory: apps/web
         run: npm run typecheck
 

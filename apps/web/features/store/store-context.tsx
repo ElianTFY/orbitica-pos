@@ -377,23 +377,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(`orbitica_suspended_${orgId}`, JSON.stringify(suspendedSales));
     } catch (e) {}
   }, [suspendedSales, orgId]);
-    employees,
-    branches,
-    quotes,
-    expenses,
-    workOrders,
-    dispatchOrders,
-    coupons,
-    loyaltyMembers,
-    bankAccounts,
-    bankTransactions,
-    suspendedSales,
-    auditLogs,
-    settings,
-    activeCashSession,
-    orgId,
-    isLoaded,
-  ]);
 
   const logAudit = (action: string, resource: string) => {
     const entry: AuditLogEntry = {
