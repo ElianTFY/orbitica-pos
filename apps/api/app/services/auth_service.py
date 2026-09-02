@@ -1,7 +1,7 @@
 import uuid
 import pyotp
 from datetime import datetime, timedelta, timezone
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.user import User, UserSession
@@ -19,10 +19,32 @@ from app.core.constants import UserRole, ASSIGNABLE_ROLES
 from app.core.exceptions import UnauthorizedException, AccountLockedException, ForbiddenException, BadRequestException
 from app.core.config import settings
 from app.services.audit_service import AuditService
+from app.adapters.email_adapter import get_email_adapter
+
+# In-memory IP-based rate limiting
+_IP_LOGIN_ATTEMPTS: Dict[str, List[datetime]] = {}
 
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _check_ip_rate_limit(self, ip_address: Optional[str]):
+        if not ip_address:
+            return
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=15)
+        attempts = [t for t in _IP_LOGIN_ATTEMPTS.get(ip_address, []) if t > cutoff]
+        _IP_LOGIN_ATTEMPTS[ip_address] = attempts
+        if len(attempts) >= 25:
+            raise AccountLockedException("Demasiados intentos fallidos desde esta dirección IP. Intente de nuevo en 15 minutos.")
+
+    def _record_ip_failed_attempt(self, ip_address: Optional[str]):
+        if not ip_address:
+            return
+        now = datetime.now(timezone.utc)
+        if ip_address not in _IP_LOGIN_ATTEMPTS:
+            _IP_LOGIN_ATTEMPTS[ip_address] = []
+        _IP_LOGIN_ATTEMPTS[ip_address].append(now)
 
     async def authenticate_user(
         self,
@@ -32,6 +54,8 @@ class AuthService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
     ) -> Tuple[User, str, str]:
+        self._check_ip_rate_limit(ip_address)
+
         stmt = select(User).where(User.email == email.strip().lower())
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
@@ -39,6 +63,7 @@ class AuthService:
         now = datetime.now(timezone.utc)
 
         if not user:
+            self._record_ip_failed_attempt(ip_address)
             raise UnauthorizedException("Credenciales incorrectas")
 
         if not user.is_active:
@@ -52,6 +77,7 @@ class AuthService:
                 raise AccountLockedException("Cuenta bloqueada temporalmente por múltiples intentos fallidos")
 
         if not verify_password(password, user.password_hash):
+            self._record_ip_failed_attempt(ip_address)
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
                 user.locked_until = now + timedelta(minutes=settings.LOCKOUT_MINUTES)
@@ -60,20 +86,49 @@ class AuthService:
             await self.db.commit()
             raise UnauthorizedException("Credenciales incorrectas")
 
-        # Check TOTP MFA requirement (Mandatory for Superadmin or if enabled)
-        if user.role == UserRole.SUPERADMIN or user.totp_enabled:
-            if not user.totp_secret:
-                user.totp_secret = pyotp.random_base32()
-                user.totp_enabled = True
-                await self.db.commit()
+        # Strict TOTP MFA enforcement for Superadmin or users with TOTP enabled
+        if user.role == UserRole.SUPERADMIN:
+            if not user.totp_enabled:
+                if not user.totp_secret:
+                    user.totp_secret = pyotp.random_base32()
+                    user.totp_enabled = False
+                    await self.db.commit()
+
+                if totp_code:
+                    totp = pyotp.TOTP(user.totp_secret)
+                    if not totp.verify(totp_code.strip(), valid_window=1):
+                        self._record_ip_failed_attempt(ip_address)
+                        raise UnauthorizedException("Código TOTP de activación incorrecto o expirado")
+                    user.totp_enabled = True
+                    await self.db.commit()
+                else:
+                    # Enforce MFA challenge: Block Superadmin until first code is verified
+                    prov_uri = pyotp.TOTP(user.totp_secret).provisioning_uri(
+                        name=user.email,
+                        issuer_name="Orbítica POS Superadmin"
+                    )
+                    raise UnauthorizedException(
+                        f"MFA_ENROLLMENT_REQUIRED: Debe configurar y verificar su primer código TOTP antes de iniciar sesión. URI: {prov_uri}"
+                    )
             else:
                 if not totp_code:
                     raise UnauthorizedException("Código de autenticación en dos pasos (TOTP MFA) requerido")
                 totp = pyotp.TOTP(user.totp_secret)
-                if not totp.verify(totp_code, valid_window=1):
+                if not totp.verify(totp_code.strip(), valid_window=1):
+                    self._record_ip_failed_attempt(ip_address)
                     user.failed_login_attempts += 1
                     await self.db.commit()
                     raise UnauthorizedException("Código TOTP MFA incorrecto o expirado")
+
+        elif user.totp_enabled:
+            if not totp_code:
+                raise UnauthorizedException("Código de autenticación en dos pasos (TOTP MFA) requerido")
+            totp = pyotp.TOTP(user.totp_secret)
+            if not totp.verify(totp_code.strip(), valid_window=1):
+                self._record_ip_failed_attempt(ip_address)
+                user.failed_login_attempts += 1
+                await self.db.commit()
+                raise UnauthorizedException("Código TOTP MFA incorrecto o expirado")
 
         # Success -> Reset failed attempts
         user.failed_login_attempts = 0
@@ -124,8 +179,12 @@ class AuthService:
         token_hash = hash_token(raw_refresh_token)
         now = datetime.now(timezone.utc)
 
-        # Check if token exists but was already revoked (Reuse Detection Attack)
+        # SELECT FOR UPDATE when supported (PostgreSQL concurrency safety)
         revoked_stmt = select(UserSession).where(UserSession.refresh_token_hash == token_hash)
+        bind = self.db.bind
+        if bind and "postgres" in bind.dialect.name.lower():
+            revoked_stmt = revoked_stmt.with_for_update()
+
         revoked_res = await self.db.execute(revoked_stmt)
         existing_session = revoked_res.scalar_one_or_none()
 
@@ -239,6 +298,15 @@ class AuthService:
         user.recovery_token_hash = hash_token(raw_token)
         user.recovery_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         await self.db.commit()
+
+        email_adapter = get_email_adapter()
+        recovery_url = f"http://localhost:3000/reset-password?token={raw_token}"
+        await email_adapter.send_email(
+            to_email=user.email,
+            subject="Recuperación de Contraseña — Orbítica POS",
+            html_content=f"<p>Hola {user.full_name},</p><p>Has solicitado restablecer tu contraseña en Orbítica POS. Usa este enlace para completar el cambio:</p><p><a href='{recovery_url}'>{recovery_url}</a></p><p>Este enlace expirará en 1 hora.</p>",
+            text_content=f"Hola {user.full_name},\n\nPara restablecer tu contraseña en Orbítica POS, ingresa al siguiente enlace:\n{recovery_url}\n\nVálido por 1 hora."
+        )
         return raw_token
 
     async def reset_password_with_token(self, raw_token: str, new_password: str) -> bool:

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [requireTotp, setRequireTotp] = useState(false);
+  const [mfaChallengeNotice, setMfaChallengeNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
@@ -21,9 +24,26 @@ export default function LoginPage() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, requireTotp ? totpCode : undefined);
     } catch (err: any) {
-      setError(err?.message || "Credenciales incorrectas o cuenta bloqueada");
+      const msg = err?.message || "Credenciales incorrectas o cuenta bloqueada";
+      if (
+        msg.toLowerCase().includes("totp") ||
+        msg.toLowerCase().includes("mfa") ||
+        msg.toLowerCase().includes("dos pasos") ||
+        msg.includes("MFA_ENROLLMENT_REQUIRED")
+      ) {
+        setRequireTotp(true);
+        if (msg.includes("MFA_ENROLLMENT_REQUIRED")) {
+          setMfaChallengeNotice(
+            "Tu cuenta requiere verificación de dos factores (TOTP). Ingresa el código de 6 dígitos de tu aplicación autenticadora para completar la activación."
+          );
+        } else {
+          setMfaChallengeNotice("Ingresa el código temporal de 6 dígitos de tu aplicación autenticadora.");
+        }
+      } else {
+        setError(msg);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -63,6 +83,16 @@ export default function LoginPage() {
             </div>
           )}
 
+          {mfaChallengeNotice && (
+            <div
+              role="alert"
+              className="p-3.5 bg-primary/10 border border-primary/20 rounded-2xl text-xs text-primary font-medium animate-in fade-in duration-150 flex items-start gap-2"
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
+              <span>{mfaChallengeNotice}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
               id="login-email"
@@ -86,6 +116,27 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
 
+            {requireTotp && (
+              <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                <Input
+                  id="login-totp"
+                  label="Código de Seguridad TOTP (6 dígitos)"
+                  type="text"
+                  placeholder="123456"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                  required
+                  autoFocus
+                  autoComplete="one-time-code"
+                />
+                <p className="text-[10px] text-text-muted flex items-center gap-1">
+                  <KeyRound className="w-3 h-3 text-primary" />
+                  Google Authenticator, Microsoft Authenticator o Authy
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end">
               <Link
                 href="/forgot-password"
@@ -98,6 +149,11 @@ export default function LoginPage() {
             <Button type="submit" variant="primary" className="w-full py-3 font-bold text-sm" disabled={isSubmitting}>
               {isSubmitting ? (
                 "Validando credenciales..."
+              ) : requireTotp ? (
+                <>
+                  Verificar y Acceder
+                  <ShieldCheck className="w-4 h-4 ml-2" />
+                </>
               ) : (
                 <>
                   Acceder al Sistema

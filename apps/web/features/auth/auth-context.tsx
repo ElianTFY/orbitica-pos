@@ -8,7 +8,7 @@ import { useRouter, usePathname } from "next/navigation";
 interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
-  login: (email: string, pass: string) => Promise<void>;
+  login: (email: string, pass: string, totpCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (perm: string) => boolean;
 }
@@ -36,12 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchProfile();
   }, []);
 
-  const login = async (email: string, pass: string) => {
+  const login = async (email: string, pass: string, totpCode?: string) => {
     setIsLoading(true);
     try {
+      const payload: Record<string, any> = { email, password: pass };
+      if (totpCode) payload.totp_code = totpCode.trim();
+
       const res = await api.request<{ access_token: string; user?: UserProfile }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify(payload),
       });
       api.setToken(res.data.access_token);
       if (res.data.user) {

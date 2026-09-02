@@ -235,3 +235,64 @@ async def test_privilege_escalation_blocked(db_session: AsyncSession):
     auth_service.validate_role_assignment(UserRole.OWNER, UserRole.MANAGER)
     auth_service.validate_role_assignment(UserRole.OWNER, UserRole.CASHIER)
     auth_service.validate_role_assignment(UserRole.OWNER, UserRole.ACCOUNTANT)
+
+@pytest.mark.asyncio
+async def test_superadmin_first_login_mfa_challenge_blocks_unverified(client: AsyncClient, db_session: AsyncSession):
+    """
+    Mandato de Auditoría:
+    Verifica que un superadmin nuevo NO se autoactive ni reciba tokens en su primer login.
+    Debe recibir un challenge 401 con MFA_ENROLLMENT_REQUIRED hasta verificar el primer código.
+    """
+    new_superadmin = User(
+        email="fresh.superadmin@orbitica.cr",
+        password_hash=hash_password("FreshAdmin2026!"),
+        full_name="Fresh Superadmin",
+        role=UserRole.SUPERADMIN,
+        totp_secret=None,
+        totp_enabled=False
+    )
+    db_session.add(new_superadmin)
+    await db_session.commit()
+
+    # 1. First login attempt without TOTP -> Must be BLOCKED with 401 and challenge
+    block_resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "fresh.superadmin@orbitica.cr", "password": "FreshAdmin2026!"}
+    )
+    assert block_resp.status_code == 401
+    assert "MFA_ENROLLMENT_REQUIRED" in block_resp.json()["error"]["message"]
+
+    # 2. Inspect DB: a secret was generated, but totp_enabled remains False!
+    await db_session.refresh(new_superadmin)
+    assert new_superadmin.totp_secret is not None
+    assert new_superadmin.totp_enabled is False
+
+    # 3. Supplying wrong TOTP code -> Still fails 401
+    bad_resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "fresh.superadmin@orbitica.cr",
+            "password": "FreshAdmin2026!",
+            "totp_code": "999999"
+        }
+    )
+    assert bad_resp.status_code == 401
+
+    # 4. Supplying valid TOTP code -> Activates and succeeds 200
+    totp = pyotp.TOTP(new_superadmin.totp_secret)
+    valid_code = totp.now()
+
+    succ_resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "fresh.superadmin@orbitica.cr",
+            "password": "FreshAdmin2026!",
+            "totp_code": valid_code
+        }
+    )
+    assert succ_resp.status_code == 200
+    assert "access_token" in succ_resp.json()["data"]
+
+    # 5. DB confirms totp_enabled is now True
+    await db_session.refresh(new_superadmin)
+    assert new_superadmin.totp_enabled is True
