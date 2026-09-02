@@ -16,6 +16,7 @@ from app.schemas.sale import SaleCreate, RefundRequest
 from app.core.exceptions import NotFoundException, BadRequestException, ConflictException
 from app.services.consecutive_service import ConsecutiveService
 from app.services.audit_service import AuditService
+from app.services.hacienda_xml_generator_v44 import map_tax_rate_code
 
 def round_money(val: Decimal) -> Decimal:
     return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -169,11 +170,16 @@ class SaleService:
             total_tax += line_tax
             total_final += net_line_with_tax
 
+            cod_imp, cod_tarifa = map_tax_rate_code(tax_rate_val)
+
             sale_items.append(
                 SaleItem(
                     product_id=prod.id,
                     product_name=prod.name,
                     product_sku=prod.sku,
+                    cabys_code=prod.cabys_code,
+                    unit_of_measure=prod.unit_of_measure,
+                    tax_rate_code=cod_tarifa,
                     quantity=item_in.quantity,
                     unit_price=prod.sale_price,
                     unit_cost=prod.cost_price,

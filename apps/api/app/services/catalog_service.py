@@ -100,7 +100,6 @@ class CatalogService:
 
         products_data = []
         for prod, cat_name, t_rate in rows:
-            # Query stock if branch_id provided
             curr_stock = Decimal("0.00")
             if branch_id:
                 stk_stmt = select(BranchProductStock.quantity).where(
@@ -120,6 +119,8 @@ class CatalogService:
                 "name": prod.name,
                 "sku": prod.sku,
                 "barcode": prod.barcode,
+                "cabys_code": prod.cabys_code,
+                "unit_of_measure": prod.unit_of_measure,
                 "description": prod.description,
                 "cost_price": prod.cost_price,
                 "sale_price": prod.sale_price,
@@ -131,6 +132,53 @@ class CatalogService:
             })
 
         return products_data
+
+    async def get_product(self, product_id: uuid.UUID, branch_id: Optional[uuid.UUID] = None) -> dict:
+        stmt = select(Product, Category.name, TaxRate.rate).outerjoin(
+            Category, Product.category_id == Category.id
+        ).join(
+            TaxRate, Product.tax_rate_id == TaxRate.id
+        ).where(
+            Product.id == product_id,
+            Product.organization_id == self.organization_id,
+            Product.is_active == True
+        )
+        res = await self.db.execute(stmt)
+        row = res.first()
+        if not row:
+            raise NotFoundException("Producto no encontrado")
+
+        prod, cat_name, t_rate = row
+        curr_stock = Decimal("0.00")
+        if branch_id:
+            stk_stmt = select(BranchProductStock.quantity).where(
+                BranchProductStock.branch_id == branch_id,
+                BranchProductStock.product_id == prod.id
+            )
+            stk_res = await self.db.execute(stk_stmt)
+            curr_stock = stk_res.scalar_one_or_none() or Decimal("0.00")
+
+        return {
+            "id": prod.id,
+            "organization_id": prod.organization_id,
+            "category_id": prod.category_id,
+            "category_name": cat_name,
+            "tax_rate_id": prod.tax_rate_id,
+            "tax_rate": t_rate,
+            "name": prod.name,
+            "sku": prod.sku,
+            "barcode": prod.barcode,
+            "cabys_code": prod.cabys_code,
+            "unit_of_measure": prod.unit_of_measure,
+            "description": prod.description,
+            "cost_price": prod.cost_price,
+            "sale_price": prod.sale_price,
+            "min_stock_alert": prod.min_stock_alert,
+            "image_url": prod.image_url,
+            "is_service": prod.is_service,
+            "is_active": prod.is_active,
+            "current_stock": curr_stock
+        }
 
     async def get_product_by_barcode(self, barcode: str, branch_id: Optional[uuid.UUID] = None) -> dict:
         stmt = select(Product, Category.name, TaxRate.rate).outerjoin(
@@ -167,6 +215,8 @@ class CatalogService:
             "name": prod.name,
             "sku": prod.sku,
             "barcode": prod.barcode,
+            "cabys_code": prod.cabys_code,
+            "unit_of_measure": prod.unit_of_measure,
             "description": prod.description,
             "cost_price": prod.cost_price,
             "sale_price": prod.sale_price,
@@ -178,7 +228,6 @@ class CatalogService:
         }
 
     async def create_product(self, data: ProductCreate, actor_id: uuid.UUID) -> Product:
-        # Check SKU uniqueness within organization
         if data.sku:
             sku_stmt = select(Product).where(
                 Product.organization_id == self.organization_id,
@@ -189,7 +238,6 @@ class CatalogService:
             if sku_res.scalar_one_or_none():
                 raise ConflictException(f"Ya existe un producto con el SKU '{data.sku}'")
 
-        # Check Barcode uniqueness within organization
         if data.barcode:
             bc_stmt = select(Product).where(
                 Product.organization_id == self.organization_id,
@@ -207,6 +255,8 @@ class CatalogService:
             name=data.name.strip(),
             sku=data.sku.strip() if data.sku else None,
             barcode=data.barcode.strip() if data.barcode else None,
+            cabys_code=data.cabys_code.strip(),
+            unit_of_measure=data.unit_of_measure.strip(),
             description=data.description,
             cost_price=data.cost_price,
             sale_price=data.sale_price,
@@ -217,7 +267,6 @@ class CatalogService:
         self.db.add(product)
         await self.db.flush()
 
-        # If initial stock and branch provided, initialize stock
         if data.branch_id and data.initial_stock and data.initial_stock > 0:
             stock = BranchProductStock(
                 branch_id=data.branch_id,
@@ -233,7 +282,81 @@ class CatalogService:
             actor_id=actor_id,
             organization_id=self.organization_id,
             resource_id=str(product.id),
-            payload_after={"name": product.name, "sale_price": str(product.sale_price)}
+            payload_after={"name": product.name, "cabys_code": product.cabys_code, "sale_price": str(product.sale_price)}
+        )
+
+        await self.db.commit()
+        await self.db.refresh(product)
+        return product
+
+    async def update_product(self, product_id: uuid.UUID, data: ProductUpdate, actor_id: uuid.UUID) -> Product:
+        stmt = select(Product).where(
+            Product.id == product_id,
+            Product.organization_id == self.organization_id,
+            Product.is_active == True
+        )
+        res = await self.db.execute(stmt)
+        product = res.scalar_one_or_none()
+        if not product:
+            raise NotFoundException("Producto no encontrado")
+
+        if data.sku and data.sku != product.sku:
+            sku_stmt = select(Product).where(
+                Product.organization_id == self.organization_id,
+                Product.sku == data.sku.strip(),
+                Product.id != product_id,
+                Product.is_active == True
+            )
+            sku_res = await self.db.execute(sku_stmt)
+            if sku_res.scalar_one_or_none():
+                raise ConflictException(f"Ya existe un producto con el SKU '{data.sku}'")
+            product.sku = data.sku.strip()
+
+        if data.barcode and data.barcode != product.barcode:
+            bc_stmt = select(Product).where(
+                Product.organization_id == self.organization_id,
+                Product.barcode == data.barcode.strip(),
+                Product.id != product_id,
+                Product.is_active == True
+            )
+            bc_res = await self.db.execute(bc_stmt)
+            if bc_res.scalar_one_or_none():
+                raise ConflictException(f"Ya existe un producto con el código de barras '{data.barcode}'")
+            product.barcode = data.barcode.strip()
+
+        if data.name is not None:
+            product.name = data.name.strip()
+        if data.category_id is not None:
+            product.category_id = data.category_id
+        if data.tax_rate_id is not None:
+            product.tax_rate_id = data.tax_rate_id
+        if data.cabys_code is not None:
+            product.cabys_code = data.cabys_code.strip()
+        if data.unit_of_measure is not None:
+            product.unit_of_measure = data.unit_of_measure.strip()
+        if data.description is not None:
+            product.description = data.description
+        if data.cost_price is not None:
+            product.cost_price = data.cost_price
+        if data.sale_price is not None:
+            product.sale_price = data.sale_price
+        if data.min_stock_alert is not None:
+            product.min_stock_alert = data.min_stock_alert
+        if data.image_url is not None:
+            product.image_url = data.image_url
+        if data.is_service is not None:
+            product.is_service = data.is_service
+        if data.is_active is not None:
+            product.is_active = data.is_active
+
+        await AuditService.log_action(
+            db=self.db,
+            action="PRODUCT_UPDATED",
+            resource="Product",
+            actor_id=actor_id,
+            organization_id=self.organization_id,
+            resource_id=str(product.id),
+            payload_after={"name": product.name, "cabys_code": product.cabys_code, "sale_price": str(product.sale_price)}
         )
 
         await self.db.commit()

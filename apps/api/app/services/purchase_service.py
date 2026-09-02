@@ -1,13 +1,16 @@
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
+from app.models.purchase import Purchase, PurchaseItem
 from app.models.catalog import Product, BranchProductStock
 from app.models.inventory import InventoryMovement
-from app.models.customer import Customer # for supplier representation
-from app.schemas.purchase import SupplierCreate, PurchaseCreate
+from app.models.supplier import Supplier
+from app.models.branch import Branch
+from app.schemas.purchase import PurchaseCreate
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.audit_service import AuditService
 
@@ -19,142 +22,212 @@ class PurchaseService:
         self.db = db
         self.organization_id = organization_id
 
-    async def list_suppliers(self, search: Optional[str] = None) -> List[Customer]:
-        stmt = select(Customer).where(
-            Customer.organization_id == self.organization_id,
-            Customer.is_active == True
+    async def list_purchases(
+        self,
+        branch_id: Optional[uuid.UUID] = None,
+        supplier_id: Optional[uuid.UUID] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Purchase]:
+        stmt = (
+            select(Purchase)
+            .options(
+                selectinload(Purchase.items),
+                selectinload(Purchase.supplier)
+            )
+            .where(Purchase.organization_id == self.organization_id)
         )
-        if search:
-            s = f"%{search.strip().lower()}%"
-            stmt = stmt.where(or_(Customer.name.ilike(s), Customer.identification_number.ilike(s)))
+        if branch_id:
+            stmt = stmt.where(Purchase.branch_id == branch_id)
+        if supplier_id:
+            stmt = stmt.where(Purchase.supplier_id == supplier_id)
+
+        stmt = stmt.order_by(desc(Purchase.created_at)).offset(offset).limit(limit)
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
 
-    async def create_supplier(self, data: SupplierCreate) -> Customer:
-        supp = Customer(
-            organization_id=self.organization_id,
-            name=data.name.strip(),
-            identification_type=data.legal_id_type,
-            identification_number=data.legal_id.strip(),
-            email=data.email.strip().lower() if data.email else None,
-            phone=data.phone.strip() if data.phone else None,
-            address=data.address,
-            notes=f"Proveedor - Contacto: {data.contact_person}" if data.contact_person else "Proveedor"
+    async def get_purchase(self, purchase_id: uuid.UUID) -> Purchase:
+        stmt = (
+            select(Purchase)
+            .options(
+                selectinload(Purchase.items),
+                selectinload(Purchase.supplier)
+            )
+            .where(
+                Purchase.id == purchase_id,
+                Purchase.organization_id == self.organization_id
+            )
         )
-        self.db.add(supp)
-        await self.db.commit()
-        await self.db.refresh(supp)
-        return supp
+        res = await self.db.execute(stmt)
+        purchase = res.scalar_one_or_none()
+        if not purchase:
+            raise NotFoundException("Orden de compra no encontrada")
+        return purchase
 
-    async def create_purchase(self, data: PurchaseCreate, user_id: uuid.UUID, default_branch_id: uuid.UUID) -> dict:
-        branch_id = data.branch_id or default_branch_id
+    async def create_purchase(self, data: PurchaseCreate, user_id: uuid.UUID) -> Purchase:
+        # 1. Validate branch and supplier
+        b_stmt = select(Branch).where(
+            Branch.id == data.branch_id,
+            Branch.organization_id == self.organization_id
+        )
+        b_res = await self.db.execute(b_stmt)
+        branch = b_res.scalar_one_or_none()
+        if not branch:
+            raise NotFoundException("Sucursal no encontrada")
 
-        # Validate Supplier
-        supp_stmt = select(Customer).where(Customer.id == data.supplier_id, Customer.organization_id == self.organization_id)
-        supp_res = await self.db.execute(supp_stmt)
-        supp = supp_res.scalar_one_or_none()
-        if not supp:
-            raise NotFoundException("Proveedor no encontrado")
+        s_stmt = select(Supplier).where(
+            Supplier.id == data.supplier_id,
+            Supplier.organization_id == self.organization_id,
+            Supplier.is_active == True
+        )
+        s_res = await self.db.execute(s_stmt)
+        supplier = s_res.scalar_one_or_none()
+        if not supplier:
+            raise NotFoundException("Proveedor no encontrado o inactivo")
 
-        subtotal = Decimal("0.00")
+        if not data.items:
+            raise BadRequestException("La orden de compra debe contener al menos un producto")
+
+        # 2. Count existing purchases for numbering
+        count_stmt = select(Purchase).where(
+            Purchase.organization_id == self.organization_id,
+            Purchase.branch_id == data.branch_id
+        )
+        count_res = await self.db.execute(count_stmt)
+        num_count = len(count_res.scalars().all()) + 1
+        purchase_number = f"COM-{branch.code}-{num_count:06d}"
+
+        # 3. Process items and update stock atomically
+        total_subtotal = Decimal("0.00")
         total_tax = Decimal("0.00")
-        items_processed = []
+        total_final = Decimal("0.00")
 
-        for it in data.items:
-            prod_stmt = select(Product).where(Product.id == it.product_id, Product.organization_id == self.organization_id)
-            prod_res = await self.db.execute(prod_stmt)
-            prod = prod_res.scalar_one_or_none()
+        purchase_items = []
+        stock_updates = []
+
+        for item_in in data.items:
+            p_stmt = select(Product).where(
+                Product.id == item_in.product_id,
+                Product.organization_id == self.organization_id,
+                Product.is_active == True
+            )
+            p_res = await self.db.execute(p_stmt)
+            prod = p_res.scalar_one_or_none()
             if not prod:
-                raise NotFoundException(f"Producto {it.product_id} no encontrado")
+                raise NotFoundException(f"Producto ID '{item_in.product_id}' no encontrado o inactivo")
 
-            line_sub = round_money(it.quantity * it.unit_cost)
-            line_tax = round_money(line_sub * it.tax_rate)
-            line_tot = line_sub + line_tax
+            # Calculate line
+            line_subtotal = round_money(item_in.unit_cost * item_in.quantity)
+            line_tax = round_money(line_subtotal * (item_in.tax_rate / Decimal("100.00")))
+            line_total = line_subtotal + line_tax
 
-            subtotal += line_sub
+            total_subtotal += line_subtotal
             total_tax += line_tax
+            total_final += line_total
 
-            # Increase Stock in Branch
-            stock_stmt = select(BranchProductStock).where(
-                BranchProductStock.branch_id == branch_id,
-                BranchProductStock.product_id == prod.id
-            )
-            stock_res = await self.db.execute(stock_stmt)
-            stock = stock_res.scalar_one_or_none()
-
-            old_qty = stock.quantity if stock else Decimal("0.00")
-            new_qty = old_qty + it.quantity
-
-            if stock:
-                stock.quantity = new_qty
-            else:
-                stock = BranchProductStock(
-                    branch_id=branch_id,
+            purchase_items.append(
+                PurchaseItem(
                     product_id=prod.id,
-                    quantity=new_qty
+                    product_name=prod.name,
+                    product_sku=prod.sku,
+                    quantity=item_in.quantity,
+                    unit_cost=item_in.unit_cost,
+                    tax_rate=item_in.tax_rate,
+                    tax_amount=line_tax,
+                    line_total=line_total
                 )
-                self.db.add(stock)
-
-            # Update product cost price
-            prod.cost_price = it.unit_cost
-
-            # Record Inmutable Ledger Movement IN_PURCHASE
-            movement = InventoryMovement(
-                organization_id=self.organization_id,
-                branch_id=branch_id,
-                product_id=prod.id,
-                actor_id=user_id,
-                movement_type="IN_PURCHASE",
-                quantity=it.quantity,
-                previous_quantity=old_qty,
-                new_quantity=new_qty,
-                reference_id=None,
-                reason=f"Compra Factura #{data.invoice_number} de {supp.name}"
             )
-            self.db.add(movement)
 
-            items_processed.append({
-                "product_id": prod.id,
-                "product_name": prod.name,
-                "quantity": it.quantity,
-                "unit_cost": it.unit_cost,
-                "tax_rate": it.tax_rate,
-                "tax_amount": line_tax,
-                "line_total": line_tot
-            })
+            # Update product cost price if provided
+            prod.cost_price = item_in.unit_cost
 
-        total_amount = subtotal + total_tax
-        purchase_id = uuid.uuid4()
+            # Lock and increment stock
+            if not prod.is_service:
+                stk_stmt = (
+                    select(BranchProductStock)
+                    .where(
+                        BranchProductStock.branch_id == data.branch_id,
+                        BranchProductStock.product_id == prod.id
+                    )
+                    .with_for_update()
+                )
+                stk_res = await self.db.execute(stk_stmt)
+                stk_rec = stk_res.scalar_one_or_none()
 
+                prev_qty = stk_rec.quantity if stk_rec else Decimal("0.00")
+                new_qty = prev_qty + item_in.quantity
+
+                if stk_rec:
+                    stk_rec.quantity = new_qty
+                else:
+                    stk_rec = BranchProductStock(
+                        branch_id=data.branch_id,
+                        product_id=prod.id,
+                        quantity=new_qty
+                    )
+                    self.db.add(stk_rec)
+
+                stock_updates.append((prod.id, item_in.quantity, prev_qty, new_qty))
+
+        # 4. Create Purchase
+        purchase = Purchase(
+            organization_id=self.organization_id,
+            branch_id=data.branch_id,
+            supplier_id=data.supplier_id,
+            user_id=user_id,
+            purchase_number=purchase_number,
+            invoice_number=data.invoice_number.strip() if data.invoice_number else None,
+            currency=data.currency,
+            subtotal_amount=total_subtotal,
+            tax_amount=total_tax,
+            total_amount=total_final,
+            status="COMPLETED",
+            payment_method=data.payment_method,
+            notes=data.notes,
+            items=purchase_items
+        )
+        self.db.add(purchase)
+        await self.db.flush()
+
+        # 5. Record Inventory Movements
+        for prod_id, qty, prev_qty, new_qty in stock_updates:
+            inv_mov = InventoryMovement(
+                organization_id=self.organization_id,
+                branch_id=data.branch_id,
+                product_id=prod_id,
+                actor_id=user_id,
+                movement_type="PURCHASE",
+                quantity=qty,
+                previous_quantity=prev_qty,
+                new_quantity=new_qty,
+                reference_id=purchase.id,
+                reason=f"Ingreso por Compra #{purchase_number}"
+            )
+            self.db.add(inv_mov)
+
+        # 6. Audit Trail
         await AuditService.log_action(
             db=self.db,
-            action="PURCHASE_REGISTERED",
+            action="PURCHASE_COMPLETED",
             resource="Purchase",
             actor_id=user_id,
             organization_id=self.organization_id,
-            resource_id=str(purchase_id),
+            resource_id=str(purchase.id),
             payload_after={
-                "invoice_number": data.invoice_number,
-                "supplier": supp.name,
-                "total": str(total_amount),
-                "items_count": len(items_processed)
+                "purchase_number": purchase.purchase_number,
+                "total_amount": str(purchase.total_amount),
+                "supplier_name": supplier.name,
+                "items_count": len(purchase_items)
             }
         )
 
         await self.db.commit()
 
-        return {
-            "id": purchase_id,
-            "organization_id": self.organization_id,
-            "branch_id": branch_id,
-            "supplier_id": supp.id,
-            "supplier_name": supp.name,
-            "invoice_number": data.invoice_number,
-            "payment_type": data.payment_type,
-            "status": "RECEIVED",
-            "subtotal_amount": subtotal,
-            "tax_amount": total_tax,
-            "total_amount": total_amount,
-            "created_at": datetime.now(timezone.utc),
-            "items": items_processed
-        }
+        # Reload with eager loaded items
+        re_stmt = (
+            select(Purchase)
+            .options(selectinload(Purchase.items), selectinload(Purchase.supplier))
+            .where(Purchase.id == purchase.id)
+        )
+        re_res = await self.db.execute(re_stmt)
+        return re_res.scalar_one()

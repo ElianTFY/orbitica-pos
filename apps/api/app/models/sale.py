@@ -50,8 +50,8 @@ class Sale(Base, UUIDMixin):
         index=True
     )
 
-    items: Mapped[list["SaleItem"]] = relationship("SaleItem", cascade="all, delete-orphan")
-    payments: Mapped[list["SalePayment"]] = relationship("SalePayment", cascade="all, delete-orphan")
+    items: Mapped[list["SaleItem"]] = relationship("SaleItem", cascade="all, delete-orphan", back_populates="sale")
+    payments: Mapped[list["SalePayment"]] = relationship("SalePayment", cascade="all, delete-orphan", back_populates="sale")
 
     __table_args__ = (
         UniqueConstraint("organization_id", "branch_id", "sale_number", name="uq_org_branch_sale_number"),
@@ -73,6 +73,12 @@ class SaleItem(Base, UUIDMixin):
     )
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     product_sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    
+    # Costa Rica Fiscal Snapshot (Immutable per Sale)
+    cabys_code: Mapped[str] = mapped_column(String(13), default="5211010000100", nullable=False)
+    unit_of_measure: Mapped[str] = mapped_column(String(10), default="Unid", nullable=False)
+    tax_rate_code: Mapped[str] = mapped_column(String(2), default="08", nullable=False)  # 08=13% General DGT
+    
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
@@ -81,6 +87,8 @@ class SaleItem(Base, UUIDMixin):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("13.00"), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"), nullable=False)
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+    sale: Mapped["Sale"] = relationship("Sale", back_populates="items")
 
 class SalePayment(Base, UUIDMixin):
     __tablename__ = "sale_payments"
@@ -100,3 +108,5 @@ class SalePayment(Base, UUIDMixin):
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+
+    sale: Mapped["Sale"] = relationship("Sale", back_populates="payments")

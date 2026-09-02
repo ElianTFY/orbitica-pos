@@ -1,3 +1,4 @@
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Response, Request, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
@@ -16,6 +17,13 @@ from app.services.auth_service import AuthService
 from app.security.deps import get_current_user_context, CurrentUserContext
 from app.security.rbac import get_role_permissions
 from app.core.config import settings
+
+class MFAEnrollResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+
+class MFAActivateRequest(BaseModel):
+    totp_code: str = Field(min_length=6, max_length=8)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -127,6 +135,34 @@ async def get_me(
             accessible_branches=context.accessible_branch_ids,
             permissions=perms
         )
+    )
+
+@router.post("/mfa/enroll", response_model=StandardResponse[MFAEnrollResponse])
+async def enroll_mfa(
+    context: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    res = await service.enroll_totp(context.user.id)
+    return StandardResponse(
+        data=MFAEnrollResponse(
+            secret=res["secret"],
+            provisioning_uri=res["provisioning_uri"]
+        ),
+        message="Secreto TOTP generado. Escanee el código y active con su primer código de 6 dígitos."
+    )
+
+@router.post("/mfa/activate", response_model=StandardResponse[dict])
+async def activate_mfa(
+    payload: MFAActivateRequest,
+    context: CurrentUserContext = Depends(get_current_user_context),
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    await service.activate_totp(context.user.id, payload.totp_code)
+    return StandardResponse(
+        data={"activated": True},
+        message="Autenticación multifactor TOTP activada exitosamente."
     )
 
 @router.post("/recovery", response_model=StandardResponse[dict])

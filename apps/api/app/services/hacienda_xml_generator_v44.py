@@ -306,3 +306,54 @@ class HaciendaXMLGeneratorV44:
             cls.validate_xml_schema(xml_str, doc_type)
 
         return xml_str
+
+def generate_hacienda_xml_v44(
+    sale: Sale,
+    org: Organization,
+    branch: Optional[Branch] = None,
+    customer: Optional[Customer] = None,
+    doc_type: str = "04",
+    numeric_key: Optional[str] = None,
+    consecutive_number: Optional[str] = None,
+    reference_info: Optional[Dict[str, Any]] = None,
+    validate_xsd: bool = True
+) -> str:
+    import re
+    from app.services.consecutive_service import ConsecutiveService
+
+    branch_code = branch.code if branch else "001"
+    if not consecutive_number:
+        seq_match = re.search(r"\d+", sale.sale_number or "1")
+        seq_num = int(seq_match.group()) if seq_match else 1
+        consecutive_number = ConsecutiveService.build_consecutivo_20(
+            branch_code=branch_code,
+            terminal_number="00001",
+            doc_type=doc_type,
+            consecutive_int=seq_num
+        )
+
+    if not numeric_key:
+        numeric_key, _ = ConsecutiveService.build_clave_50(
+            emitter_tax_id=org.identification_number,
+            consecutivo_20=consecutive_number,
+            doc_date=sale.created_at or datetime.now(timezone.utc),
+            situation="1"
+        )
+
+    actual_branch = branch or Branch(
+        code="001",
+        name="Casa Matriz",
+        organization_id=org.id
+    )
+
+    return HaciendaXMLGeneratorV44.generate_xml(
+        doc_type=doc_type,
+        numeric_key=numeric_key,
+        consecutive_number=consecutive_number,
+        sale=sale,
+        org=org,
+        branch=actual_branch,
+        customer=customer,
+        reference_info=reference_info,
+        validate_xsd=validate_xsd
+    )

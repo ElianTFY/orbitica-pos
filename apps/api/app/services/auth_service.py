@@ -16,7 +16,7 @@ from app.security.tokens import (
     verify_step_up_token,
 )
 from app.core.constants import UserRole, ASSIGNABLE_ROLES
-from app.core.exceptions import UnauthorizedException, AccountLockedException, ForbiddenException
+from app.core.exceptions import UnauthorizedException, AccountLockedException, ForbiddenException, BadRequestException
 from app.core.config import settings
 from app.services.audit_service import AuditService
 
@@ -63,7 +63,6 @@ class AuthService:
         # Check TOTP MFA requirement (Mandatory for Superadmin or if enabled)
         if user.role == UserRole.SUPERADMIN or user.totp_enabled:
             if not user.totp_secret:
-                # If superadmin without secret yet, initialize secret
                 user.totp_secret = pyotp.random_base32()
                 user.totp_enabled = True
                 await self.db.commit()
@@ -95,6 +94,7 @@ class AuthService:
 
         session = UserSession(
             user_id=user.id,
+            family_id=uuid.uuid4(),
             refresh_token_hash=refresh_hash,
             user_agent=user_agent,
             ip_address=ip_address,
@@ -124,15 +124,25 @@ class AuthService:
         token_hash = hash_token(raw_refresh_token)
         now = datetime.now(timezone.utc)
 
-        stmt = select(UserSession).where(
-            UserSession.refresh_token_hash == token_hash,
-            UserSession.revoked_at.is_(None)
-        )
-        result = await self.db.execute(stmt)
-        session = result.scalar_one_or_none()
+        # Check if token exists but was already revoked (Reuse Detection Attack)
+        revoked_stmt = select(UserSession).where(UserSession.refresh_token_hash == token_hash)
+        revoked_res = await self.db.execute(revoked_stmt)
+        existing_session = revoked_res.scalar_one_or_none()
 
-        if not session:
+        if existing_session and existing_session.revoked_at is not None:
+            # Token reuse detected! Revoke whole family immediately
+            await self.db.execute(
+                update(UserSession)
+                .where(UserSession.family_id == existing_session.family_id)
+                .values(revoked_at=now)
+            )
+            await self.db.commit()
+            raise UnauthorizedException("Detección de reutilización de refresh token. Todas las sesiones de la familia han sido revocadas por seguridad.")
+
+        if not existing_session:
             raise UnauthorizedException("Sesión inválida o expirada")
+
+        session = existing_session
 
         session_exp = session.expires_at
         if session_exp.tzinfo is None:
@@ -160,6 +170,8 @@ class AuthService:
         new_raw_refresh = generate_refresh_token()
         new_session = UserSession(
             user_id=user.id,
+            family_id=session.family_id,
+            parent_token_hash=token_hash,
             refresh_token_hash=hash_token(new_raw_refresh),
             user_agent=user_agent,
             ip_address=ip_address,
@@ -179,12 +191,48 @@ class AuthService:
             session.revoked_at = datetime.now(timezone.utc)
             await self.db.commit()
 
+    async def enroll_totp(self, user_id: uuid.UUID) -> Dict[str, str]:
+        stmt = select(User).where(User.id == user_id, User.is_active == True)
+        res = await self.db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user:
+            raise UnauthorizedException("Usuario no encontrado")
+
+        secret = pyotp.random_base32()
+        user.totp_secret = secret
+        user.totp_enabled = False  # Must be confirmed with activate_totp
+        await self.db.commit()
+
+        totp = pyotp.TOTP(secret)
+        provisioning_uri = totp.provisioning_uri(
+            name=user.email,
+            issuer_name="Orbitica POS"
+        )
+        return {
+            "secret": secret,
+            "provisioning_uri": provisioning_uri
+        }
+
+    async def activate_totp(self, user_id: uuid.UUID, totp_code: str) -> bool:
+        stmt = select(User).where(User.id == user_id, User.is_active == True)
+        res = await self.db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user or not user.totp_secret:
+            raise BadRequestException("No hay enrolamiento de TOTP pendiente")
+
+        totp = pyotp.TOTP(user.totp_secret)
+        if not totp.verify(totp_code.strip(), valid_window=1):
+            raise UnauthorizedException("Código TOTP inválido")
+
+        user.totp_enabled = True
+        await self.db.commit()
+        return True
+
     async def request_password_recovery(self, email: str) -> str:
         stmt = select(User).where(User.email == email.strip().lower(), User.is_active == True)
         res = await self.db.execute(stmt)
         user = res.scalar_one_or_none()
         if not user:
-            # Constant-time response to prevent user enumeration
             return "ok"
 
         raw_token = generate_recovery_token()
@@ -292,10 +340,6 @@ class AuthService:
         )
 
     def validate_role_assignment(self, actor_role: UserRole, target_role: UserRole) -> None:
-        """
-        Validates if the actor is permitted to assign the target role.
-        Enforces strict platform vs tenant role separation.
-        """
         allowed_roles = ASSIGNABLE_ROLES.get(actor_role, set())
         if target_role not in allowed_roles:
             raise ForbiddenException(

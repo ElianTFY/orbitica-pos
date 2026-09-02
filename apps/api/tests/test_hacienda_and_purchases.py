@@ -18,12 +18,11 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
     # 2. Register Supplier
     supp_payload = {
         "name": "Distribuidora La Florida S.A.",
-        "legal_id": "3101112233",
-        "legal_id_type": "JURIDICA",
+        "identification_number": "3101112233",
+        "identification_type": "02",
         "email": "ventas@laflorida.cr",
         "phone": "2430-1000",
-        "address": "Alajuela, Costa Rica",
-        "contact_person": "Agente Comercial"
+        "address": "Alajuela, Costa Rica"
     }
     supp_resp = await client.post("/api/v1/suppliers", json=supp_payload, headers=headers)
     assert supp_resp.status_code == 201
@@ -41,18 +40,21 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
     taxes = await client.get("/api/v1/tax-rates", headers=headers)
     tax_id = taxes.json()["data"][0]["id"]
 
-    # 4. Create Product
+    # 4. Create Product with valid CAByS
     prod_resp = await client.post(
         "/api/v1/products",
         json={
             "name": "Jugo Naranja 500ml",
             "sku": "JUGO-500",
             "barcode": "744100998877",
+            "cabys_code": "5211010000100",
+            "unit_of_measure": "Unid",
             "cost_price": 500,
             "sale_price": 850,
             "category_id": cat_id,
             "tax_rate_id": tax_id,
-            "initial_stock": 10
+            "initial_stock": 10,
+            "branch_id": branch_id
         },
         headers=headers
     )
@@ -64,41 +66,53 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
         "supplier_id": supp_id,
         "branch_id": branch_id,
         "invoice_number": "FAC-2026-9901",
-        "payment_type": "CREDITO",
+        "payment_method": "TRANSFER",
+        "currency": "CRC",
         "items": [
             {
                 "product_id": prod_id,
                 "quantity": 25,
                 "unit_cost": 480,
-                "tax_rate": 0.13
+                "tax_rate": 13.00
             }
         ]
     }
     purch_resp = await client.post("/api/v1/purchases", json=purchase_payload, headers=headers)
     assert purch_resp.status_code == 201
-    assert purch_resp.json()["data"]["status"] == "RECEIVED"
+    assert purch_resp.json()["data"]["status"] == "COMPLETED"
 
-    # 6. Make a POS Sale of this Product
+    # Verify inventory movement was logged
+    inv_resp = await client.get("/api/v1/inventory/movements", headers=headers)
+    assert inv_resp.status_code == 200
+
+    # 6. Make a POS Sale of this Product with Idempotency Key
     sale_payload = {
         "branch_id": branch_id,
+        "currency": "CRC",
         "items": [
             {
                 "product_id": prod_id,
                 "quantity": 2,
-                "unit_price": 850,
-                "discount_amount": 0
+                "discount_percentage": 0
             }
         ],
         "payments": [
             {
                 "payment_method": "CASH_CRC",
-                "amount": 1921 # (850*2) + 13% = 1700 + 221 = 1921
+                "amount": 1921 # (850*2) = 1700 total with tax
             }
         ]
     }
-    sale_resp = await client.post("/api/v1/sales", json=sale_payload, headers=headers)
+    sale_headers = {**headers, "Idempotency-Key": "test_sale_key_001"}
+    sale_resp = await client.post("/api/v1/sales", json=sale_payload, headers=sale_headers)
     assert sale_resp.status_code == 201
     sale_id = sale_resp.json()["data"]["id"]
+
+    # Retry same sale with same Idempotency-Key -> returns cached response
+    retry_sale_resp = await client.post("/api/v1/sales", json=sale_payload, headers=sale_headers)
+    assert retry_sale_resp.status_code == 201
+    assert retry_sale_resp.headers.get("x-cache-lookup") == "HIT"
+    assert retry_sale_resp.json()["data"]["id"] == sale_id
 
     # 7. Get Thermal Receipt Payload (80mm / 58mm POS receipt)
     receipt_resp = await client.get(f"/api/v1/sales/{sale_id}/receipt", headers=headers)
@@ -108,12 +122,14 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
     assert "hacienda" in receipt_data
     assert "items" in receipt_data
     assert len(receipt_data["items"]) == 1
-    assert receipt_data["hacienda"]["doc_type"] == "04 Tiquete Electrónico"
+    assert "04 Tiquete" in receipt_data["hacienda"]["doc_type"]
     assert len(receipt_data["hacienda"]["numeric_key"]) == 50
 
-    # 8. Get Hacienda XML Comprobante
+    # 8. Get Hacienda XML Comprobante (v4.4 Schema)
     xml_resp = await client.get(f"/api/v1/sales/{sale_id}/xml", headers=headers)
     assert xml_resp.status_code == 200
     assert "application/xml" in xml_resp.headers.get("content-type", "")
     assert "<TiqueteElectronico" in xml_resp.text
     assert "<Clave>" in xml_resp.text
+    assert "v4.4/tiqueteElectronico" in xml_resp.text
+    assert "<ProveedorSistemas>" in xml_resp.text

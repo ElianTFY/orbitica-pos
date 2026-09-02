@@ -72,3 +72,39 @@ class CashRegisterSession(Base, UUIDMixin):
     cash_difference: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="OPEN", nullable=False)
+
+class CashMovement(Base, UUIDMixin):
+    __tablename__ = "cash_movements"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    branch_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("branches.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    cash_session_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("cash_register_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    movement_type: Mapped[str] = mapped_column(String(20), nullable=False)  # INFLOW, OUTFLOW
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )

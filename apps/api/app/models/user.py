@@ -51,6 +51,8 @@ class UserSession(Base, UUIDMixin):
         nullable=False,
         index=True
     )
+    family_id: Mapped[uuid.UUID] = mapped_column(GUID(), default=uuid.uuid4, nullable=False, index=True)
+    parent_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     refresh_token_hash: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
