@@ -132,8 +132,8 @@ async def test_xml_generation_with_xsd_validation_and_cabys_enforcement(
         validate_xsd=True
     )
     assert "<TiqueteElectronico" in xml_str
-    assert "<CodigoCabys>6339900000000</CodigoCabys>" in xml_str
-    assert "<CodigoTarifa>08</CodigoTarifa>" in xml_str
+    assert "<CodigoCABYS>6339900000000</CodigoCABYS>" in xml_str
+    assert "<CodigoTarifaIVA>08</CodigoTarifaIVA>" in xml_str
 
     # 2. Reject dummy CAByS 0000000000000
     item.cabys_code = "0000000000000"
