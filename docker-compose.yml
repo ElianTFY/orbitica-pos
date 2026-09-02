@@ -1,48 +1,104 @@
-﻿version: "3.8"
+version: "3.8"
 
 services:
   postgres:
     image: postgres:16-alpine
     container_name: orbitica_postgres
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: orbitica
-      POSTGRES_PASSWORD: OrbiticaSecurePass2026!
-      POSTGRES_DB: orbitica_pos
+      POSTGRES_USER: ${POSTGRES_USER:-orbitica}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:-orbitica_pos}
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orbitica} -d ${POSTGRES_DB:-orbitica_pos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: orbitica_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: orbitica_api
-    restart: always
+    restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      ENVIRONMENT: production
-      DATABASE_URL: postgresql+asyncpg://orbitica:OrbiticaSecurePass2026!@postgres:5432/orbitica_pos
-      JWT_SECRET: super_secure_production_secret_key_orbitica_pos_2026
-      CORS_ORIGINS: '["http://localhost:3000", "https://app.orbiticapos.com"]'
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: ${DATABASE_URL:?required}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:?required}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?required}
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY:?required}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?required}
+      SOFTWARE_PROVIDER_TAX_ID: ${SOFTWARE_PROVIDER_TAX_ID:?required}
+      SOFTWARE_PROVIDER_TAX_ID_TYPE: ${SOFTWARE_PROVIDER_TAX_ID_TYPE:?required}
+      SOFTWARE_PROVIDER_NAME: ${SOFTWARE_PROVIDER_NAME:?required}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      HACIENDA_LIVE_EMISSION_ENABLED: ${HACIENDA_LIVE_EMISSION_ENABLED:-false}
+      HACIENDA_SANDBOX_VALIDATED: ${HACIENDA_SANDBOX_VALIDATED:-false}
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  hacienda-worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: orbitica_hacienda_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DATABASE_URL: ${DATABASE_URL:?required}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:?required}
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY:?required}
+      SOFTWARE_PROVIDER_TAX_ID: ${SOFTWARE_PROVIDER_TAX_ID:?required}
+      SOFTWARE_PROVIDER_TAX_ID_TYPE: ${SOFTWARE_PROVIDER_TAX_ID_TYPE:?required}
+      SOFTWARE_PROVIDER_NAME: ${SOFTWARE_PROVIDER_NAME:?required}
+    command: python -m app.workers.hacienda_outbox_worker
 
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
     container_name: orbitica_web
-    restart: always
+    restart: unless-stopped
     depends_on:
       - api
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      FASTAPI_BACKEND_URL: ${FASTAPI_BACKEND_URL:-http://api:8000}
     ports:
       - "3000:3000"
 
 volumes:
-  pgdata:
+  postgres_data:

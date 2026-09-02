@@ -188,3 +188,27 @@ class HaciendaOutboxWorker:
 
     def stop(self):
         self._running = False
+
+if __name__ == "__main__":
+    import signal
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+    logger.info("Iniciando Hacienda Outbox Worker de Orbítica POS...")
+    worker = HaciendaOutboxWorker()
+
+    def _handle_signal(sig, frame):
+        logger.info(f"Señal {sig} recibida. Deteniendo worker de forma segura...")
+        worker.stop()
+
+    try:
+        signal.signal(signal.SIGINT, _handle_signal)
+        signal.signal(signal.SIGTERM, _handle_signal)
+    except Exception:
+        pass
+
+    try:
+        asyncio.run(worker.run_loop())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Worker detenido.")

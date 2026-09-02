@@ -59,6 +59,7 @@ class Settings(BaseSettings):
         default="sqlite:///./orbitica_pos.db",
         alias="SYNC_DATABASE_URL"
     )
+    REDIS_URL: Optional[str] = Field(default=None, alias="REDIS_URL")
     
     # Regional Costa Rica Defaults
     DEFAULT_CURRENCY: str = "CRC"
