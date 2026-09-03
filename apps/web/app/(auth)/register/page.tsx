@@ -10,15 +10,11 @@ import {
   User,
   Phone,
   ArrowRight,
-  CheckCircle2,
-  Sparkles,
   ShieldCheck,
   AlertCircle,
-  KeyRound,
   RefreshCw,
   Eye,
   EyeOff,
-  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,11 +27,9 @@ export default function RegisterPage() {
   const router = useRouter();
   const { login } = useAuth();
 
-  // Registration step (1 = Form, 2 = Email Verification Code)
-  const [step, setStep] = useState<1 | 2>(1);
-
   // Form Fields
   const [fullName, setFullName] = useState("");
+  const [tradeName, setTradeName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -43,13 +37,6 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [enable2FA, setEnable2FA] = useState(false);
-
-  // Business Name
-  const [tradeName, setTradeName] = useState("");
-
-  // Verification Code
-  const [verificationCode, setVerificationCode] = useState("");
-  const [countdown, setCountdown] = useState(60);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +55,7 @@ export default function RegisterPage() {
   const strengthLabels = ["Muy Débil", "Débil", "Aceptable", "Fuerte", "Excelente"];
   const strengthColors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-blue-500", "bg-emerald-500"];
 
-  const handleStep1Submit = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -92,34 +79,10 @@ export default function RegisterPage() {
       return;
     }
 
-    // Move to email verification step
-    setStep(2);
-    setVerificationCode("849201"); // Auto-generate / mock simulation code for instant usability
-  };
-
-  const handleVerifyAndCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (verificationCode.trim().length !== 6) {
-      setError("Ingresa el código de 6 dígitos que enviamos a tu correo.");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      // 1. Verify code
-      await api.request("/auth/verify-email", {
-        method: "POST",
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          code: verificationCode.trim(),
-        }),
-      });
-
-      // 2. Provision organization & user
-      const cleanTrade = tradeName.trim() || `Empresa de ${fullName.split(" ")[0]}`;
+      const cleanTrade = tradeName.trim() || `Empresa de ${fullName.trim().split(" ")[0]}`;
       const res = await api.request<any>("/organizations/register", {
         method: "POST",
         body: JSON.stringify({
@@ -160,18 +123,10 @@ export default function RegisterPage() {
           <BrandLogo size="lg" />
         </div>
         <h1 className="mt-4 text-center text-2xl font-black text-text-main tracking-tight">
-          {step === 1 ? "Crea tu cuenta en Orbítica POS" : "Verifica tu correo electrónico"}
+          Crea tu cuenta en Orbítica POS
         </h1>
         <p className="mt-1 text-center text-xs text-text-muted">
-          {step === 1 ? (
-            <>
-              14 días de prueba gratis con plan <strong>Crece</strong> · Sin tarjeta de crédito
-            </>
-          ) : (
-            <>
-              Hemos enviado un código de 6 dígitos a <strong className="text-primary">{email}</strong>
-            </>
-          )}
+          14 días de prueba gratis con plan <strong>Crece</strong> · Sin tarjeta de crédito
         </p>
       </div>
 
@@ -184,261 +139,210 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {step === 1 && (
-            <form onSubmit={handleStep1Submit} className="space-y-4">
-              {/* Full Name */}
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Nombre Completo del Propietario *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <Input
-                    type="text"
-                    required
-                    placeholder="Ej. Carlos Mora Brenes"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="pl-9 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Trade Name */}
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Nombre de tu Negocio / Empresa *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                    <Building2 className="h-4 w-4" />
-                  </div>
-                  <Input
-                    type="text"
-                    required
-                    placeholder="Ej. Supermercado El Ahorro / Soda La Esquina"
-                    value={tradeName}
-                    onChange={(e) => setTradeName(e.target.value)}
-                    className="pl-9 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Email & Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Correo Electrónico *
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                      <Mail className="h-4 w-4" />
-                    </div>
-                    <Input
-                      type="email"
-                      required
-                      placeholder="admin@negocio.cr"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Teléfono Móvil (CR) *
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                      <Phone className="h-4 w-4" />
-                    </div>
-                    <Input
-                      type="tel"
-                      required
-                      placeholder="+506 8888-0000"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="pl-9 text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Password */}
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Contraseña Segura *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                    <Lock className="h-4 w-4" />
-                  </div>
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    placeholder="Mínimo 8 caracteres"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9 pr-9 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-text-muted hover:text-text-main"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-
-                {/* Password Strength Indicator */}
-                {password.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex gap-1 h-1.5 w-full bg-surface-secondary rounded-full overflow-hidden">
-                      {[1, 2, 3, 4].map((bar) => (
-                        <div
-                          key={bar}
-                          className={`h-full flex-1 transition-all duration-300 ${
-                            passwordStrength >= bar ? strengthColors[passwordStrength] : "bg-border"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-[10px] font-bold text-text-muted">
-                      Seguridad: {strengthLabels[passwordStrength]}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Confirm Password */}
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Confirmar Contraseña *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
-                    <KeyRound className="h-4 w-4" />
-                  </div>
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    placeholder="Repite tu contraseña"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-9 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* 2FA Option */}
-              <div className="p-3 bg-surface-secondary border border-border rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-text-main block">Autenticación en Dos Pasos (2FA)</span>
-                  <span className="text-[10px] text-text-muted block">Mayor protección contra accesos no autorizados</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={enable2FA}
-                  onChange={(e) => setEnable2FA(e.target.checked)}
-                  className="w-4 h-4 text-primary rounded cursor-pointer"
-                />
-              </div>
-
-              {/* Terms & Privacy */}
-              <div className="flex items-start gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="terms"
-                  required
-                  checked={acceptTerms}
-                  onChange={(e) => setAcceptTerms(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 text-primary rounded cursor-pointer"
-                />
-                <label htmlFor="terms" className="text-[11px] text-text-muted leading-tight cursor-pointer">
-                  Acepto los{" "}
-                  <a href="#" className="text-primary font-bold hover:underline">
-                    Términos de Servicio
-                  </a>{" "}
-                  y la{" "}
-                  <a href="#" className="text-primary font-bold hover:underline">
-                    Política de Privacidad
-                  </a>{" "}
-                  de Orbítica POS Costa Rica.
-                </label>
-              </div>
-
-              {/* Submit */}
-              <Button type="submit" variant="primary" className="w-full font-bold py-2.5 text-xs gap-2">
-                Continuar a Verificación
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </form>
-          )}
-
-          {step === 2 && (
-            <form onSubmit={handleVerifyAndCreate} className="space-y-4">
-              <div className="text-center p-4 bg-primary/10 border border-primary/20 rounded-2xl space-y-1">
-                <ShieldCheck className="w-8 h-8 text-primary mx-auto" />
-                <h2 className="text-xs font-black text-text-main uppercase">Código de Verificación</h2>
-                <p className="text-[11px] text-text-muted">
-                  Ingresa el código PIN de 6 dígitos enviado a tu correo.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1 text-center">
-                  Código de 6 Dígitos *
-                </label>
+          <form onSubmit={handleRegister} className="space-y-4">
+            {/* Full Name */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Nombre y Apellidos del Propietario *
+              </label>
+              <div className="relative">
                 <Input
                   type="text"
-                  maxLength={6}
                   required
-                  placeholder="000000"
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ""))}
-                  className="text-center text-2xl font-black font-mono tracking-widest py-3"
+                  placeholder="Ej. Juan Pérez Soto"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="pl-9 text-xs"
                 />
+                <User className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
+            </div>
 
-              <div className="flex items-center justify-between text-xs text-text-muted">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Expira en 15 minutos
-                </span>
+            {/* Trade Name */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Nombre Comercial de la Empresa / Tienda
+              </label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="Ej. Supermercado El Ahorro"
+                  value={tradeName}
+                  onChange={(e) => setTradeName(e.target.value)}
+                  className="pl-9 text-xs"
+                />
+                <Building2 className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Correo Electrónico Comercial *
+              </label>
+              <div className="relative">
+                <Input
+                  type="email"
+                  required
+                  placeholder="juan@elahorro.cr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-9 text-xs"
+                />
+                <Mail className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Teléfono / WhatsApp *
+              </label>
+              <div className="relative">
+                <Input
+                  type="tel"
+                  required
+                  placeholder="+506 8888-8888"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="pl-9 text-xs"
+                />
+                <Phone className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Password */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Contraseña Maestra (mínimo 8 caracteres) *
+              </label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-9 pr-9 text-xs"
+                />
+                <Lock className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <button
                   type="button"
-                  onClick={() => setVerificationCode("849201")}
-                  className="text-primary font-bold hover:underline flex items-center gap-1 text-[11px]"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-main"
+                  tabIndex={-1}
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  Reenviar código
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="flex-1 text-xs font-bold"
-                  onClick={() => setStep(1)}
-                  disabled={isLoading}
-                >
-                  Modificar Datos
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="flex-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-500"
-                  disabled={isLoading}
-                >
-                  Verificar y Crear POS
-                </Button>
+              {/* Password strength indicator */}
+              {password && (
+                <div className="mt-2 space-y-1">
+                  <div className="flex gap-1 h-1">
+                    {[1, 2, 3, 4].map((level) => (
+                      <div
+                        key={level}
+                        className={`flex-1 rounded-full transition-all ${
+                          passwordStrength >= level
+                            ? strengthColors[passwordStrength]
+                            : "bg-border"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-text-muted">
+                    Seguridad:{" "}
+                    <span className="font-bold">
+                      {strengthLabels[passwordStrength]}
+                    </span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Confirm Password */}
+            <div>
+              <label className="block text-xs font-bold text-text-secondary mb-1">
+                Confirmar Contraseña *
+              </label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pl-9 text-xs"
+                />
+                <Lock className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
-            </form>
-          )}
+            </div>
+
+            {/* 2FA Option */}
+            <div className="p-3 bg-surface-secondary/50 border border-border rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-primary" />
+                <div>
+                  <div className="text-xs font-bold text-text-main leading-none">
+                    Doble Factor (2FA / MFA)
+                  </div>
+                  <div className="text-[10px] text-text-muted mt-0.5">
+                    Mayor seguridad para transacciones y cortes de caja
+                  </div>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={enable2FA}
+                onChange={(e) => setEnable2FA(e.target.checked)}
+                className="w-4 h-4 text-primary rounded cursor-pointer"
+              />
+            </div>
+
+            {/* Terms & Privacy */}
+            <div className="flex items-start gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="terms"
+                required
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                className="w-4 h-4 mt-0.5 text-primary rounded cursor-pointer"
+              />
+              <label htmlFor="terms" className="text-[11px] text-text-muted leading-tight cursor-pointer">
+                Acepto los{" "}
+                <Link href="/terms" target="_blank" className="text-primary font-bold hover:underline">
+                  Términos de Servicio
+                </Link>{" "}
+                y la{" "}
+                <Link href="/privacy" target="_blank" className="text-primary font-bold hover:underline">
+                  Política de Privacidad
+                </Link>{" "}
+                de Orbítica POS Costa Rica.
+              </label>
+            </div>
+
+            {/* Submit */}
+            <Button
+              type="submit"
+              variant="primary"
+              className="w-full font-bold py-2.5 text-xs gap-2"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Creando tu Cuenta...
+                </>
+              ) : (
+                <>
+                  Crear Cuenta Comercial
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </Button>
+          </form>
 
           <div className="mt-6 pt-4 border-t border-border text-center">
             <p className="text-xs text-text-muted">

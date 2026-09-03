@@ -39,6 +39,10 @@ class PasswordResetRequest(BaseModel):
 class EmailVerificationRequest(BaseModel):
     code: str = Field(min_length=6, max_length=6)
 
+class PublicEmailVerificationRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
 class StepUpAuthRequest(BaseModel):
     password: str = Field(min_length=6)
     action: str = Field(min_length=3)

@@ -300,7 +300,8 @@ class AuthService:
         await self.db.commit()
 
         email_adapter = get_email_adapter()
-        recovery_url = f"http://localhost:3000/reset-password?token={raw_token}"
+        base_frontend = settings.FRONTEND_URL.rstrip('/')
+        recovery_url = f"{base_frontend}/reset-password?token={raw_token}"
         await email_adapter.send_email(
             to_email=user.email,
             subject="Recuperación de Contraseña — Orbítica POS",
@@ -375,6 +376,14 @@ class AuthService:
         user.email_verification_expires_at = None
         await self.db.commit()
         return True
+
+    async def verify_email_by_email(self, email: str, code: str) -> bool:
+        stmt = select(User).where(func.lower(User.email) == email.strip().lower(), User.is_active == True)
+        res = await self.db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user:
+            raise UnauthorizedException("Usuario o código de verificación inválido")
+        return await self.verify_email_code(user.id, code)
 
     async def issue_step_up_token(
         self,

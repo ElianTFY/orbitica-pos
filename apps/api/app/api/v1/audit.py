@@ -12,6 +12,7 @@ from app.security.deps import CurrentUserContext, require_permissions
 router = APIRouter(prefix="/audit", tags=["Audit Logs"])
 
 @router.get("", response_model=StandardResponse[List[AuditLogResponse]])
+@router.get("/logs", response_model=StandardResponse[List[AuditLogResponse]])
 async def list_audit_logs(
     resource: Optional[str] = Query(None),
     action: Optional[str] = Query(None),

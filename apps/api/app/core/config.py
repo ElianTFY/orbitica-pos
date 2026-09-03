@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     LOCKOUT_MINUTES: int = 15
     STEP_UP_TOKEN_EXPIRE_MINUTES: int = 5
     
+    # Frontend Base URL (used for password reset, email links, etc.)
+    FRONTEND_URL: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+
     # CORS Configuration (Accepts BACKEND_CORS_ORIGINS or CORS_ORIGINS)
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

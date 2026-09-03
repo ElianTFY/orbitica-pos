@@ -9,6 +9,7 @@ from app.schemas.auth import (
     PasswordRecoveryRequest,
     PasswordResetRequest,
     EmailVerificationRequest,
+    PublicEmailVerificationRequest,
     StepUpAuthRequest,
     StepUpAuthResponse
 )
@@ -212,6 +213,18 @@ async def confirm_email_verification(
     return StandardResponse(
         data={"verified": True},
         message="Correo electrónico verificado exitosamente."
+    )
+
+@router.post("/verify-email", response_model=StandardResponse[dict])
+async def verify_email_public(
+    payload: PublicEmailVerificationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    await service.verify_email_by_email(payload.email, payload.code)
+    return StandardResponse(
+        data={"verified": True},
+        message="Correo electrónico verificado exitosamente. Ya puedes iniciar sesión."
     )
 
 @router.post("/step-up", response_model=StandardResponse[StepUpAuthResponse])

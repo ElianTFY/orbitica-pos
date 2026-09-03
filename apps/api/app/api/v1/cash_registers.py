@@ -51,6 +51,7 @@ async def open_session(
     )
 
 @router.get("/sessions/active", response_model=StandardResponse[Optional[CashSessionResponse]])
+@router.get("/current", response_model=StandardResponse[Optional[CashSessionResponse]])
 async def get_active_session(
     context: CurrentUserContext = Depends(require_permissions("cash:open")),
     db: AsyncSession = Depends(get_db)

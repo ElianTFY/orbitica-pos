@@ -267,12 +267,12 @@ export default function OnboardingWizardPage() {
 
   // Step 8: Execute Test Sale
   const handleExecuteTestSale = () => {
-    const demoProd = products.length > 0
+    const activeProd = products.length > 0
       ? products[0]
       : {
-          id: "prod_test",
-          organization_id: "demo",
-          name: "Producto de Prueba Orbítica",
+          id: `prod_sample_${Date.now()}`,
+          organization_id: user?.organization_id || "",
+          name: "Producto Inicial de Muestra",
           sale_price: 1500,
           cost_price: 1000,
           min_stock_alert: 5,
@@ -281,7 +281,7 @@ export default function OnboardingWizardPage() {
         };
 
     const res = recordSale({
-      items: [{ product: demoProd, quantity: 1 }],
+      items: [{ product: activeProd, quantity: 1 }],
       paymentMethod: "CASH_CRC",
       cashReceived: 2000,
       customerName: "CLIENTE DE PRUEBA (ONBOARDING)",

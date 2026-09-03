@@ -1,4 +1,4 @@
-﻿# Node
+# Node
 node_modules/
 .next/
 out/
@@ -40,3 +40,8 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Artifacts & Bundles
+*.bundle
+*.patch
+storage/

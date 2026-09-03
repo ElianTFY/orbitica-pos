@@ -316,7 +316,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         api.request<any[]>("/invoices"),
         api.request<any[]>("/sales"),
         api.request<any[]>("/purchases"),
-        api.request<any>("/cash-register/current"),
+        api.request<any>("/cash-registers/sessions/active"),
         api.request<any[]>("/support/tickets"),
       ]);
 
