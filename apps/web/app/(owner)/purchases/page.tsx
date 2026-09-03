@@ -18,11 +18,14 @@ import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
 import { PurchaseRecord } from "@/types";
+import { api } from "@/lib/api-client";
 
 export default function PurchasesPage() {
-  const { purchases, suppliers, products, recordPurchase, settings } = useStore();
+  const { purchases, suppliers, products, branches, recordPurchase, settings } = useStore();
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [supplierName, setSupplierName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -33,6 +36,7 @@ export default function PurchasesPage() {
   const [unitCost, setUnitCost] = useState("");
 
   const openCreateModal = () => {
+    setSaveError(null);
     setSupplierName(suppliers[0]?.name || "");
     setInvoiceNumber(`FAC-${Date.now().toString().slice(-6)}`);
     setPaymentType("CONTADO");
@@ -49,26 +53,59 @@ export default function PurchasesPage() {
     setIsModalOpen(true);
   };
 
-  const handleCreatePurchase = (e: React.FormEvent) => {
+  const handleCreatePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
+    setSaveError(null);
+
     const prod = products.find((p) => p.id === selectedProductId);
     const pName = prod ? prod.name : productName || "Producto Comprado";
+    const foundSupplier = suppliers.find((s) => s.name.toLowerCase() === supplierName.trim().toLowerCase());
 
-    recordPurchase({
-      supplierName: supplierName.trim() || "Proveedor General",
-      invoiceNumber: invoiceNumber.trim() || `FAC-${Date.now()}`,
-      paymentType,
-      items: [
-        {
-          productId: prod?.id,
-          productName: pName,
-          quantity: parseFloat(quantity) || 1,
-          unitCost: parseFloat(unitCost) || 0,
-        },
-      ],
-    });
+    const invNum = invoiceNumber.trim() || `FAC-${Date.now().toString().slice(-6)}`;
+    const qty = parseFloat(quantity) || 1;
+    const cost = parseFloat(unitCost) || (prod ? prod.cost_price : 0);
 
-    setIsModalOpen(false);
+    try {
+      if (prod && branches.length > 0) {
+        await api.request("/purchases", {
+          method: "POST",
+          body: {
+            branch_id: branches[0].id,
+            supplier_id: foundSupplier?.id || undefined,
+            invoice_number: invNum,
+            payment_type: paymentType,
+            items: [
+              {
+                product_id: prod.id,
+                quantity: qty,
+                unit_cost: cost,
+              },
+            ],
+          },
+        });
+      }
+
+      recordPurchase({
+        supplierName: supplierName.trim() || "Proveedor General",
+        invoiceNumber: invNum,
+        paymentType,
+        items: [
+          {
+            productId: prod?.id,
+            productName: pName,
+            quantity: qty,
+            unitCost: cost,
+          },
+        ],
+      });
+
+      setIsModalOpen(false);
+    } catch (err: any) {
+      setSaveError(err?.message || "Error al registrar la compra en el servidor");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const filteredPurchases = purchases.filter(
@@ -270,12 +307,16 @@ export default function PurchasesPage() {
             </select>
           </div>
 
+          {saveError && (
+            <p className="text-xs text-semantic-danger-text font-bold">{saveError}</p>
+          )}
+
           <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Procesar Entrada de Mercadería
+            <Button type="submit" variant="primary" disabled={isSaving}>
+              {isSaving ? "Guardando..." : "Procesar Entrada de Mercadería"}
             </Button>
           </div>
         </form>

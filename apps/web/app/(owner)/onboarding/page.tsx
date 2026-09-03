@@ -10,29 +10,24 @@ import {
   CreditCard,
   Package,
   Users,
-  UserPlus,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
   ArrowLeft,
   Sparkles,
   ShieldCheck,
-  Printer,
-  UploadCloud,
   Check,
   Play,
-  Trash2,
-  ExternalLink,
-  HelpCircle,
+  Copy,
+  Plus,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/features/store/store-context";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api-client";
-import { formatCRC } from "@/lib/utils";
 
 const CR_PROVINCES = [
   "San José",
@@ -64,26 +59,22 @@ export default function OnboardingWizardPage() {
     addProduct,
     branches,
     addBranch,
-    employees,
-    addEmployee,
     customers,
     addCustomer,
     onboarding,
     updateOnboarding,
-    recordSale,
-    purgeTestSales,
-    sales,
+    retryFetch,
   } = useStore();
 
   const [currentStep, setCurrentStep] = useState<number>(onboarding?.current_step || 1);
 
-  // Step 1: Business Details
+  // Step 1: Business Details (STARTS COMPLETELY CLEAN)
   const [tradeName, setTradeName] = useState(settings.trade_name || "");
   const [legalName, setLegalName] = useState(settings.legal_name || "");
   const [idType, setIdType] = useState<"FISICA" | "JURIDICA" | "DIMEX">(settings.identification_type || "JURIDICA");
   const [idNumber, setIdNumber] = useState(settings.identification_number || "");
-  const [phone, setPhone] = useState(settings.phone || "+506 ");
-  const [email, setEmail] = useState(settings.email || user?.email || "");
+  const [phone, setPhone] = useState(settings.phone || "");
+  const [email, setEmail] = useState(settings.email || "");
   const [province, setProvince] = useState("San José");
   const [canton, setCanton] = useState("Central");
   const [district, setDistrict] = useState("Catedral");
@@ -91,7 +82,7 @@ export default function OnboardingWizardPage() {
   const [businessType, setBusinessType] = useState("retail");
   const [defaultCurrency, setDefaultCurrency] = useState<"CRC" | "USD">("CRC");
 
-  // Step 2: Fiscal Setup
+  // Step 2: Fiscal Setup (Hacienda DGT v4.4)
   const [taxRegime, setTaxRegime] = useState<"TRADICIONAL" | "SIMPLIFICADO">("TRADICIONAL");
   const [atvEnv, setAtvEnv] = useState<"STAGING" | "PRODUCTION">("STAGING");
   const [atvUsername, setAtvUsername] = useState("");
@@ -102,9 +93,8 @@ export default function OnboardingWizardPage() {
   const [atvMessage, setAtvMessage] = useState("");
 
   // Step 3: Branch & Printer
-  const [branchName, setBranchName] = useState("Sucursal Central (001)");
+  const [branchName, setBranchName] = useState(settings.branch_name || "Sucursal Principal");
   const [terminalName, setTerminalName] = useState("Caja POS 01");
-  const [warehouseName, setWarehouseName] = useState("Bodega Principal");
   const [printerPaperSize, setPrinterPaperSize] = useState<"80mm" | "58mm">("80mm");
 
   // Step 4: Payments
@@ -114,41 +104,51 @@ export default function OnboardingWizardPage() {
     card: true,
     sinpe: true,
     transfer: true,
-    credit: true,
   });
-  const [sinpeNumber, setSinpeNumber] = useState(settings.phone || "8888-0000");
+  const [sinpeNumber, setSinpeNumber] = useState("");
 
-  // Step 5: Initial Product
+  // Step 5: Initial Product (STARTS COMPLETELY BLANK)
   const [newProdName, setNewProdName] = useState("");
-  const [newProdPrice, setNewProdPrice] = useState("2500");
-  const [newProdCost, setNewProdCost] = useState("1800");
-  const [newProdStock, setNewProdStock] = useState("25");
+  const [newProdPrice, setNewProdPrice] = useState("");
+  const [newProdCost, setNewProdCost] = useState("");
+  const [newProdStock, setNewProdStock] = useState("");
   const [newProdTax, setNewProdTax] = useState("13");
   const [prodSaved, setProdSaved] = useState(false);
 
-  // Step 6: Initial Customer
+  // Step 6: Initial Customer (STARTS COMPLETELY BLANK)
   const [newCustName, setNewCustName] = useState("");
   const [newCustId, setNewCustId] = useState("");
   const [newCustEmail, setNewCustEmail] = useState("");
+  const [newCustPhone, setNewCustPhone] = useState("");
   const [custSaved, setCustSaved] = useState(false);
 
-  // Step 7: Employee Invite
-  const [empName, setEmpName] = useState("");
-  const [empEmail, setEmpEmail] = useState("");
-  const [empRole, setEmpRole] = useState<"CASHIER" | "MANAGER">("CASHIER");
-  const [empSaved, setEmpSaved] = useState(false);
-
-  // Step 8: Test Sale State
-  const [testSaleDone, setTestSaleDone] = useState(false);
-  const [testSaleResult, setTestSaleResult] = useState<any>(null);
-
-  // Save current step on change
+  // Sync settings when available
   useEffect(() => {
-    updateOnboarding({ current_step: currentStep });
-  }, [currentStep]);
+    if (settings.trade_name && !tradeName) setTradeName(settings.trade_name);
+    if (settings.legal_name && !legalName) setLegalName(settings.legal_name);
+    if (settings.identification_number && !idNumber) setIdNumber(settings.identification_number);
+    if (settings.phone && !phone) setPhone(settings.phone);
+    if (settings.email && !email) setEmail(settings.email);
+    if (settings.address && !address) setAddress(settings.address);
+  }, [settings]);
 
-  // Test ATV Connection
+  // Optional: Explicitly copy user account data to business fields
+  const handleUseAccountData = () => {
+    if (user) {
+      if (!tradeName && user.organization_name) setTradeName(user.organization_name);
+      if (!phone && user.phone) setPhone(user.phone);
+      if (!email && user.email) setEmail(user.email);
+    }
+  };
+
+  // Test ATV Connection - NEVER simulates success with fake fallbacks
   const handleTestAtv = async () => {
+    if (!atvUsername.trim() || !atvPin.trim()) {
+      setAtvStatus("FAILED");
+      setAtvMessage("Ingresa el usuario ATV y el PIN de 4 dígitos para probar la conexión con Hacienda.");
+      return;
+    }
+
     setIsTestingAtv(true);
     setAtvMessage("");
     try {
@@ -156,33 +156,33 @@ export default function OnboardingWizardPage() {
         method: "POST",
         body: JSON.stringify({
           environment: atvEnv,
-          username: atvUsername || "cpf-01-0000-0000@stag.comprobanteselectronicos.go.cr",
-          pin: atvPin || "1234",
+          username: atvUsername.trim(),
+          pin: atvPin.trim(),
         }),
       });
       setAtvStatus("SUCCESS");
-      setAtvMessage(res.data?.message || "Conexión con Ministerio de Hacienda CR exitosa.");
+      setAtvMessage(res.data?.message || "Conexión validada exitosamente con el Ministerio de Hacienda.");
     } catch (err: any) {
       setAtvStatus("FAILED");
-      setAtvMessage(err?.message || "No se pudo conectar con los servidores de Hacienda.");
+      setAtvMessage(err?.message || "No se pudo conectar con los servidores de Hacienda. Verifica tus credenciales.");
     } finally {
       setIsTestingAtv(false);
     }
   };
 
-  // Step 1 Save
+  // Step 1 Save -> Persists to PostgreSQL
   const handleSaveStep1 = () => {
     updateSettings({
-      trade_name: tradeName || "Mi Negocio",
-      legal_name: legalName || tradeName || "Mi Negocio S.A.",
+      trade_name: tradeName.trim(),
+      legal_name: legalName.trim(),
       identification_type: idType,
-      identification_number: idNumber,
-      phone,
-      email,
-      address: `${address}, ${district}, ${canton}, ${province}`,
+      identification_number: idNumber.trim(),
+      phone: phone.trim(),
+      email: email.trim().toLowerCase(),
+      address: address.trim() ? `${address.trim()}, ${district}, ${canton}, ${province}` : "",
       default_currency: defaultCurrency,
     });
-    updateOnboarding({ steps: { ...onboarding.steps, business: true } });
+    updateOnboarding({ current_step: 2, steps: { ...onboarding.steps, business: true } });
     setCurrentStep(2);
   };
 
@@ -191,35 +191,35 @@ export default function OnboardingWizardPage() {
     updateSettings({
       tax_regime: taxRegime,
       atv_environment: atvEnv,
-      atv_username: atvUsername,
+      atv_username: atvUsername.trim(),
     });
-    updateOnboarding({ steps: { ...onboarding.steps, fiscal: true } });
+    updateOnboarding({ current_step: 3, steps: { ...onboarding.steps, fiscal: true } });
     setCurrentStep(3);
   };
 
   // Step 3 Save
   const handleSaveStep3 = () => {
-    if (branches.length === 0) {
+    if (branches.length === 0 && branchName.trim()) {
       addBranch({
         code: "001",
-        name: branchName,
-        address,
-        phone,
+        name: branchName.trim(),
+        address: address.trim(),
+        phone: phone.trim(),
         is_main: true,
         is_active: true,
       });
     }
-    updateOnboarding({ steps: { ...onboarding.steps, branches: true } });
+    updateOnboarding({ current_step: 4, steps: { ...onboarding.steps, branches: true } });
     setCurrentStep(4);
   };
 
   // Step 4 Save
   const handleSaveStep4 = () => {
-    updateOnboarding({ steps: { ...onboarding.steps, payments: true } });
+    updateOnboarding({ current_step: 5, steps: { ...onboarding.steps, payments: true } });
     setCurrentStep(5);
   };
 
-  // Step 5: Add Product
+  // Step 5: Add Product (Only if entered, no fake defaults)
   const handleAddQuickProduct = () => {
     if (!newProdName.trim()) return;
     addProduct({
@@ -236,66 +236,35 @@ export default function OnboardingWizardPage() {
     updateOnboarding({ steps: { ...onboarding.steps, products: true } });
   };
 
-  // Step 6: Add Customer
+  // Step 6: Add Customer (Only if entered, no fake defaults)
   const handleAddQuickCustomer = () => {
     if (!newCustName.trim()) return;
     addCustomer({
       name: newCustName.trim(),
       identification_type: "FISICA",
-      identification_number: newCustId.trim() || "000000000",
-      email: newCustEmail.trim() || "cliente@ejemplo.cr",
-      phone: "+506 8888-0000",
+      identification_number: newCustId.trim() || "",
+      email: newCustEmail.trim() || undefined,
+      phone: newCustPhone.trim() || undefined,
       is_active: true,
     });
     setCustSaved(true);
     updateOnboarding({ steps: { ...onboarding.steps, contacts: true } });
   };
 
-  // Step 7: Invite Employee
-  const handleAddQuickEmployee = () => {
-    if (!empName.trim()) return;
-    addEmployee({
-      full_name: empName.trim(),
-      email: empEmail.trim() || "empleado@negocio.cr",
-      role: empRole,
-      branch_name: branchName,
-      is_active: true,
+  // Step 7: Final Activation -> marks onboarding complete in PostgreSQL
+  const handleFinishOnboarding = async () => {
+    updateOnboarding({
+      current_step: 7,
+      is_completed: true,
+      steps: {
+        ...onboarding.steps,
+        business: true,
+        fiscal: true,
+        branches: true,
+        payments: true,
+      },
     });
-    setEmpSaved(true);
-    updateOnboarding({ steps: { ...onboarding.steps, users: true } });
-  };
-
-  // Step 8: Execute Test Sale
-  const handleExecuteTestSale = () => {
-    const activeProd = products.length > 0
-      ? products[0]
-      : {
-          id: `prod_sample_${Date.now()}`,
-          organization_id: user?.organization_id || "",
-          name: "Producto Inicial de Muestra",
-          sale_price: 1500,
-          cost_price: 1000,
-          min_stock_alert: 5,
-          tax_rate: 13,
-          stock: 50,
-        };
-
-    const res = recordSale({
-      items: [{ product: activeProd, quantity: 1 }],
-      paymentMethod: "CASH_CRC",
-      cashReceived: 2000,
-      customerName: "CLIENTE DE PRUEBA (ONBOARDING)",
-      docType: "04",
-      isTest: true,
-    });
-
-    setTestSaleResult(res);
-    setTestSaleDone(true);
-    updateOnboarding({ steps: { ...onboarding.steps, test_sale: true } });
-  };
-
-  const handleFinishOnboarding = () => {
-    updateOnboarding({ is_completed: true });
+    await retryFetch();
     router.push("/dashboard");
   };
 
@@ -305,9 +274,8 @@ export default function OnboardingWizardPage() {
     { num: 3, title: "Sucursal", icon: Store },
     { num: 4, title: "Pagos", icon: CreditCard },
     { num: 5, title: "Productos", icon: Package },
-    { num: 6, title: "Contactos", icon: Users },
-    { num: 7, title: "Equipo", icon: UserPlus },
-    { num: 8, title: "Prueba POS", icon: Sparkles },
+    { num: 6, title: "Clientes", icon: Users },
+    { num: 7, title: "Activación", icon: Sparkles },
   ];
 
   return (
@@ -317,25 +285,25 @@ export default function OnboardingWizardPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-surface border border-border p-5 rounded-3xl shadow-sm">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Badge variant="blue">ONBOARDING GUIADO AUTÓNOMO</Badge>
-              <span className="text-xs text-text-muted">14 días de prueba Crece</span>
+              <Badge variant="blue">CONFIGURACIÓN COMERCIAL</Badge>
+              <span className="text-xs text-text-muted">Período de prueba activo</span>
             </div>
             <h1 className="text-xl font-black tracking-tight text-text-main">
-              Configuración Inicial de Orbítica POS
+              Asistente de Configuración de Negocio
             </h1>
             <p className="text-xs text-text-muted">
-              Prepara tu negocio para emitir facturación electrónica y vender en menos de 15 minutos.
+              Prepara tu comercio para facturar electrónicamente según la normativa de la DGT de Costa Rica.
             </p>
           </div>
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="text-xs text-text-muted hover:text-text-main">
-              Continuar luego →
+              Omitir por ahora →
             </Button>
           </Link>
         </div>
 
-        {/* 8-Step Navigation Tracker */}
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+        {/* 7-Step Navigation Tracker */}
+        <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
           {stepsList.map((st) => {
             const Icon = st.icon;
             const isDone = st.num < currentStep;
@@ -368,14 +336,26 @@ export default function OnboardingWizardPage() {
           {/* STEP 1: BUSINESS DETAILS */}
           {currentStep === 1 && (
             <div className="space-y-5">
-              <div className="border-b border-border pb-3">
-                <h2 className="text-base font-black text-text-main flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-primary" />
-                  Paso 1: Datos de tu Empresa o Comercio
-                </h2>
-                <p className="text-xs text-text-muted">
-                  Información legal y comercial que aparecerá en tus comprobantes fiscales y tiquetes POS.
-                </p>
+              <div className="flex items-start justify-between border-b border-border pb-3">
+                <div>
+                  <h2 className="text-base font-black text-text-main flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-primary" />
+                    Paso 1: Datos de tu Empresa o Comercio
+                  </h2>
+                  <p className="text-xs text-text-muted">
+                    Información legal y fiscal que identificará tu comercio ante Hacienda y en tus comprobantes.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleUseAccountData}
+                  className="text-xs shrink-0 gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  Usar datos de mi cuenta
+                </Button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -386,26 +366,26 @@ export default function OnboardingWizardPage() {
                   <Input
                     value={tradeName}
                     onChange={(e) => setTradeName(e.target.value)}
-                    placeholder="Ej. Soda La Parada / Super El Pueblo"
+                    placeholder="Ej. Minisuper El Sol, Boutique Florencia..."
                     className="text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Razón Social Legal *
+                    Razón Social Legal (según Registro Nacional)
                   </label>
                   <Input
                     value={legalName}
                     onChange={(e) => setLegalName(e.target.value)}
-                    placeholder="Ej. Inversiones Gastronómicas S.A."
+                    placeholder="Ej. Inversiones del Valle S.A."
                     className="text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Tipo de Identificación *
+                    Tipo de Identificación
                   </label>
                   <select
                     value={idType}
@@ -420,43 +400,44 @@ export default function OnboardingWizardPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Número de Cédula *
+                    Número de Cédula o Identificación
                   </label>
                   <Input
                     value={idNumber}
                     onChange={(e) => setIdNumber(e.target.value.replace(/\D/g, ""))}
-                    placeholder="3101000000"
+                    placeholder="Ingresa los dígitos sin guiones"
                     className="text-xs font-mono"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Teléfono del Negocio *
+                    Teléfono del Negocio
                   </label>
                   <Input
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+506 2222-0000"
+                    placeholder="Ej. +506 2200-0000"
                     className="text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Correo para Facturación *
+                    Correo Electrónico de Facturación
                   </label>
                   <Input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="facturacion@negocio.cr"
+                    placeholder="facturacion@tunegocio.cr"
                     className="text-xs"
+                    type="email"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Provincia *
+                    Provincia
                   </label>
                   <select
                     value={province}
@@ -473,94 +454,85 @@ export default function OnboardingWizardPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Dirección Exacta *
+                    Moneda Principal
                   </label>
-                  <Input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="100m norte del parque central, frente a la farmacia"
-                    className="text-xs"
-                  />
+                  <select
+                    value={defaultCurrency}
+                    onChange={(e) => setDefaultCurrency(e.target.value as any)}
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main font-bold"
+                  >
+                    <option value="CRC">Colones Costarricenses (₡ CRC)</option>
+                    <option value="USD">Dólares Americanos ($ USD)</option>
+                  </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-text-secondary mb-2">
-                  Tipo / Giro de Negocio
+                <label className="block text-xs font-bold text-text-secondary mb-1">
+                  Dirección Exacta del Local
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {BUSINESS_TYPES.map((bt) => (
-                    <button
-                      key={bt.id}
-                      type="button"
-                      onClick={() => setBusinessType(bt.id)}
-                      className={`p-3 rounded-2xl border text-left transition-all ${
-                        businessType === bt.id
-                          ? "border-primary bg-primary/10 text-primary font-bold shadow-sm"
-                          : "border-border bg-surface hover:bg-surface-secondary text-text-secondary"
-                      }`}
-                    >
-                      <span className="text-xl block mb-1">{bt.icon}</span>
-                      <span className="text-xs block font-bold leading-tight">{bt.name}</span>
-                    </button>
-                  ))}
-                </div>
+                <Input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Ej. De la Iglesia 100m norte, frente al parque"
+                  className="text-xs"
+                />
               </div>
 
               <div className="flex justify-end pt-4 border-t border-border">
-                <Button variant="primary" onClick={handleSaveStep1} className="gap-2 font-bold text-xs">
-                  Guardar y Continuar al Paso 2
+                <Button variant="primary" onClick={handleSaveStep1} className="gap-2 text-xs font-bold">
+                  Guardar y Continuar
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 2: FISCAL CR ATV */}
+          {/* STEP 2: FISCAL HACIENDA CR */}
           {currentStep === 2 && (
             <div className="space-y-5">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
                   <FileText className="w-5 h-5 text-primary" />
-                  Paso 2: Facturación Electrónica Hacienda v4.4 (ATV)
+                  Paso 2: Facturación Electrónica Hacienda (v4.4)
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Configura tus credenciales del Ministerio de Hacienda de Costa Rica para emisión fiscal automática.
+                  Configura tus credenciales ATV del Ministerio de Hacienda de Costa Rica o pospón la configuración.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Régimen Tributario *
+                    Régimen Tributario
                   </label>
                   <select
                     value={taxRegime}
                     onChange={(e) => setTaxRegime(e.target.value as any)}
                     className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
                   >
-                    <option value="TRADICIONAL">Régimen Tradicional (IVA 13% General)</option>
+                    <option value="TRADICIONAL">Régimen Tradicional (General)</option>
                     <option value="SIMPLIFICADO">Régimen de Tributación Simplificada</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Ambiente de Conexión *
+                    Ambiente ATV
                   </label>
                   <select
                     value={atvEnv}
                     onChange={(e) => setAtvEnv(e.target.value as any)}
-                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
+                    className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main font-bold"
                   >
-                    <option value="STAGING">Staging (Pruebas / Sandbox de Hacienda)</option>
-                    <option value="PRODUCTION">Producción Real (Hacienda Costa Rica)</option>
+                    <option value="STAGING">Ambiente de Pruebas (Staging Hacienda)</option>
+                    <option value="PRODUCTION">Ambiente Real (Producción DGT)</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Usuario ATV (Comprobantes Electrónicos)
+                    Usuario ATV (Generado en portal ATV)
                   </label>
                   <Input
                     value={atvUsername}
@@ -572,267 +544,228 @@ export default function OnboardingWizardPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    PIN Criptográfico (4 dígitos)
+                    PIN de 4 dígitos de la Llave Criptográfica
                   </label>
                   <Input
-                    type="password"
-                    maxLength={4}
                     value={atvPin}
-                    onChange={(e) => setAtvPin(e.target.value)}
+                    onChange={(e) => setAtvPin(e.target.value.replace(/\D/g, ""))}
                     placeholder="••••"
+                    maxLength={4}
+                    type="password"
                     className="text-xs font-mono"
                   />
                 </div>
               </div>
 
+              {/* Real Connection Validation Box */}
               <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-emerald-500" />
-                    <div>
-                      <span className="text-xs font-bold text-text-main block">Prueba de Conexión en Vivo</span>
-                      <span className="text-[10px] text-text-muted block">
-                        Verifica que tus credenciales alcancen los servidores de Hacienda CR
-                      </span>
-                    </div>
-                  </div>
+                  <span className="text-xs font-bold text-text-main">Prueba de Conexión en Línea con Hacienda</span>
                   <Button
+                    type="button"
                     variant="secondary"
                     size="sm"
                     onClick={handleTestAtv}
-                    disabled={isTestingAtv}
-                    className="text-xs font-bold"
+                    disabled={isTestingAtv || !atvUsername.trim() || !atvPin.trim()}
+                    className="text-xs"
                   >
-                    Probar Conexión ATV
+                    {isTestingAtv ? "Verificando..." : "Probar Conexión con DGT"}
                   </Button>
                 </div>
-
-                {atvStatus === "SUCCESS" && (
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                    <span>✓ {atvMessage}</span>
-                  </div>
+                {atvMessage && (
+                  <p className={`text-xs ${atvStatus === "SUCCESS" ? "text-emerald-500 font-bold" : "text-semantic-danger-text"}`}>
+                    {atvMessage}
+                  </p>
                 )}
-                {atvStatus === "FAILED" && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-500 font-medium flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{atvMessage}</span>
-                  </div>
-                )}
+                <p className="text-[11px] text-text-muted">
+                  Si aún no tienes tus credenciales de Hacienda, puedes continuar y cargarlas más adelante en el menú de Configuración.
+                </p>
               </div>
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(1)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
-                <Button variant="primary" onClick={handleSaveStep2} className="gap-2 font-bold text-xs">
-                  Guardar y Continuar al Paso 3
+                <Button variant="primary" onClick={handleSaveStep2} className="gap-2 text-xs font-bold">
+                  Guardar y Continuar
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 3: BRANCHES & PRINTER */}
+          {/* STEP 3: SUCURSAL Y CAJA */}
           {currentStep === 3 && (
             <div className="space-y-5">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
                   <Store className="w-5 h-5 text-primary" />
-                  Paso 3: Sucursal Principal y Configuración de Impresión
+                  Paso 3: Sucursal y Punto de Venta
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Estructura física de tu punto de venta y formato de tiquete térmico.
+                  Configura tu punto físico de venta y formato de impresión de tiquetes.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Nombre de la Sucursal Principal *
+                    Nombre de la Sucursal *
                   </label>
                   <Input
                     value={branchName}
                     onChange={(e) => setBranchName(e.target.value)}
-                    placeholder="Sucursal Central (001)"
+                    placeholder="Ej. Sucursal Central, Local Principal..."
                     className="text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Caja POS Inicial *
+                    Identificador de Caja POS
                   </label>
                   <Input
                     value={terminalName}
                     onChange={(e) => setTerminalName(e.target.value)}
-                    placeholder="Caja POS 01"
+                    placeholder="Ej. Caja 01"
                     className="text-xs"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Bodega Principal de Inventario *
-                  </label>
-                  <Input
-                    value={warehouseName}
-                    onChange={(e) => setWarehouseName(e.target.value)}
-                    placeholder="Bodega Central"
-                    className="text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-text-secondary mb-1">
-                    Formato de Impresora Térmica *
+                    Formato de Impresora Térmica
                   </label>
                   <select
                     value={printerPaperSize}
                     onChange={(e) => setPrinterPaperSize(e.target.value as any)}
                     className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
                   >
-                    <option value="80mm">80 mm (Estándar Punto de Venta Epson / Bixolon)</option>
-                    <option value="58mm">58 mm (Impresora Móvil / Tiquete Compacto)</option>
+                    <option value="80mm">Papel estándar 80mm (Recomendado)</option>
+                    <option value="58mm">Papel compacto 58mm (Portátil)</option>
                   </select>
-                </div>
-              </div>
-
-              <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center gap-3">
-                <Printer className="w-8 h-8 text-primary flex-shrink-0" />
-                <div className="text-xs">
-                  <span className="font-bold text-text-main block">Modo de Impresión Directa y PDF</span>
-                  <span className="text-text-muted">
-                    Orbítica POS soporta impresión automática con corte de papel y apertura de gaveta de dinero.
-                  </span>
                 </div>
               </div>
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(2)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
-                <Button variant="primary" onClick={handleSaveStep3} className="gap-2 font-bold text-xs">
-                  Guardar y Continuar al Paso 4
+                <Button variant="primary" onClick={handleSaveStep3} className="gap-2 text-xs font-bold">
+                  Guardar y Continuar
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 4: PAYMENTS */}
+          {/* STEP 4: MÉTODOS DE PAGO */}
           {currentStep === 4 && (
             <div className="space-y-5">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-primary" />
-                  Paso 4: Métodos de Pago Activos
+                  Paso 4: Métodos de Pago Aceptados
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Elige las formas de pago que aceptarás en tu caja y configura tu número SINPE Móvil.
+                  Elige los canales de cobro que estarán disponibles en la pantalla de cobro del POS.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-text-main block">💵 Efectivo en Colones (₡)</span>
-                    <span className="text-[10px] text-text-muted">Cálculo de vuelto automático</span>
-                  </div>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 p-3 bg-surface border border-border rounded-2xl cursor-pointer">
                   <input
                     type="checkbox"
                     checked={paymentsActive.cash_crc}
                     onChange={(e) => setPaymentsActive({ ...paymentsActive, cash_crc: e.target.checked })}
-                    className="w-4 h-4 text-primary rounded"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
-                </div>
-
-                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-bold text-text-main block">💳 Tarjetas de Crédito / Débito</span>
-                    <span className="text-[10px] text-text-muted">Datafono / Terminal POS</span>
+                    <span className="text-xs font-bold text-text-main block">Efectivo en Colones (₡ CRC)</span>
+                    <span className="text-[11px] text-text-muted">Cálculo de vuelto automático en el POS</span>
                   </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-surface border border-border rounded-2xl cursor-pointer">
                   <input
                     type="checkbox"
                     checked={paymentsActive.card}
                     onChange={(e) => setPaymentsActive({ ...paymentsActive, card: e.target.checked })}
-                    className="w-4 h-4 text-primary rounded"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
-                </div>
-
-                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-bold text-text-main block">📱 SINPE Móvil Costa Rica</span>
-                    <span className="text-[10px] text-text-muted">Verificación con comprobante / ref</span>
+                    <span className="text-xs font-bold text-text-main block">Tarjeta de Crédito / Débito (Datáfono)</span>
+                    <span className="text-[11px] text-text-muted">Registro de código de voucher o autorización</span>
                   </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-surface border border-border rounded-2xl cursor-pointer">
                   <input
                     type="checkbox"
                     checked={paymentsActive.sinpe}
                     onChange={(e) => setPaymentsActive({ ...paymentsActive, sinpe: e.target.checked })}
-                    className="w-4 h-4 text-primary rounded"
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   />
-                </div>
-
-                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-text-main block">🏛️ Transferencia Bancaria IBAN</span>
-                    <span className="text-[10px] text-text-muted">BAC, BNCR, BCR, etc.</span>
+                  <div className="flex-1">
+                    <span className="text-xs font-bold text-text-main block">SINPE Móvil</span>
+                    <span className="text-[11px] text-text-muted">Cobro directo con número telefónico y comprobante</span>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={paymentsActive.transfer}
-                    onChange={(e) => setPaymentsActive({ ...paymentsActive, transfer: e.target.checked })}
-                    className="w-4 h-4 text-primary rounded"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Número de Teléfono para SINPE Móvil Comercial
                 </label>
-                <Input
-                  value={sinpeNumber}
-                  onChange={(e) => setSinpeNumber(e.target.value)}
-                  placeholder="+506 8888-0000"
-                  className="text-xs font-mono"
-                />
+
+                {paymentsActive.sinpe && (
+                  <div className="pl-7">
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Número de Teléfono para SINPE Móvil
+                    </label>
+                    <Input
+                      value={sinpeNumber}
+                      onChange={(e) => setSinpeNumber(e.target.value)}
+                      placeholder="Ej. +506 8888-8888"
+                      className="text-xs max-w-sm"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(3)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
-                <Button variant="primary" onClick={handleSaveStep4} className="gap-2 font-bold text-xs">
-                  Guardar y Continuar al Paso 5
+                <Button variant="primary" onClick={handleSaveStep4} className="gap-2 text-xs font-bold">
+                  Guardar y Continuar
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 5: PRODUCTS */}
+          {/* STEP 5: PRIMER PRODUCTO (OPCIONAL) */}
           {currentStep === 5 && (
             <div className="space-y-5">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
                   <Package className="w-5 h-5 text-primary" />
-                  Paso 5: Catálogo Inicial de Productos
+                  Paso 5: Agrega tu Primer Producto (Opcional)
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Crea tu primer producto para el POS o utiliza el importador de Excel.
+                  Puedes registrar un producto ahora o importarlos por lote más adelante en el módulo de Inventario.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Manual Product Creation */}
-                <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-3">
-                  <span className="text-xs font-black text-text-main block">Opción A: Crear Producto Manual</span>
-                  <div>
-                    <label className="block text-[11px] font-bold text-text-muted mb-1">Nombre del Producto *</label>
+              {prodSaved ? (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <span>¡Producto guardado exitosamente en tu catálogo!</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Nombre del Producto
+                    </label>
                     <Input
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
@@ -841,310 +774,233 @@ export default function OnboardingWizardPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-text-muted mb-1">Precio Venta (₡) *</label>
-                      <Input
-                        type="number"
-                        value={newProdPrice}
-                        onChange={(e) => setNewProdPrice(e.target.value)}
-                        className="text-xs font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-text-muted mb-1">Stock Inicial *</label>
-                      <Input
-                        type="number"
-                        value={newProdStock}
-                        onChange={(e) => setNewProdStock(e.target.value)}
-                        className="text-xs font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleAddQuickProduct}
-                    className="w-full text-xs font-bold"
-                  >
-                    {prodSaved ? "✓ Producto Creado" : "+ Agregar al Catálogo"}
-                  </Button>
-                </div>
-
-                {/* Excel Migration Link */}
-                <div className="p-4 bg-primary/5 border-2 border-dashed border-primary/30 rounded-2xl flex flex-col justify-between space-y-3">
                   <div>
-                    <span className="text-xs font-black text-primary block">Opción B: Migrar desde Excel / CSV</span>
-                    <p className="text-[11px] text-text-muted mt-1">
-                      ¿Tienes una lista de cientos de productos? Utiliza nuestro Centro de Migración con auto-detección de columnas y rollback.
-                    </p>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Precio de Venta al Público (₡ CRC)
+                    </label>
+                    <Input
+                      value={newProdPrice}
+                      onChange={(e) => setNewProdPrice(e.target.value.replace(/\D/g, ""))}
+                      placeholder="0"
+                      className="text-xs font-mono"
+                    />
                   </div>
-                  <Link href="/migration">
-                    <Button variant="secondary" size="sm" className="w-full text-xs font-bold gap-1.5">
-                      <UploadCloud className="w-4 h-4 text-primary" />
-                      Ir al Centro de Migración
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Costo Unitario (₡ CRC)
+                    </label>
+                    <Input
+                      value={newProdCost}
+                      onChange={(e) => setNewProdCost(e.target.value.replace(/\D/g, ""))}
+                      placeholder="0"
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Stock Inicial
+                    </label>
+                    <Input
+                      value={newProdStock}
+                      onChange={(e) => setNewProdStock(e.target.value.replace(/\D/g, ""))}
+                      placeholder="0"
+                      className="text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Tarifa IVA
+                    </label>
+                    <select
+                      value={newProdTax}
+                      onChange={(e) => setNewProdTax(e.target.value)}
+                      className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
+                    >
+                      <option value="13">13% Tarifa General IVA</option>
+                      <option value="4">4% Servicios de Salud</option>
+                      <option value="2">2% Medicamentos y Educación</option>
+                      <option value="1">1% Canasta Básica</option>
+                      <option value="0">0% Exento</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleAddQuickProduct}
+                      disabled={!newProdName.trim() || !newProdPrice.trim()}
+                      className="gap-1.5 text-xs font-bold"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Guardar Producto en Catálogo
                     </Button>
-                  </Link>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(4)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
-                <Button variant="primary" onClick={() => setCurrentStep(6)} className="gap-2 font-bold text-xs">
-                  Continuar al Paso 6
+                <Button variant="primary" onClick={() => setCurrentStep(6)} className="gap-2 text-xs font-bold">
+                  {prodSaved || newProdName.trim() ? "Continuar" : "Omitir y Continuar"}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 6: CUSTOMERS */}
+          {/* STEP 6: PRIMER CLIENTE (OPCIONAL) */}
           {currentStep === 6 && (
             <div className="space-y-5">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
                   <Users className="w-5 h-5 text-primary" />
-                  Paso 6: Clientes y Proveedores
+                  Paso 6: Directorio de Clientes (Opcional)
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Registra clientes frecuentes para emisión rápida de Factura Electrónica (01).
+                  Puedes registrar un cliente frecuente para emitirle facturas electrónicas con crédito o descuento.
                 </p>
               </div>
 
-              <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-3 max-w-lg">
-                <span className="text-xs font-black text-text-main block">Registrar Cliente Inicial</span>
-                <div>
-                  <label className="block text-[11px] font-bold text-text-muted mb-1">Nombre o Razón Social</label>
-                  <Input
-                    value={newCustName}
-                    onChange={(e) => setNewCustName(e.target.value)}
-                    placeholder="Ej. Distribuidora Central CR"
-                    className="text-xs"
-                  />
+              {custSaved ? (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-3 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <span>¡Cliente registrado exitosamente!</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-text-muted mb-1">Cédula</label>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Nombre Completo o Razón Social
+                    </label>
+                    <Input
+                      value={newCustName}
+                      onChange={(e) => setNewCustName(e.target.value)}
+                      placeholder="Ej. Distribuidora del Este S.A."
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Cédula o Identificación
+                    </label>
                     <Input
                       value={newCustId}
-                      onChange={(e) => setNewCustId(e.target.value)}
-                      placeholder="3101000000"
+                      onChange={(e) => setNewCustId(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Sin guiones"
                       className="text-xs font-mono"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-[11px] font-bold text-text-muted mb-1">Correo Electrónico</label>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Correo Electrónico
+                    </label>
                     <Input
                       value={newCustEmail}
                       onChange={(e) => setNewCustEmail(e.target.value)}
                       placeholder="cliente@dominio.cr"
                       className="text-xs"
+                      type="email"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-text-secondary mb-1">
+                      Teléfono
+                    </label>
+                    <Input
+                      value={newCustPhone}
+                      onChange={(e) => setNewCustPhone(e.target.value)}
+                      placeholder="+506 8888-0000"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleAddQuickCustomer}
+                      disabled={!newCustName.trim()}
+                      className="gap-1.5 text-xs font-bold"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Registrar Cliente
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleAddQuickCustomer}
-                  className="w-full text-xs font-bold"
-                >
-                  {custSaved ? "✓ Cliente Guardado" : "+ Guardar Cliente"}
-                </Button>
-              </div>
+              )}
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(5)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
-                <Button variant="primary" onClick={() => setCurrentStep(7)} className="gap-2 font-bold text-xs">
-                  Continuar al Paso 7
+                <Button variant="primary" onClick={() => setCurrentStep(7)} className="gap-2 text-xs font-bold">
+                  {custSaved || newCustName.trim() ? "Continuar" : "Omitir y Continuar"}
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 7: USERS & PERMISSIONS */}
+          {/* STEP 7: ACTIVACIÓN COMERCIAL (FINAL) */}
           {currentStep === 7 && (
-            <div className="space-y-5">
+            <div className="space-y-6">
               <div className="border-b border-border pb-3">
                 <h2 className="text-base font-black text-text-main flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-primary" />
-                  Paso 7: Invitar Colaboradores y Permisos
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Paso 7: Resumen y Activación Comercial
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Agrega cajeros y administradores con accesos restringidos por sucursal.
+                  Revisa la configuración inicial de tu negocio antes de comenzar a operar en el Punto de Venta.
                 </p>
               </div>
 
-              <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-3 max-w-lg">
-                <span className="text-xs font-black text-text-main block">Invitar Colaborador</span>
-                <div>
-                  <label className="block text-[11px] font-bold text-text-muted mb-1">Nombre Completo</label>
-                  <Input
-                    value={empName}
-                    onChange={(e) => setEmpName(e.target.value)}
-                    placeholder="Ej. Laura Solano V."
-                    className="text-xs"
-                  />
+              {/* Verified Checklist */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>1. Identidad comercial registrada</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] font-bold text-text-muted mb-1">Correo de Invitación</label>
-                    <Input
-                      value={empEmail}
-                      onChange={(e) => setEmpEmail(e.target.value)}
-                      placeholder="laura@negocio.cr"
-                      className="text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-text-muted mb-1">Rol Operativo</label>
-                    <select
-                      value={empRole}
-                      onChange={(e) => setEmpRole(e.target.value as any)}
-                      className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
-                    >
-                      <option value="CASHIER">Cajero POS (Solo Ventas)</option>
-                      <option value="MANAGER">Encargado / Administrador</option>
-                    </select>
-                  </div>
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>2. Configuración fiscal Hacienda</span>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleAddQuickEmployee}
-                  className="w-full text-xs font-bold"
-                >
-                  {empSaved ? "✓ Colaborador Invitado" : "Enviar Invitación"}
-                </Button>
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>3. Sucursal y terminal de cobro listos</span>
+                </div>
+                <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>4. Métodos de pago y SINPE configurados</span>
+                </div>
+              </div>
+
+              {/* Ready to Sell Box */}
+              <div className="p-5 bg-surface-secondary border border-border rounded-3xl space-y-2">
+                <span className="text-xs font-black text-text-main block">
+                  Todo listo para comenzar a facturar en {tradeName || "tu negocio"}
+                </span>
+                <p className="text-xs text-text-muted">
+                  Al completar este asistente, todos los datos se guardarán de forma permanente en la base de datos central de Orbítica POS. Podrás modificar o ampliar cualquier dato desde el menú de Configuración.
+                </p>
               </div>
 
               <div className="flex justify-between pt-4 border-t border-border">
                 <Button variant="secondary" onClick={() => setCurrentStep(6)} className="gap-2 text-xs">
                   <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
-                </Button>
-                <Button variant="primary" onClick={() => setCurrentStep(8)} className="gap-2 font-bold text-xs">
-                  Continuar al Paso 8 (Prueba del Sistema)
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 8: SYSTEM TEST CHECKLIST & FIRST SALE */}
-          {currentStep === 8 && (
-            <div className="space-y-5">
-              <div className="border-b border-border pb-3">
-                <h2 className="text-base font-black text-text-main flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-emerald-500" />
-                  Paso 8: Lista de Verificación y Primera Venta de Prueba
-                </h2>
-                <p className="text-xs text-text-muted">
-                  Comprueba el funcionamiento de la caja y emite una venta de prueba que puedes eliminar sin afectar consecutivos oficiales.
-                </p>
-              </div>
-
-              {/* Checklist */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>1. Datos del negocio registrados</span>
-                </div>
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>2. Ambiente fiscal Hacienda configurado</span>
-                </div>
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>3. Sucursal y bodega activas</span>
-                </div>
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>4. Métodos de pago y SINPE configurados</span>
-                </div>
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>5. Catálogo inicial listo para vender</span>
-                </div>
-                <div className={`p-3 rounded-2xl flex items-center gap-2.5 text-xs font-bold border ${
-                  testSaleDone
-                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                    : "bg-surface-secondary border-border text-text-muted"
-                }`}>
-                  {testSaleDone ? <CheckCircle2 className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  <span>6. Venta de prueba simulada</span>
-                </div>
-              </div>
-
-              {/* Test Sale Execution Box */}
-              <div className="p-5 bg-surface-secondary border border-border rounded-3xl space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div>
-                    <span className="text-xs font-black text-text-main block">Simulación de Venta en Punto de Venta</span>
-                    <span className="text-[11px] text-text-muted block">
-                      Genera un tiquete de prueba con desglose de IVA y clave numérica de 50 dígitos.
-                    </span>
-                  </div>
-                  <Button
-                    variant="primary"
-                    onClick={handleExecuteTestSale}
-                    className="gap-2 text-xs font-bold bg-primary hover:bg-primary/90"
-                  >
-                    <Play className="w-4 h-4" />
-                    Ejecutar Venta de Prueba
-                  </Button>
-                </div>
-
-                {testSaleDone && testSaleResult && (
-                  <div className="p-4 bg-surface border border-emerald-500/40 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-emerald-500 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4" />
-                        ¡Venta de Prueba #{testSaleResult.sale.sale_number} Ejecutada con Éxito!
-                      </span>
-                      <Badge variant="warning">MODO PRUEBA</Badge>
-                    </div>
-                    <p className="text-[11px] text-text-muted font-mono">
-                      Clave Hacienda Simulada: {testSaleResult.sale.numeric_key}
-                    </p>
-                    <div className="flex items-center justify-between pt-2 border-t border-border text-xs">
-                      <span className="text-text-muted">Total Simulado:</span>
-                      <span className="font-black text-text-main font-mono">
-                        {formatCRC(testSaleResult.sale.total)}
-                      </span>
-                    </div>
-
-                    <div className="pt-2">
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => {
-                          purgeTestSales();
-                          setTestSaleDone(false);
-                          setTestSaleResult(null);
-                        }}
-                        className="text-xs font-bold gap-1.5"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Limpiar / Purgar Ventas de Prueba
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Finish Actions */}
-              <div className="flex justify-between pt-4 border-t border-border">
-                <Button variant="secondary" onClick={() => setCurrentStep(7)} className="gap-2 text-xs">
-                  <ArrowLeft className="w-4 h-4" />
-                  Paso Anterior
+                  Anterior
                 </Button>
                 <Button
                   variant="primary"
@@ -1152,7 +1008,7 @@ export default function OnboardingWizardPage() {
                   className="gap-2 font-bold text-xs bg-emerald-600 hover:bg-emerald-500 py-3 px-6 shadow-lg"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  ¡Completar Configuración y Empezar a Vender!
+                  ¡Completar y Entrar al Sistema!
                 </Button>
               </div>
             </div>

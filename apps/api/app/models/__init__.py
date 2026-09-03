@@ -1,6 +1,9 @@
-from app.models.organization import Organization
+from app.models.organization import Organization, OrganizationMembership
 from app.models.branch import Branch, UserBranchAccess
 from app.models.user import User, UserSession
+from app.models.subscription import Subscription
+from app.models.onboarding import OrganizationOnboarding
+from app.models.auth_challenge import EmailVerificationChallenge, TwoFactorChallenge
 from app.models.cash_register import CashRegister, CashRegisterSession, CashMovement
 from app.models.catalog import Category, TaxRate, Product, BranchProductStock
 from app.models.inventory import InventoryMovement
@@ -15,6 +18,7 @@ from app.models.outbox import HaciendaOutbox
 from app.models.idempotency import IdempotencyRecord
 from app.models.support import SupportTicket, SupportMessage, DelegatedAccessGrant
 from app.models.audit_log import AuditLog
+from app.models.quote import Quote, QuoteItem
 
 InventoryLevel = BranchProductStock
 
@@ -48,5 +52,12 @@ __all__ = [
     "SupportTicket",
     "SupportMessage",
     "DelegatedAccessGrant",
-    "AuditLog"
+    "AuditLog",
+    "OrganizationMembership",
+    "OrganizationOnboarding",
+    "Subscription",
+    "EmailVerificationChallenge",
+    "TwoFactorChallenge",
+    "Quote",
+    "QuoteItem"
 ]

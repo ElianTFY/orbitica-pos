@@ -157,7 +157,7 @@ export interface InvoiceRecord {
   created_at: string;
   customer_name: string;
   total: number;
-  status: "ACCEPTED" | "PENDING" | "REJECTED";
+  status: "ACCEPTED" | "PENDING" | "PENDING_RETRY" | "REJECTED" | "ERROR";
   hacienda_message?: string;
   xml_signed?: string;
   is_test?: boolean;
@@ -166,6 +166,7 @@ export interface InvoiceRecord {
 export interface CashSession {
   id: string;
   organization_id: string;
+  branch_id?: string;
   opened_at: string;
   closed_at?: string | null;
   initial_amount: number;

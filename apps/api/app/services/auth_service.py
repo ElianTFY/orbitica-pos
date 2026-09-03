@@ -1,10 +1,12 @@
 import uuid
+import secrets
 import pyotp
 from datetime import datetime, timedelta, timezone
 from typing import Tuple, Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.user import User, UserSession
+from app.models.auth_challenge import EmailVerificationChallenge, TwoFactorChallenge
 from app.security.password import verify_password, hash_password
 from app.security.tokens import (
     create_access_token,
@@ -12,11 +14,20 @@ from app.security.tokens import (
     generate_recovery_token,
     generate_numeric_code,
     hash_token,
+    verify_token_hash,
+    create_registration_token,
+    verify_registration_token,
     create_step_up_token,
     verify_step_up_token,
 )
 from app.core.constants import UserRole, ASSIGNABLE_ROLES
-from app.core.exceptions import UnauthorizedException, AccountLockedException, ForbiddenException, BadRequestException
+from app.core.exceptions import (
+    UnauthorizedException,
+    AccountLockedException,
+    ForbiddenException,
+    BadRequestException,
+    ConflictException
+)
 from app.core.config import settings
 from app.services.audit_service import AuditService
 from app.adapters.email_adapter import get_email_adapter
@@ -46,6 +57,379 @@ class AuthService:
             _IP_LOGIN_ATTEMPTS[ip_address] = []
         _IP_LOGIN_ATTEMPTS[ip_address].append(now)
 
+    async def register_start(self, email: str, ip_address: Optional[str] = None) -> dict:
+        normalized_email = email.strip().lower()
+        self._check_ip_rate_limit(ip_address)
+
+        # Check if normalized email is already registered in User table
+        stmt = select(User).where(User.normalized_email == normalized_email)
+        res = await self.db.execute(stmt)
+        if res.scalar_one_or_none():
+            raise ConflictException(
+                "EMAIL_ALREADY_REGISTERED: El correo electrónico ya está registrado. "
+                "Inicia sesión para agregar o gestionar tus negocios."
+            )
+
+        # Invalidate any previous unconsumed challenges for this email
+        prev_stmt = select(EmailVerificationChallenge).where(
+            EmailVerificationChallenge.email == normalized_email,
+            EmailVerificationChallenge.is_consumed == False
+        )
+        prev_res = await self.db.execute(prev_stmt)
+        for ch in prev_res.scalars():
+            ch.is_consumed = True
+
+        # Generate cryptographically secure random 6-digit code
+        code = f"{secrets.randbelow(900000) + 100000:06d}"
+        code_hash = hash_token(code)
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(minutes=10)
+
+        challenge = EmailVerificationChallenge(
+            email=normalized_email,
+            code_hash=code_hash,
+            expires_at=expires_at,
+            attempts=0,
+            is_consumed=False
+        )
+        self.db.add(challenge)
+
+        # Send email via configured provider
+        if settings.ENVIRONMENT == "production" and not getattr(settings, "SMTP_HOST", None):
+            raise BadRequestException(
+                "BLOCKED_EXTERNAL_CONFIGURATION_EMAIL_PROVIDER: "
+                "El envío de correos no está configurado en producción. "
+                "Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD"
+            )
+
+        email_adapter = get_email_adapter()
+        html_body = f"""
+        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #0f172a;">Verificación de Correo — Orbítica POS</h2>
+            <p>Usa el siguiente código de 6 dígitos para completar el registro de tu cuenta:</p>
+            <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #0284c7; border-radius: 6px;">
+                {code}
+            </div>
+            <p style="color: #64748b; font-size: 13px; margin-top: 20px;">Este código expirará en 10 minutos. Si no solicitaste este registro, ignora este mensaje.</p>
+        </div>
+        """
+        await email_adapter.send_email(
+            to_email=normalized_email,
+            subject="Código de Verificación — Orbítica POS",
+            html_content=html_body,
+            text_content=f"Tu código de verificación de Orbítica POS es: {code} (expira en 10 minutos)"
+        )
+
+        await self.db.commit()
+        return {"email": normalized_email, "expires_in": 600}
+
+    async def register_verify(self, email: str, code: str) -> dict:
+        normalized_email = email.strip().lower()
+        clean_code = code.strip()
+        if len(clean_code) != 6:
+            raise BadRequestException("El código debe tener exactamente 6 dígitos")
+
+        now = datetime.now(timezone.utc)
+        stmt = select(EmailVerificationChallenge).where(
+            EmailVerificationChallenge.email == normalized_email,
+            EmailVerificationChallenge.is_consumed == False
+        ).order_by(EmailVerificationChallenge.created_at.desc())
+        res = await self.db.execute(stmt)
+        challenge = res.scalar_one_or_none()
+
+        if not challenge:
+            raise BadRequestException("Código inválido o ya utilizado. Solicita un nuevo código.")
+
+        ch_exp = challenge.expires_at
+        if ch_exp.tzinfo is None:
+            ch_exp = ch_exp.replace(tzinfo=timezone.utc)
+        if ch_exp < now:
+            challenge.is_consumed = True
+            await self.db.commit()
+            raise BadRequestException("El código de verificación ha expirado. Solicita uno nuevo.")
+
+        if challenge.attempts >= 5:
+            challenge.is_consumed = True
+            await self.db.commit()
+            raise BadRequestException("Límite de intentos excedido. Solicita un nuevo código.")
+
+        challenge.attempts += 1
+
+        if not verify_token_hash(clean_code, challenge.code_hash):
+            await self.db.commit()
+            raise BadRequestException("Código de verificación incorrecto")
+
+        challenge.is_consumed = True
+        await self.db.commit()
+
+        reg_token = create_registration_token(normalized_email)
+        return {
+            "verified": True,
+            "email": normalized_email,
+            "registration_token": reg_token
+        }
+
+    async def authenticate_with_2fa_flow(
+        self,
+        email: str,
+        password: str,
+        totp_code: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> dict:
+        self._check_ip_rate_limit(ip_address)
+        normalized_email = email.strip().lower()
+
+        stmt = select(User).where(User.normalized_email == normalized_email)
+        result = await self.db.execute(stmt)
+        user = result.scalar_one_or_none()
+
+        now = datetime.now(timezone.utc)
+
+        if not user:
+            self._record_ip_failed_attempt(ip_address)
+            raise UnauthorizedException("Credenciales incorrectas")
+
+        if not user.is_active:
+            raise UnauthorizedException("Usuario deshabilitado")
+
+        if user.locked_until:
+            user_lock = user.locked_until
+            if user_lock.tzinfo is None:
+                user_lock = user_lock.replace(tzinfo=timezone.utc)
+            if user_lock > now:
+                raise AccountLockedException("Cuenta bloqueada temporalmente por múltiples intentos fallidos")
+
+        if not verify_password(password, user.password_hash):
+            self._record_ip_failed_attempt(ip_address)
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= settings.MAX_LOGIN_ATTEMPTS:
+                user.locked_until = now + timedelta(minutes=settings.LOCKOUT_MINUTES)
+                await self.db.commit()
+                raise AccountLockedException(f"Cuenta bloqueada por {settings.LOCKOUT_MINUTES} minutos debido a múltiples intentos fallidos")
+            await self.db.commit()
+            raise UnauthorizedException("Credenciales incorrectas")
+
+        # Superadmin strict TOTP check
+        if user.role == UserRole.SUPERADMIN or user.totp_enabled:
+            if not user.totp_enabled and user.role == UserRole.SUPERADMIN:
+                if not user.totp_secret:
+                    user.totp_secret = pyotp.random_base32()
+                    user.totp_enabled = False
+                    await self.db.commit()
+                if totp_code:
+                    totp = pyotp.TOTP(user.totp_secret)
+                    if not totp.verify(totp_code.strip(), valid_window=1):
+                        self._record_ip_failed_attempt(ip_address)
+                        raise UnauthorizedException("Código TOTP de activación incorrecto o expirado")
+                    user.totp_enabled = True
+                    await self.db.commit()
+                else:
+                    prov_uri = pyotp.TOTP(user.totp_secret).provisioning_uri(
+                        name=user.email,
+                        issuer_name="Orbítica POS Superadmin"
+                    )
+                    raise UnauthorizedException(f"MFA_ENROLLMENT_REQUIRED: Debe configurar y verificar su primer código TOTP. URI: {prov_uri}")
+            else:
+                if not totp_code:
+                    raise UnauthorizedException("Código de autenticación en dos pasos (TOTP MFA) requerido")
+                totp = pyotp.TOTP(user.totp_secret)
+                if not totp.verify(totp_code.strip(), valid_window=1):
+                    self._record_ip_failed_attempt(ip_address)
+                    user.failed_login_attempts += 1
+                    await self.db.commit()
+                    raise UnauthorizedException("Código TOTP MFA incorrecto o expirado")
+
+        # Email 2FA check
+        elif user.email_2fa_enabled:
+            code = f"{secrets.randbelow(900000) + 100000:06d}"
+            challenge_token = secrets.token_hex(24)
+            code_hash = hash_token(code)
+            expires_at = now + timedelta(minutes=5)
+
+            # Invalidate old 2FA challenges for this user
+            old_stmt = select(TwoFactorChallenge).where(
+                TwoFactorChallenge.user_id == user.id,
+                TwoFactorChallenge.is_consumed == False
+            )
+            old_res = await self.db.execute(old_stmt)
+            for ch in old_res.scalars():
+                ch.is_consumed = True
+
+            challenge = TwoFactorChallenge(
+                user_id=user.id,
+                challenge_token=challenge_token,
+                code_hash=code_hash,
+                expires_at=expires_at,
+                attempts=0,
+                is_consumed=False
+            )
+            self.db.add(challenge)
+
+            if settings.ENVIRONMENT == "production" and not getattr(settings, "SMTP_HOST", None):
+                raise BadRequestException(
+                    "BLOCKED_EXTERNAL_CONFIGURATION_EMAIL_PROVIDER: "
+                    "Se requiere configurar SMTP para entregar el código 2FA. "
+                    "Variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD"
+                )
+
+            email_adapter = get_email_adapter()
+            html_body = f"""
+            <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <h2 style="color: #0f172a;">Código de Seguridad 2FA — Orbítica POS</h2>
+                <p>Usa el siguiente código de 6 dígitos para autorizar tu inicio de sesión:</p>
+                <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #0284c7; border-radius: 6px;">
+                    {code}
+                </div>
+                <p style="color: #64748b; font-size: 13px; margin-top: 20px;">Este código expirará en 5 minutos.</p>
+            </div>
+            """
+            await email_adapter.send_email(
+                to_email=user.email,
+                subject="Tu Código 2FA — Orbítica POS",
+                html_content=html_body,
+                text_content=f"Tu código 2FA de Orbítica POS es: {code} (expira en 5 minutos)"
+            )
+
+            await self.db.commit()
+            return {
+                "requires_2fa": True,
+                "delivery_method": "EMAIL",
+                "challenge_token": challenge_token,
+                "message": "Se ha enviado un código de seguridad de 2 factores a tu correo."
+            }
+
+        # Success directly (no 2FA required)
+        user.failed_login_attempts = 0
+        user.locked_until = None
+
+        access_token = create_access_token(
+            subject=str(user.id),
+            claims={
+                "org_id": str(user.organization_id) if user.organization_id else None,
+                "role": user.role,
+                "email": user.email
+            }
+        )
+
+        raw_refresh_token = generate_refresh_token()
+        refresh_hash = hash_token(raw_refresh_token)
+        session_expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        session = UserSession(
+            user_id=user.id,
+            family_id=uuid.uuid4(),
+            refresh_token_hash=refresh_hash,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            expires_at=session_expires_at
+        )
+        self.db.add(session)
+
+        await AuditService.log_action(
+            db=self.db,
+            action="LOGIN_SUCCESS",
+            resource="User",
+            actor_id=user.id,
+            organization_id=user.organization_id,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        await self.db.commit()
+        return {
+            "requires_2fa": False,
+            "user": user,
+            "access_token": access_token,
+            "refresh_token": raw_refresh_token,
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        }
+
+    async def verify_login_2fa(
+        self,
+        challenge_token: str,
+        code: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Tuple[User, str, str]:
+        self._check_ip_rate_limit(ip_address)
+        clean_code = code.strip()
+        now = datetime.now(timezone.utc)
+
+        stmt = select(TwoFactorChallenge).where(
+            TwoFactorChallenge.challenge_token == challenge_token.strip(),
+            TwoFactorChallenge.is_consumed == False
+        )
+        res = await self.db.execute(stmt)
+        challenge = res.scalar_one_or_none()
+
+        if not challenge:
+            raise UnauthorizedException("Desafío 2FA inválido o ya utilizado")
+
+        ch_exp = challenge.expires_at
+        if ch_exp.tzinfo is None:
+            ch_exp = ch_exp.replace(tzinfo=timezone.utc)
+        if ch_exp < now:
+            challenge.is_consumed = True
+            await self.db.commit()
+            raise UnauthorizedException("El código 2FA ha expirado")
+
+        if challenge.attempts >= 3:
+            challenge.is_consumed = True
+            await self.db.commit()
+            raise UnauthorizedException("Límite de intentos excedido")
+
+        challenge.attempts += 1
+
+        if not verify_token_hash(clean_code, challenge.code_hash):
+            await self.db.commit()
+            raise UnauthorizedException("Código de verificación incorrecto")
+
+        challenge.is_consumed = True
+
+        user_stmt = select(User).where(User.id == challenge.user_id)
+        user_res = await self.db.execute(user_stmt)
+        user = user_res.scalar_one()
+
+        user.failed_login_attempts = 0
+        user.locked_until = None
+
+        access_token = create_access_token(
+            subject=str(user.id),
+            claims={
+                "org_id": str(user.organization_id) if user.organization_id else None,
+                "role": user.role,
+                "email": user.email
+            }
+        )
+
+        raw_refresh_token = generate_refresh_token()
+        refresh_hash = hash_token(raw_refresh_token)
+        session_expires_at = now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        session = UserSession(
+            user_id=user.id,
+            family_id=uuid.uuid4(),
+            refresh_token_hash=refresh_hash,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            expires_at=session_expires_at
+        )
+        self.db.add(session)
+
+        await AuditService.log_action(
+            db=self.db,
+            action="LOGIN_2FA_SUCCESS",
+            resource="User",
+            actor_id=user.id,
+            organization_id=user.organization_id,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+
+        await self.db.commit()
+        return user, access_token, raw_refresh_token
+
     async def authenticate_user(
         self,
         email: str,
@@ -56,7 +440,7 @@ class AuthService:
     ) -> Tuple[User, str, str]:
         self._check_ip_rate_limit(ip_address)
 
-        stmt = select(User).where(User.email == email.strip().lower())
+        stmt = select(User).where(User.normalized_email == email.strip().lower())
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
 

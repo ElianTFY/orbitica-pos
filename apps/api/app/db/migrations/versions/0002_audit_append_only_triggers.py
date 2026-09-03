@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = "0002_audit_append_only"
-down_revision: Union[str, None] = "0001_initial_production_schema"
+down_revision: Union[str, None] = "0001_initial_schema"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

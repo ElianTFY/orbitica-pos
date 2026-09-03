@@ -16,6 +16,7 @@ import {
   SupportAccessGrant,
 } from "@/types";
 import { useAuth } from "@/features/auth/auth-context";
+import { api } from "@/lib/api-client";
 
 export type HubSection =
   | "attention"
@@ -249,106 +250,51 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
       .catch(() => {});
   }, []);
 
-  // Load Real Data from Multi-Tenant LocalStorage & API
+  // Load Real Data from Multi-Tenant Backend API
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    async function loadSuperadminData() {
+      try {
+        const [orgsRes, ticketsRes] = await Promise.allSettled([
+          api.request<any[]>("/superadmin/organizations"),
+          api.request<any[]>("/support/tickets"),
+        ]);
 
-    try {
-      const foundTenants: ManagedTenant360[] = [];
-      const foundAlerts: PlatformAlert[] = [];
-      const foundTickets: SupportTicket[] = [];
-      const foundGrants: SupportAccessGrant[] = [];
-
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith("orbitica_settings_")) {
-          const orgId = key.replace("orbitica_settings_", "");
-          const rawSettings = localStorage.getItem(key);
-          const rawSub = localStorage.getItem(`orbitica_subscription_${orgId}`);
-          const rawSales = localStorage.getItem(`orbitica_sales_${orgId}`);
-          const rawEmp = localStorage.getItem(`orbitica_employees_${orgId}`);
-          const rawBr = localStorage.getItem(`orbitica_branches_${orgId}`);
-          const rawProd = localStorage.getItem(`orbitica_products_${orgId}`);
-          const rawTickets = localStorage.getItem(`orbitica_support_tickets_${orgId}`);
-          const rawGrant = localStorage.getItem(`orbitica_support_grant_${orgId}`) || localStorage.getItem(`orbitica_active_support_grant_${orgId}`);
-
-          if (rawSettings) {
-            const parsedSettings = JSON.parse(rawSettings);
-            const parsedSub = rawSub ? JSON.parse(rawSub) : null;
-            const parsedSales = rawSales ? JSON.parse(rawSales) : [];
-            const parsedEmp = rawEmp ? JSON.parse(rawEmp) : [];
-            const parsedBr = rawBr ? JSON.parse(rawBr) : [];
-            const parsedProd = rawProd ? JSON.parse(rawProd) : [];
-
-            if (rawTickets) {
-              const parsedT = JSON.parse(rawTickets);
-              foundTickets.push(...parsedT);
-            }
-            if (rawGrant) {
-              const g = JSON.parse(rawGrant);
-              if (!g.is_revoked && new Date(g.expires_at).getTime() > Date.now()) {
-                foundGrants.push(g);
-              }
-            }
-
-            const totalVol = parsedSales.reduce((acc: number, s: any) => acc + (s.total || 0), 0);
-
-            // Compute health & alerts for this tenant
-            if (parsedSub?.state === "trial") {
-              const trialEnd = new Date(parsedSub.trial_end_at || new Date()).getTime();
-              const daysLeft = Math.max(0, Math.ceil((trialEnd - Date.now()) / (1000 * 60 * 60 * 24)));
-              if (daysLeft <= 2) {
-                foundAlerts.push({
-                  id: `alert_trial_${orgId}`,
-                  severity: "HIGH",
-                  category: "TRIAL_EXPIRING",
-                  tenant_id: orgId,
-                  tenant_name: parsedSettings.trade_name || "Mi Negocio",
-                  title: `Prueba Gratuita Próxima a Vencer (${daysLeft} días restantes)`,
-                  description: `La empresa ${parsedSettings.trade_name} culmina su período de evaluación de 14 días pronto.`,
-                  occurred_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-                  recommended_action: "Ofrecer promoción de cierre o extender prueba +7 días",
-                  deep_link: `tenants`,
-                  status: "OPEN",
-                });
-              }
-            }
-
-            foundTenants.push({
-              id: orgId,
-              legal_name: parsedSettings.legal_name || "Empresa Registrada",
-              trade_name: parsedSettings.trade_name || "Mi Negocio",
-              identification_number: parsedSettings.identification_number || "3101000000",
-              identification_type: parsedSettings.identification_type || "JURIDICA",
-              email: parsedSettings.email || "info@negocio.cr",
-              phone: parsedSettings.phone || "+506 2200-0000",
-              plan_id: parsedSub?.plan_id || "crece",
-              state: parsedSub?.state || "trial",
-              trial_days_left: 14,
-              created_at: parsedSettings.created_at || "2026-08-30",
-              next_billing_date: parsedSub?.current_period_end || "2026-09-14",
-              branches_count: parsedBr.length || 1,
-              users_count: (parsedEmp.length || 0) + 1,
-              products_count: parsedProd.length || 0,
-              sales_count: parsedSales.length,
-              total_sales_volume: totalVol,
-              hacienda_status: parsedSettings.identification_number ? "OPERATIONAL" : "CONFIG_REQUIRED",
-              atv_environment: parsedSettings.atv_environment || "STAGING",
-              tags: parsedSub?.state === "trial" ? ["Trial", "Nuevo"] : ["SaaS", "Activo"],
-            });
-          }
+        if (orgsRes.status === "fulfilled" && orgsRes.value?.data) {
+          const orgList = orgsRes.value.data;
+          const mapped: ManagedTenant360[] = orgList.map((o) => ({
+            id: o.id,
+            legal_name: o.legal_name || o.name,
+            trade_name: o.trade_name || o.name,
+            identification_number: o.identification_number || "3101000000",
+            identification_type: o.identification_type || "JURIDICA",
+            email: o.email || "contacto@empresa.cr",
+            phone: o.phone || "+506 2200-0000",
+            plan_id: "crece",
+            state: o.is_active ? "active" : "suspended",
+            trial_days_left: 14,
+            created_at: o.created_at ? o.created_at.substring(0, 10) : "2026-08-30",
+            next_billing_date: "2026-09-30",
+            branches_count: 1,
+            users_count: 1,
+            products_count: 0,
+            sales_count: 0,
+            total_sales_volume: 0,
+            hacienda_status: o.identification_number ? "OPERATIONAL" : "CONFIG_REQUIRED",
+            atv_environment: "STAGING",
+            tags: o.is_active ? ["Activo", "PostgreSQL"] : ["Suspendido"],
+          }));
+          setTenants(mapped);
         }
+
+        if (ticketsRes.status === "fulfilled" && ticketsRes.value?.data) {
+          setTickets(ticketsRes.value.data);
+        }
+      } catch (e) {
+        console.warn("Superadmin backend fetch error:", e);
       }
+    }
 
-      setTenants(foundTenants);
-      setAlerts(foundAlerts);
-      setTickets(foundTickets);
-      setActiveGrants(foundGrants);
-
-      // Load audit logs
-      const rawAudit = localStorage.getItem("orbitica_superadmin_audit_logs");
-      if (rawAudit) setAuditLogs(JSON.parse(rawAudit));
-    } catch (e) {}
+    loadSuperadminData();
   }, []);
 
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);

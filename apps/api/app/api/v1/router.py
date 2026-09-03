@@ -21,7 +21,8 @@ from app.api.v1 import (
     subscription,
     hacienda,
     support,
-    uploads
+    uploads,
+    quotes
 )
 
 api_v1_router = APIRouter()
@@ -37,6 +38,7 @@ api_v1_router.include_router(tax_rates.router)
 api_v1_router.include_router(products.router)
 api_v1_router.include_router(inventory.router)
 api_v1_router.include_router(sales.router)
+api_v1_router.include_router(quotes.router)
 api_v1_router.include_router(cash_registers.router)
 api_v1_router.include_router(customers.router)
 api_v1_router.include_router(invoices.router)

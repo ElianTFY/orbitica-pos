@@ -4,6 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.auth import (
     LoginRequest,
+    LoginResultResponse,
+    Login2FAVerifyRequest,
+    RegisterStartRequest,
+    RegisterStartResponse,
+    RegisterVerifyRequest,
+    RegisterVerifyResponse,
     TokenResponse,
     UserProfileResponse,
     PasswordRecoveryRequest,
@@ -28,7 +34,37 @@ class MFAActivateRequest(BaseModel):
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-@router.post("/login", response_model=StandardResponse[TokenResponse])
+@router.post("/register/start", response_model=StandardResponse[RegisterStartResponse])
+async def register_start(
+    payload: RegisterStartRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    ip_address = request.client.host if request.client else None
+    service = AuthService(db)
+    result = await service.register_start(email=payload.email, ip_address=ip_address)
+    return StandardResponse(
+        data=RegisterStartResponse(email=result["email"], expires_in=result["expires_in"]),
+        message="Código de verificación enviado a tu correo"
+    )
+
+@router.post("/register/verify", response_model=StandardResponse[RegisterVerifyResponse])
+async def register_verify(
+    payload: RegisterVerifyRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    service = AuthService(db)
+    result = await service.register_verify(email=payload.email, code=payload.code)
+    return StandardResponse(
+        data=RegisterVerifyResponse(
+            verified=result["verified"],
+            email=result["email"],
+            registration_token=result["registration_token"]
+        ),
+        message="Correo verificado exitosamente"
+    )
+
+@router.post("/login", response_model=StandardResponse[LoginResultResponse])
 async def login(
     payload: LoginRequest,
     request: Request,
@@ -39,10 +75,60 @@ async def login(
     user_agent = request.headers.get("User-Agent")
 
     service = AuthService(db)
-    user, access_token, refresh_token = await service.authenticate_user(
+    result = await service.authenticate_with_2fa_flow(
         email=payload.email,
         password=payload.password,
         totp_code=payload.totp_code,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    if result.get("requires_2fa"):
+        return StandardResponse(
+            data=LoginResultResponse(
+                requires_2fa=True,
+                challenge_token=result.get("challenge_token"),
+                delivery_method=result.get("delivery_method")
+            ),
+            message=result.get("message", "Se requiere verificación en dos pasos")
+        )
+
+    refresh_token = result.get("refresh_token")
+    if refresh_token:
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            domain=settings.COOKIE_DOMAIN,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+            path="/"
+        )
+
+    return StandardResponse(
+        data=LoginResultResponse(
+            access_token=result["access_token"],
+            token_type="bearer",
+            expires_in=result["expires_in"],
+            requires_2fa=False
+        ),
+        message="Inicio de sesión exitoso"
+    )
+
+@router.post("/2fa/verify", response_model=StandardResponse[TokenResponse])
+async def verify_2fa(
+    payload: Login2FAVerifyRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db)
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("User-Agent")
+    service = AuthService(db)
+    user, access_token, refresh_token = await service.verify_login_2fa(
+        challenge_token=payload.challenge_token,
+        code=payload.code,
         ip_address=ip_address,
         user_agent=user_agent
     )
@@ -63,7 +149,7 @@ async def login(
             access_token=access_token,
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
         ),
-        message="Inicio de sesión exitoso"
+        message="Autenticación en dos pasos exitosa"
     )
 
 @router.post("/refresh", response_model=StandardResponse[TokenResponse])
@@ -130,9 +216,10 @@ async def get_me(
             phone=context.user.phone,
             role=context.user.role,
             totp_enabled=context.user.totp_enabled,
+            email_2fa_enabled=getattr(context.user, "email_2fa_enabled", False),
             email_verified=context.user.email_verified,
             organization_id=context.organization_id,
-            organization_name=context.organization.trade_name if context.organization else "ORBÍTICA STUDIO",
+            organization_name=context.organization.trade_name if context.organization and context.organization.trade_name else (context.organization.legal_name if context.organization and context.organization.legal_name else "Mi Empresa"),
             accessible_branches=context.accessible_branch_ids,
             permissions=perms
         )

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Sparkles, KeyRound, ShieldCheck } from "lucide-react";
+import { ArrowRight, Sparkles, KeyRound, ShieldCheck, Mail, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/features/auth/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,17 +14,42 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [requireTotp, setRequireTotp] = useState(false);
+  const [require2FA, setRequire2FA] = useState(false);
+  const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [twoFACode, setTwoFACode] = useState("");
+  const [deliveryMethod, setDeliveryMethod] = useState<string>("EMAIL");
   const [mfaChallengeNotice, setMfaChallengeNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login } = useAuth();
+  const { login, verify2FA } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
+
     try {
-      await login(email, password, requireTotp ? totpCode : undefined);
+      if (require2FA && challengeToken) {
+        if (!twoFACode || twoFACode.trim().length !== 6) {
+          setError("Ingresa el código de 6 dígitos.");
+          setIsSubmitting(false);
+          return;
+        }
+        await verify2FA(challengeToken, twoFACode.trim());
+        return;
+      }
+
+      const result = await login(email, password, requireTotp ? totpCode : undefined);
+      if (result && result.requires2FA && result.challengeToken) {
+        setRequire2FA(true);
+        setChallengeToken(result.challengeToken);
+        setDeliveryMethod(result.deliveryMethod || "EMAIL");
+        setMfaChallengeNotice(
+          result.deliveryMethod === "EMAIL"
+            ? `Hemos enviado un código de seguridad de 6 dígitos a ${email}. Ingresa el código para autorizar tu acceso.`
+            : "Ingresa el código temporal de tu aplicación autenticadora."
+        );
+      }
     } catch (err: any) {
       const msg = err?.message || "Credenciales incorrectas o cuenta bloqueada";
       if (
@@ -49,6 +74,14 @@ export default function LoginPage() {
     }
   };
 
+  const handleBackToLogin = () => {
+    setRequire2FA(false);
+    setChallengeToken(null);
+    setTwoFACode("");
+    setMfaChallengeNotice(null);
+    setError(null);
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col justify-center items-center p-4 relative overflow-hidden transition-colors">
       {/* Top Bar with Accessible Theme Switcher */}
@@ -70,8 +103,14 @@ export default function LoginPage() {
 
         <div className="bg-surface border border-border rounded-3xl p-7 sm:p-8 shadow-card space-y-6 backdrop-blur-sm transition-colors">
           <div className="space-y-1">
-            <h1 className="text-xl font-bold text-text-main tracking-tight">Iniciar Sesión</h1>
-            <p className="text-xs text-text-muted">Ingresa con tus credenciales de Orbítica POS</p>
+            <h1 className="text-xl font-bold text-text-main tracking-tight">
+              {require2FA ? "Verificación en Dos Pasos (2FA)" : "Iniciar Sesión"}
+            </h1>
+            <p className="text-xs text-text-muted">
+              {require2FA
+                ? "Confirma tu identidad para acceder de manera segura"
+                : "Ingresa con tus credenciales de Orbítica POS"}
+            </p>
           </div>
 
           {error && (
@@ -94,61 +133,100 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              id="login-email"
-              label="Correo Electrónico"
-              type="email"
-              placeholder="tu@negocio.cr"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-
-            <Input
-              id="login-password"
-              label="Contraseña"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-
-            {requireTotp && (
-              <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+            {!require2FA ? (
+              <>
                 <Input
-                  id="login-totp"
-                  label="Código de Seguridad TOTP (6 dígitos)"
+                  id="login-email"
+                  label="Correo Electrónico"
+                  type="email"
+                  placeholder="tu@negocio.cr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+
+                <Input
+                  id="login-password"
+                  label="Contraseña"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+
+                {requireTotp && (
+                  <div className="space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <Input
+                      id="login-totp"
+                      label="Código de Seguridad TOTP (6 dígitos)"
+                      type="text"
+                      placeholder="123456"
+                      maxLength={6}
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                      required
+                      autoFocus
+                      autoComplete="one-time-code"
+                    />
+                    <p className="text-[10px] text-text-muted flex items-center gap-1">
+                      <KeyRound className="w-3 h-3 text-primary" />
+                      Google Authenticator, Microsoft Authenticator o Authy
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <Link
+                    href="/forgot-password"
+                    className="text-[11px] text-text-muted hover:text-primary transition-colors hover:underline"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="p-3 bg-surface-secondary border border-border rounded-2xl flex items-center gap-3 text-xs text-text-muted">
+                  <Mail className="w-4 h-4 text-primary shrink-0" />
+                  <span className="truncate">Código enviado a: <strong className="text-text-main">{email}</strong></span>
+                </div>
+
+                <Input
+                  id="login-2fa-code"
+                  label="Código de Verificación (6 dígitos)"
                   type="text"
-                  placeholder="123456"
+                  placeholder="••••••"
                   maxLength={6}
-                  value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                  value={twoFACode}
+                  onChange={(e) => setTwoFACode(e.target.value.replace(/\D/g, ""))}
                   required
                   autoFocus
                   autoComplete="one-time-code"
+                  className="text-center font-mono tracking-widest text-lg"
                 />
-                <p className="text-[10px] text-text-muted flex items-center gap-1">
-                  <KeyRound className="w-3 h-3 text-primary" />
-                  Google Authenticator, Microsoft Authenticator o Authy
-                </p>
+
+                <button
+                  type="button"
+                  onClick={handleBackToLogin}
+                  className="text-[11px] text-text-muted hover:text-primary flex items-center gap-1 hover:underline"
+                >
+                  <ArrowLeft className="w-3 h-3" />
+                  Volver a ingresar correo y contraseña
+                </button>
               </div>
             )}
-
-            <div className="flex justify-end">
-              <Link
-                href="/forgot-password"
-                className="text-[11px] text-text-muted hover:text-primary transition-colors hover:underline"
-              >
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </div>
 
             <Button type="submit" variant="primary" className="w-full py-3 font-bold text-sm" disabled={isSubmitting}>
               {isSubmitting ? (
                 "Validando credenciales..."
+              ) : require2FA ? (
+                <>
+                  Verificar Código y Entrar
+                  <ShieldCheck className="w-4 h-4 ml-2" />
+                </>
               ) : requireTotp ? (
                 <>
                   Verificar y Acceder
@@ -164,13 +242,15 @@ export default function LoginPage() {
           </form>
 
           {/* Self Service Registration Link */}
-          <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between text-xs transition-colors">
-            <span className="text-text-muted">¿Tienes un negocio nuevo?</span>
-            <Link href="/register" className="text-primary font-bold hover:underline flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary rounded-lg px-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              Registrar Negocio
-            </Link>
-          </div>
+          {!require2FA && (
+            <div className="p-3.5 bg-surface-secondary border border-border rounded-2xl flex items-center justify-between text-xs transition-colors">
+              <span className="text-text-muted">¿Tienes un negocio nuevo?</span>
+              <Link href="/register" className="text-primary font-bold hover:underline flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary rounded-lg px-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                Registrar Negocio
+              </Link>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-[11px] text-text-muted">

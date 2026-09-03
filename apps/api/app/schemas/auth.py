@@ -20,6 +20,7 @@ class UserProfileResponse(BaseSchema):
     phone: Optional[str] = None
     role: str
     totp_enabled: bool = False
+    email_2fa_enabled: bool = False
     email_verified: bool = False
     organization_id: Optional[UUID] = None
     organization_name: Optional[str] = None
@@ -42,6 +43,37 @@ class EmailVerificationRequest(BaseModel):
 class PublicEmailVerificationRequest(BaseModel):
     email: EmailStr
     code: str = Field(min_length=6, max_length=6)
+
+# Real Registration Start & Verify Flow
+class RegisterStartRequest(BaseModel):
+    email: EmailStr
+
+class RegisterStartResponse(BaseModel):
+    email: str
+    expires_in: int = 600
+
+class RegisterVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+class RegisterVerifyResponse(BaseModel):
+    verified: bool
+    email: str
+    registration_token: str
+
+# Real Login 2FA Challenge & Verify Flow
+class Login2FAVerifyRequest(BaseModel):
+    challenge_token: str = Field(min_length=10)
+    code: str = Field(min_length=6, max_length=6)
+
+class LoginResultResponse(BaseModel):
+    requires_2fa: bool = False
+    challenge_token: Optional[str] = None
+    delivery_method: Optional[str] = None  # "EMAIL" or "TOTP"
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
+    user: Optional[UserProfileResponse] = None
 
 class StepUpAuthRequest(BaseModel):
     password: str = Field(min_length=6)

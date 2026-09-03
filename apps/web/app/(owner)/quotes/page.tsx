@@ -28,12 +28,15 @@ import { Modal } from "@/components/ui/modal";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
 import { Quote, QuoteItem, Product } from "@/types";
+import { api } from "@/lib/api-client";
 import Link from "next/link";
 
 export default function QuotesPage() {
-  const { quotes, products, customers, settings, addQuote, updateQuote, deleteQuote } = useStore();
+  const { quotes, products, customers, settings, activeCashSession, addQuote, updateQuote, deleteQuote } = useStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
+  const [conversionMessage, setConversionMessage] = useState<string | null>(null);
 
   // Create / Edit modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -135,6 +138,12 @@ export default function QuotesPage() {
     expiryDate.setDate(expiryDate.getDate() + validDays);
     const validUntilStr = expiryDate.toISOString().replace("T", " ").substring(0, 10);
 
+    const matchedCustomer = customers.find(
+      (c) =>
+        (customerCedula && c.identification_number === customerCedula) ||
+        (customerName && c.name.toLowerCase() === customerName.toLowerCase())
+    );
+
     if (editingQuote) {
       updateQuote(editingQuote.id, {
         customer_name: customerName.trim(),
@@ -165,9 +174,47 @@ export default function QuotesPage() {
         notes: notes.trim() || undefined,
         status: "SENT",
       });
+
+      // Synchronize with PostgreSQL
+      api.request("/quotes", {
+        method: "POST",
+        body: {
+          customer_id: matchedCustomer?.id || undefined,
+          valid_days: validDays,
+          notes: notes.trim() || undefined,
+          items: items.map((it) => ({
+            product_id: it.product_id,
+            quantity: it.quantity,
+            discount_percentage: 0,
+          })),
+        },
+      }).catch(console.error);
+
       setIsCreateModalOpen(false);
     }
     resetForm();
+  };
+
+  const handleConvertQuoteToSale = async (q: Quote) => {
+    setConvertingQuoteId(q.id);
+    setConversionMessage(null);
+    try {
+      const resp = await api.request<any>(`/quotes/${q.id}/convert-to-sale`, {
+        method: "POST",
+        body: {
+          payment_method: "CASH_CRC",
+          cash_session_id: activeCashSession?.id || undefined,
+        },
+      });
+      if (resp?.data) {
+        setConversionMessage(`¡Cotización ${q.quote_number} convertida exitosamente a Venta ${resp.data.sale_number}!`);
+        updateQuote(q.id, { status: "CONVERTED" });
+      }
+    } catch (err: any) {
+      setConversionMessage(`Error al convertir: ${err?.message || "Verifique que la caja esté abierta y tenga stock suficiente"}`);
+    } finally {
+      setConvertingQuoteId(null);
+    }
   };
 
   const handleConfirmDelete = () => {
@@ -218,6 +265,19 @@ export default function QuotesPage() {
             Nueva Cotización
           </Button>
         </div>
+
+        {conversionMessage && (
+          <div className="p-3 bg-primary-subtle border border-primary text-primary rounded-2xl text-xs font-bold flex items-center justify-between">
+            <span>{conversionMessage}</span>
+            <button
+              type="button"
+              onClick={() => setConversionMessage(null)}
+              className="text-text-muted hover:text-text-main text-sm p-1"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Filters and Search */}
         <div className="flex flex-col sm:flex-row gap-3">
@@ -339,18 +399,17 @@ export default function QuotesPage() {
                               <Send className="w-4 h-4" />
                             </a>
                           )}
-                          <Link href="/pos">
+                          {q.status !== "CONVERTED" && (
                             <button
                               type="button"
-                              onClick={() => {
-                                updateQuote(q.id, { status: "CONVERTED" });
-                              }}
-                              className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-subtle rounded-lg transition-colors"
-                              title="Convertir en Venta POS"
+                              onClick={() => handleConvertQuoteToSale(q)}
+                              disabled={convertingQuoteId === q.id}
+                              className="p-1.5 text-text-muted hover:text-primary hover:bg-primary-subtle rounded-lg transition-colors disabled:opacity-50"
+                              title="Convertir en Venta Firme en POS"
                             >
-                              <ArrowRight className="w-4 h-4" />
+                              <ArrowRight className={`w-4 h-4 ${convertingQuoteId === q.id ? "animate-pulse text-primary" : ""}`} />
                             </button>
-                          </Link>
+                          )}
                           <button
                             type="button"
                             onClick={() => setQuoteToDelete(q)}

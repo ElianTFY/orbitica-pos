@@ -169,6 +169,7 @@ interface StoreContextType {
   recordSale: (saleData: {
     items: Array<{ product: Product; quantity: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
+    payments?: Array<{ payment_method: string; amount: number; reference_number?: string }>;
     cashReceived?: number;
     sinpeRef?: string;
     customerName?: string;
@@ -187,14 +188,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const orgId = user?.organization_id || user?.email || "default_tenant";
 
   const [settings, setSettings] = useState<BusinessSettings>({
-    trade_name: user?.organization_name || "Mi Negocio",
+    trade_name: user?.organization_name || "",
     legal_name: user?.legal_name || user?.organization_name || "",
     identification_number: user?.identification_number || "",
     identification_type: "JURIDICA",
     email: user?.email || "",
     phone: user?.phone || "",
     address: "",
-    branch_name: user?.branch_name || "Sucursal Central (001)",
+    branch_name: user?.branch_name || "Sucursal Principal",
     tax_regime: "TRADICIONAL",
     default_currency: "CRC",
     atv_environment: "STAGING",
@@ -303,14 +304,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const [
+        orgRes,
+        onbRes,
+        subRes,
+        branchesRes,
         productsRes,
         customersRes,
         invoicesRes,
         salesRes,
         purchasesRes,
         cashRes,
-        supportRes
+        supportRes,
+        suppliersRes,
+        quotesRes,
       ] = await Promise.allSettled([
+        api.request<any>("/organizations/me"),
+        api.request<any>("/organizations/onboarding"),
+        api.request<any>("/subscription/current"),
+        api.request<any[]>("/branches"),
         api.request<any[]>("/products"),
         api.request<any[]>("/customers"),
         api.request<any[]>("/invoices"),
@@ -318,9 +329,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         api.request<any[]>("/purchases"),
         api.request<any>("/cash-registers/sessions/active"),
         api.request<any[]>("/support/tickets"),
+        api.request<any[]>("/suppliers"),
+        api.request<any[]>("/quotes"),
       ]);
 
       let hasData = false;
+
+      if (orgRes.status === "fulfilled" && orgRes.value?.data) {
+        const o = orgRes.value.data;
+        setSettings((prev) => ({
+          ...prev,
+          trade_name: o.trade_name || prev.trade_name,
+          legal_name: o.legal_name || prev.legal_name,
+          identification_number: o.identification_number || prev.identification_number,
+          identification_type: o.identification_type || prev.identification_type,
+          email: o.email || prev.email,
+          phone: o.phone || prev.phone,
+          address: o.address_detail || prev.address,
+          default_currency: o.default_currency || prev.default_currency,
+        }));
+      }
+
+      if (onbRes.status === "fulfilled" && onbRes.value?.data) {
+        const onb = onbRes.value.data;
+        setOnboarding((prev) => ({
+          ...prev,
+          current_step: onb.current_step,
+          is_completed: onb.is_completed,
+          steps: {
+            business: onb.business_data_completed,
+            fiscal: onb.fiscal_data_completed,
+            branches: onb.branches_completed,
+            payments: onb.payments_completed,
+            products: onb.products_completed,
+            contacts: onb.contacts_completed,
+            users: onb.users_completed,
+            test_sale: false,
+          },
+          last_saved_at: onb.updated_at || new Date().toISOString(),
+        }));
+      }
+
+      if (subRes.status === "fulfilled" && subRes.value?.data) {
+        const s = subRes.value.data;
+        setSubscription((prev) => ({
+          ...prev,
+          plan_id: s.plan_name?.toLowerCase().includes("pro") ? "crece" : "inicio",
+          state: s.status === "ACTIVE" ? "active" : "trial",
+          amount: Number(s.price_monthly) || 0,
+          currency: s.currency || "CRC",
+        }));
+      }
+
+      if (branchesRes.status === "fulfilled" && branchesRes.value?.data) {
+        setBranches(branchesRes.value.data);
+      }
 
       if (productsRes.status === "fulfilled" && productsRes.value?.data) {
         setProducts(productsRes.value.data);
@@ -344,6 +407,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       if (supportRes.status === "fulfilled" && supportRes.value?.data) {
         setSupportTickets(supportRes.value.data);
+      }
+      if (suppliersRes.status === "fulfilled" && suppliersRes.value?.data) {
+        setSuppliers(suppliersRes.value.data);
+      }
+      if (quotesRes.status === "fulfilled" && quotesRes.value?.data) {
+        setQuotes(quotesRes.value.data);
       }
 
       setIsOffline(false);
@@ -393,6 +462,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettings = (newSettings: Partial<BusinessSettings>) => {
     setSettings((prev) => ({ ...prev, ...newSettings }));
+    if (orgId && orgId !== "default_tenant") {
+      api
+        .request("/organizations/me", {
+          method: "PUT",
+          body: JSON.stringify({
+            trade_name: newSettings.trade_name,
+            legal_name: newSettings.legal_name,
+            identification_number: newSettings.identification_number,
+            identification_type: newSettings.identification_type,
+            email: newSettings.email,
+            phone: newSettings.phone,
+            address_detail: newSettings.address,
+            default_currency: newSettings.default_currency,
+          }),
+        })
+        .catch(() => {});
+    }
     logAudit("SETTINGS_UPDATED", "Configuración Comercial");
   };
 
@@ -912,6 +998,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const recordSale = ({
     items,
     paymentMethod,
+    payments,
     cashReceived = 0,
     sinpeRef,
     customerName = "CLIENTE CONTADO",
@@ -921,6 +1008,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }: {
     items: Array<{ product: Product; quantity: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
+    payments?: Array<{ payment_method: string; amount: number; reference_number?: string }>;
     cashReceived?: number;
     sinpeRef?: string;
     customerName?: string;
@@ -933,7 +1021,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const consecutive = `00100001${docType}${seq.toString().padStart(10, "0")}`;
 
     // Standard 50-digit Hacienda numeric key:
-    // Country (3) + Day (2) + Month (2) + Year (2) + Emisor Cedula (12) + Consecutive (20) + Situation (1) + Security Code (8)
     const now = new Date();
     const d = String(now.getDate()).padStart(2, "0");
     const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -949,6 +1036,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       0
     );
     const total = subtotal + tax;
+
+    const finalPayments = payments && payments.length > 0 ? payments : [
+      {
+        payment_method: paymentMethod,
+        amount: paymentMethod === "CASH_CRC" && cashReceived > 0 ? cashReceived : total,
+        reference_number: sinpeRef || undefined,
+      }
+    ];
+
+    // Find matched customer
+    const matchedCustomer = customers.find(
+      (c) =>
+        (customerCedula && c.identification_number === customerCedula) ||
+        (customerName && c.name.toLowerCase() === customerName.toLowerCase())
+    );
+
+    // Call backend asynchronously to persist in PostgreSQL and deduct real inventory
+    if (branches.length > 0) {
+      api.request("/sales", {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": `pos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        },
+        body: {
+          branch_id: activeCashSession?.branch_id || branches[0].id,
+          cash_session_id: activeCashSession?.id || undefined,
+          customer_id: matchedCustomer?.id || undefined,
+          items: items.map((it) => ({
+            product_id: it.product.id,
+            quantity: it.quantity,
+            discount_percentage: 0,
+          })),
+          payments: finalPayments,
+          currency: settings.default_currency || "CRC",
+        },
+      }).then(() => {
+        fetchBusinessData();
+      }).catch((e) => {
+        console.warn("Backend sales sync:", e);
+      });
+    }
 
     // Deduct stock & create movement (only for non-test or track as test)
     setProducts((prev) =>
@@ -1133,33 +1261,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateSubscription = (details: Partial<SubscriptionDetails>) => {
-    setSubscription((prev) => {
-      const next = { ...prev, ...details };
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_subscription_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setSubscription((prev) => ({ ...prev, ...details }));
     logAudit("SUBSCRIPTION_UPDATED", `Suscripción actualizada a plan: ${details.plan_id || subscription.plan_id} (${details.state || subscription.state})`);
   };
 
   const updateOnboarding = (progress: Partial<OnboardingProgress>) => {
-    setOnboarding((prev) => {
-      const next = {
-        ...prev,
-        ...progress,
-        steps: { ...prev.steps, ...(progress.steps || {}) },
-        last_saved_at: new Date().toISOString(),
-      };
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_onboarding_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setOnboarding((prev) => ({
+      ...prev,
+      ...progress,
+      steps: { ...prev.steps, ...(progress.steps || {}) },
+      last_saved_at: new Date().toISOString(),
+    }));
+
+    if (orgId && orgId !== "default_tenant") {
+      api
+        .request("/organizations/onboarding", {
+          method: "PUT",
+          body: JSON.stringify({
+            current_step: progress.current_step,
+            is_completed: progress.is_completed,
+            business_data_completed: progress.steps?.business,
+            fiscal_data_completed: progress.steps?.fiscal,
+            branches_completed: progress.steps?.branches,
+            payments_completed: progress.steps?.payments,
+            products_completed: progress.steps?.products,
+            contacts_completed: progress.steps?.contacts,
+            users_completed: progress.steps?.users,
+          }),
+        })
+        .catch(() => {});
+    }
     logAudit("ONBOARDING_SAVED", `Progreso de onboarding guardado: Paso ${progress.current_step || onboarding.current_step}`);
   };
 
@@ -1433,24 +1564,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const purgeTestSales = () => {
     const testCount = sales.filter((s) => s.is_test).length;
-    setSales((prev) => {
-      const next = prev.filter((s) => !s.is_test);
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
-    setInvoices((prev) => {
-      const next = prev.filter((i) => !i.is_test);
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setSales((prev) => prev.filter((s) => !s.is_test));
+    setInvoices((prev) => prev.filter((i) => !i.is_test));
     logAudit("TEST_SALES_PURGED", `Se purgaron ${testCount} ventas de prueba del sistema`);
     return testCount;
   };

@@ -26,6 +26,8 @@ import {
   Wifi,
   WifiOff,
   User,
+  Users,
+  Layers,
   X,
 } from "lucide-react";
 import { POSLayout } from "@/components/layouts/owner-layout";
@@ -72,6 +74,13 @@ export default function POSPage() {
   const [docType, setDocType] = useState<"04" | "01">("04");
   const [lastReceiptData, setLastReceiptData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [mixedCash, setMixedCash] = useState<string>("");
+  const [mixedCard, setMixedCard] = useState<string>("");
+  const [mixedCardRef, setMixedCardRef] = useState<string>("");
+  const [mixedSinpe, setMixedSinpe] = useState<string>("");
+  const [mixedSinpeRef, setMixedSinpeRef] = useState<string>("");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>("");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isCashOpen = activeCashSession?.status === "OPEN";
@@ -87,25 +96,6 @@ export default function POSPage() {
       window.removeEventListener("offline", handleOffline);
     };
   }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "F2") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      } else if (e.key === "F4" || (e.code === "Space" && e.ctrlKey)) {
-        if (cart.length > 0 && isCashOpen) {
-          e.preventDefault();
-          setIsPaymentModalOpen(true);
-        }
-      } else if (e.key === "Escape") {
-        setIsPaymentModalOpen(false);
-        setIsReceiptModalOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart, isCashOpen]);
 
   const addToCart = useCallback((product: Product) => {
     setCart((prev) => {
@@ -237,6 +227,12 @@ export default function POSPage() {
     setIsSuspendedModalOpen(false);
   };
 
+  // Mixed payment sums
+  const numMixedCash = parseFloat(mixedCash) || 0;
+  const numMixedCard = parseFloat(mixedCard) || 0;
+  const numMixedSinpe = parseFloat(mixedSinpe) || 0;
+  const totalMixedPaid = numMixedCash + numMixedCard + numMixedSinpe;
+
   // Validation checks for completing sale
   const isInvoiceMissingCustomer =
     docType === "01" &&
@@ -246,11 +242,14 @@ export default function POSPage() {
 
   const isCashInsufficient = paymentMethod === "CASH_CRC" && numCash < total;
 
+  const isMixedInsufficient = paymentMethod === "MIXED" && totalMixedPaid < total;
+
   const canCompleteSale =
     !isProcessing &&
     !isInvoiceMissingCustomer &&
     !isSinpeMissingRef &&
-    !isCashInsufficient;
+    !isCashInsufficient &&
+    !isMixedInsufficient;
 
   const completeSale = async () => {
     if (!canCompleteSale) return;
@@ -258,10 +257,25 @@ export default function POSPage() {
     try {
       // Small delay to prevent accidental double-tap
       await new Promise((r) => setTimeout(r, 100));
+
+      const paymentsPayload =
+        paymentMethod === "MIXED"
+          ? [
+              ...(numMixedCash > 0 ? [{ payment_method: "CASH_CRC", amount: numMixedCash }] : []),
+              ...(numMixedCard > 0
+                ? [{ payment_method: "CARD", amount: numMixedCard, reference_number: mixedCardRef.trim() || undefined }]
+                : []),
+              ...(numMixedSinpe > 0
+                ? [{ payment_method: "SINPE", amount: numMixedSinpe, reference_number: mixedSinpeRef.trim() || undefined }]
+                : []),
+            ]
+          : undefined;
+
       const { receiptData } = recordSale({
         items: cart.map((c) => ({ product: c.product, quantity: c.quantity })),
         paymentMethod,
-        cashReceived: numCash,
+        payments: paymentsPayload,
+        cashReceived: paymentMethod === "CASH_CRC" ? numCash : numMixedCash,
         sinpeRef: sinpeRef.trim(),
         customerName: customerName.trim() || "CLIENTE CONTADO",
         customerCedula: customerCedula.trim() || undefined,
@@ -274,6 +288,11 @@ export default function POSPage() {
       clearCart();
       setCashReceived("");
       setSinpeRef("");
+      setMixedCash("");
+      setMixedCard("");
+      setMixedCardRef("");
+      setMixedSinpe("");
+      setMixedSinpeRef("");
       setCustomerName("CLIENTE CONTADO");
       setCustomerCedula("");
       setDocType("04");
@@ -281,6 +300,47 @@ export default function POSPage() {
       setIsProcessing(false);
     }
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        clearCart();
+      } else if (e.key === "F2") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        setIsCustomerModalOpen(true);
+      } else if (e.key === "F4") {
+        e.preventDefault();
+        if (cart.length > 0) {
+          setIsSuspendConfirmOpen(true);
+        } else {
+          setIsSuspendedModalOpen(true);
+        }
+      } else if (e.key === "F8" || (e.code === "Space" && e.ctrlKey)) {
+        if (cart.length > 0 && isCashOpen) {
+          e.preventDefault();
+          setIsPaymentModalOpen(true);
+        }
+      } else if (e.key === "Escape") {
+        setIsPaymentModalOpen(false);
+        setIsReceiptModalOpen(false);
+        setIsCustomerModalOpen(false);
+        setIsSuspendConfirmOpen(false);
+        setIsSuspendedModalOpen(false);
+      } else if (e.key === "Enter" && isPaymentModalOpen && canCompleteSale && !isProcessing) {
+        const activeTag = (document.activeElement as HTMLElement)?.tagName;
+        if (activeTag !== "TEXTAREA") {
+          e.preventDefault();
+          completeSale();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cart, isCashOpen, isPaymentModalOpen, canCompleteSale, isProcessing, clearCart, completeSale]);
 
   const filteredProducts = products.filter(
     (p) =>
@@ -506,6 +566,25 @@ export default function POSPage() {
               </div>
             </div>
 
+            {/* Customer Quick Bar [F3] */}
+            <div className="flex-shrink-0 px-3 py-1.5 bg-surface-secondary border-b border-border flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => setIsCustomerModalOpen(true)}
+                className="flex items-center gap-1.5 font-bold text-text-main hover:text-primary transition-colors truncate max-w-[200px]"
+                title="Cambiar cliente para este ticket (F3)"
+              >
+                <Users className="w-3.5 h-3.5 text-text-muted flex-shrink-0" />
+                <span className="truncate">{customerName}</span>
+                <span className="text-[10px] font-mono px-1 py-0.2 bg-surface rounded border border-border text-text-muted">
+                  F3
+                </span>
+              </button>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface border border-border text-text-muted">
+                {docType === "01" ? "Factura (01)" : "Tiquete (04)"}
+              </span>
+            </div>
+
             {/* Cart Items — scrollable */}
             <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
               {cart.length === 0 ? (
@@ -665,10 +744,10 @@ export default function POSPage() {
               </Button>
 
               <div className="flex items-center justify-between text-[10px] text-text-muted font-mono pt-1">
-                <span>F4 = Cobrar • F2 = Buscar</span>
+                <span>F8 = Cobrar • F3 = Cliente • F1 = Limpiar</span>
                 <span className={`flex items-center gap-1 font-bold ${isOnline ? "text-emerald-500" : "text-amber-500"}`}>
                   {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                  {isOnline ? "En Línea" : "Offline"}
+                  {isOnline ? "DGT v4.4" : "Offline"}
                 </span>
               </div>
             </div>
@@ -698,6 +777,23 @@ export default function POSPage() {
             </div>
           </div>
         )}
+
+        {/* ── POS Shortcuts Legend Bar (POSMOVI Benchmark Parity) ─────── */}
+        <div className="flex-shrink-0 bg-surface-secondary border-t border-border px-3 py-1.5 hidden md:flex items-center justify-between text-[11px] font-mono text-text-muted">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">F1</kbd> Limpiar</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">F2</kbd> Buscar</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">F3</kbd> Cliente</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">F4</kbd> Suspender</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">F8</kbd> Cobrar</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">ESC</kbd> Cancelar</span>
+            <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 bg-surface rounded border border-border text-text-main font-bold">Enter</kbd> Confirmar</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <span>{isOnline ? "Servidor Hacienda CR: Conectado" : "Modo Contingencia DGT"}</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Payment Modal ────────────────────────────────────────────── */}
@@ -764,28 +860,31 @@ export default function POSPage() {
             <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
               Forma de Pago
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {[
                 { key: "CASH_CRC" as const, label: "Efectivo", icon: Banknote, color: "emerald" },
                 { key: "SINPE" as const, label: "SINPE", icon: Smartphone, color: "blue" },
                 { key: "CARD" as const, label: "Tarjeta", icon: CreditCard, color: "purple" },
+                { key: "MIXED" as const, label: "Mixto", icon: Layers, color: "amber" },
               ].map(({ key, label, icon: Icon, color }) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setPaymentMethod(key)}
-                  className={`p-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1.5 transition-all text-xs font-bold touch-manipulation focus-visible:ring-2 focus-visible:ring-primary ${
                     paymentMethod === key
                       ? color === "emerald"
                         ? "bg-emerald-500/10 border-emerald-500 text-emerald-600 dark:text-emerald-400"
                         : color === "purple"
                         ? "bg-purple-500/10 border-purple-500 text-purple-500"
+                        : color === "amber"
+                        ? "bg-amber-500/10 border-amber-500 text-amber-500"
                         : "bg-primary-subtle border-primary text-primary"
                       : "bg-surface border-border text-text-secondary hover:bg-surface-hover hover:text-text-main"
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span>{label}</span>
+                  <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="text-[11px] sm:text-xs">{label}</span>
                 </button>
               ))}
             </div>
@@ -852,6 +951,79 @@ export default function POSPage() {
             />
           )}
 
+          {/* Mixed Payment Breakdown */}
+          {paymentMethod === "MIXED" && (
+            <div className="space-y-3 p-3 bg-surface-secondary border border-border rounded-2xl">
+              <span className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                Desglose de Pago Dividido (Mixto)
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Monto en Efectivo (₡)"
+                  type="number"
+                  placeholder="0"
+                  value={mixedCash}
+                  onChange={(e) => setMixedCash(e.target.value)}
+                  autoFocus
+                />
+                <div className="space-y-2">
+                  <Input
+                    label="Monto en Tarjeta (₡)"
+                    type="number"
+                    placeholder="0"
+                    value={mixedCard}
+                    onChange={(e) => setMixedCard(e.target.value)}
+                  />
+                  <Input
+                    label="Nº Autorización Tarjeta"
+                    placeholder="Ej. AUTH-1234"
+                    value={mixedCardRef}
+                    onChange={(e) => setMixedCardRef(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Input
+                    label="Monto en SINPE Móvil (₡)"
+                    type="number"
+                    placeholder="0"
+                    value={mixedSinpe}
+                    onChange={(e) => setMixedSinpe(e.target.value)}
+                  />
+                  <Input
+                    label="Teléfono / Ref. SINPE"
+                    placeholder="Ej. 8888-9999"
+                    value={mixedSinpeRef}
+                    onChange={(e) => setMixedSinpeRef(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-border space-y-1 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Total a Pagar:</span>
+                  <span className="font-bold text-text-main">{formatCRC(total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Total Cubierto:</span>
+                  <span className={`font-bold ${totalMixedPaid >= total ? "text-emerald-500" : "text-amber-500"}`}>
+                    {formatCRC(totalMixedPaid)}
+                  </span>
+                </div>
+                {totalMixedPaid < total ? (
+                  <div className="flex justify-between text-red-500 font-bold">
+                    <span>Saldo Pendiente:</span>
+                    <span>{formatCRC(total - totalMixedPaid)}</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-emerald-500 font-bold">
+                    <span>Vuelto Estimado:</span>
+                    <span>{formatCRC(Math.max(0, totalMixedPaid - total))}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {isInvoiceMissingCustomer && (
             <p className="text-[11px] text-amber-500 dark:text-amber-400 font-medium">
               * Para Factura Electrónica (01) debe ingresar el nombre y cédula del cliente.
@@ -861,6 +1033,12 @@ export default function POSPage() {
           {isSinpeMissingRef && (
             <p className="text-[11px] text-amber-500 dark:text-amber-400 font-medium">
               * Debe ingresar el número de teléfono o referencia SINPE.
+            </p>
+          )}
+
+          {isMixedInsufficient && (
+            <p className="text-[11px] text-amber-500 dark:text-amber-400 font-medium">
+              * El total cubierto entre efectivo, tarjeta y SINPE es inferior al total a pagar.
             </p>
           )}
 
@@ -1010,6 +1188,81 @@ export default function POSPage() {
           </div>
         </Modal>
       )}
+
+      {/* ── Fast Customer Selector Modal [F3] ─────────────────────── */}
+      <Modal
+        isOpen={isCustomerModalOpen}
+        onClose={() => setIsCustomerModalOpen(false)}
+        title="Seleccionar / Cambiar Cliente [F3]"
+        maxWidth="md"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, cédula o teléfono..."
+              value={customerSearchQuery}
+              onChange={(e) => setCustomerSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-surface-input border border-border rounded-xl text-xs text-text-main placeholder-text-muted focus:outline-none focus:border-primary"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1 max-h-64 overflow-y-auto divide-y divide-border">
+            <button
+              type="button"
+              onClick={() => {
+                setCustomerName("CLIENTE CONTADO");
+                setCustomerCedula("");
+                setDocType("04");
+                setIsCustomerModalOpen(false);
+              }}
+              className="w-full text-left p-2.5 hover:bg-surface-secondary rounded-xl flex items-center justify-between transition-colors"
+            >
+              <div>
+                <p className="font-bold text-text-main">CLIENTE CONTADO</p>
+                <p className="text-[11px] text-text-muted font-mono">Tiquete Electrónico (04) • Sin identificación</p>
+              </div>
+              {customerName === "CLIENTE CONTADO" && <CheckCircle className="w-4 h-4 text-primary" />}
+            </button>
+
+            {customers
+              .filter(
+                (c) =>
+                  c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                  c.identification_number.includes(customerSearchQuery)
+              )
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setCustomerName(c.name);
+                    setCustomerCedula(c.identification_number);
+                    setDocType("01");
+                    setIsCustomerModalOpen(false);
+                  }}
+                  className="w-full text-left p-2.5 hover:bg-surface-secondary rounded-xl flex items-center justify-between transition-colors"
+                >
+                  <div>
+                    <p className="font-bold text-text-main">{c.name}</p>
+                    <p className="text-[11px] text-text-muted font-mono">
+                      Cédula: {c.identification_number} ({c.identification_type})
+                    </p>
+                  </div>
+                  {customerCedula === c.identification_number && <CheckCircle className="w-4 h-4 text-primary" />}
+                </button>
+              ))}
+          </div>
+
+          <div className="pt-3 border-t border-border flex justify-end">
+            <Button variant="secondary" onClick={() => setIsCustomerModalOpen(false)}>
+              Cerrar [ESC]
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </POSLayout>
   );
 }

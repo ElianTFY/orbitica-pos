@@ -72,3 +72,32 @@ def verify_step_up_token(token: str, expected_user_id: str, expected_action: str
         return True
     except Exception:
         return False
+
+def verify_token_hash(plain_token: str, hashed_token: str) -> bool:
+    candidate_hash = hash_token(plain_token)
+    return hmac.compare_digest(candidate_hash, hashed_token)
+
+def create_registration_token(email: str, expires_minutes: int = 30) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
+    payload = {
+        "sub": email.strip().lower(),
+        "type": "registration",
+        "email_verified": True,
+        "exp": int(expire.timestamp()),
+        "iat": int(datetime.now(timezone.utc).timestamp()),
+        "jti": secrets.token_hex(16),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+def verify_registration_token(token: str, expected_email: str) -> bool:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "registration":
+            return False
+        if not payload.get("email_verified"):
+            return False
+        if payload.get("sub") != expected_email.strip().lower():
+            return False
+        return True
+    except Exception:
+        return False

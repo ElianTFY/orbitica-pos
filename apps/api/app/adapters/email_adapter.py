@@ -96,6 +96,8 @@ class SmtpEmailAdapter(BaseEmailAdapter):
             logger.error(f"Error al enviar correo SMTP a {to_email}: {e}")
             return False
 
+_GLOBAL_CONSOLE_ADAPTER = ConsoleEmailAdapter()
+
 def get_email_adapter() -> BaseEmailAdapter:
     smtp_host = getattr(settings, "SMTP_HOST", None)
     if smtp_host and settings.ENVIRONMENT == "production":
@@ -106,4 +108,4 @@ def get_email_adapter() -> BaseEmailAdapter:
             password=getattr(settings, "SMTP_PASSWORD", None),
             use_tls=getattr(settings, "SMTP_TLS", True)
         )
-    return ConsoleEmailAdapter()
+    return _GLOBAL_CONSOLE_ADAPTER

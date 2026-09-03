@@ -1,11 +1,22 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Boolean, Integer, DateTime, ForeignKey, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.db.base import Base, UUIDMixin, TimestampMixin, GUID
 
 class User(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "users"
+
+    def __init__(self, **kwargs):
+        if "email" in kwargs and "normalized_email" not in kwargs and kwargs["email"]:
+            kwargs["normalized_email"] = kwargs["email"].strip().lower()
+        super().__init__(**kwargs)
+
+    @validates("email")
+    def _sync_normalized_email(self, key, value):
+        if value:
+            self.normalized_email = value.strip().lower()
+        return value
 
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(),
@@ -14,6 +25,7 @@ class User(Base, UUIDMixin, TimestampMixin):
         index=True
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    normalized_email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -24,9 +36,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     
-    # MFA TOTP
+    # MFA TOTP & Email 2FA
     totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    email_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Password Recovery
     recovery_token_hash: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
@@ -39,6 +52,8 @@ class User(Base, UUIDMixin, TimestampMixin):
     email_verification_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     organization: Mapped["Organization | None"] = relationship("Organization", back_populates="users")
+    memberships: Mapped[list["OrganizationMembership"]] = relationship("OrganizationMembership", back_populates="user", cascade="all, delete-orphan")
+    two_factor_challenges: Mapped[list["TwoFactorChallenge"]] = relationship("TwoFactorChallenge", back_populates="user", cascade="all, delete-orphan")
     branch_accesses: Mapped[list["UserBranchAccess"]] = relationship("UserBranchAccess", back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
 

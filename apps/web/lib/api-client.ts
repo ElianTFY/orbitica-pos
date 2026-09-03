@@ -34,7 +34,11 @@ class ApiClient {
 
   async request<T>(
     endpoint: string,
-    options: RequestInit & { timeoutMs?: number; skipAuthRefresh?: boolean } = {}
+    options: Omit<RequestInit, "body"> & {
+      body?: any;
+      timeoutMs?: number;
+      skipAuthRefresh?: boolean;
+    } = {}
   ): Promise<ApiResponse<T>> {
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
     const url = `${API_BASE}${cleanEndpoint}`;
@@ -53,8 +57,14 @@ class ApiClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+    const serializedBody =
+      options.body && typeof options.body === "object" && !(options.body instanceof FormData)
+        ? JSON.stringify(options.body)
+        : options.body;
+
     const fetchOptions: RequestInit = {
       ...options,
+      body: serializedBody,
       headers,
       credentials: "include", // Send HttpOnly refresh cookies
       signal: options.signal || controller.signal,
