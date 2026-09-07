@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import {
   SuperadminRole,
   SuperadminPermission,
@@ -79,7 +79,7 @@ export interface EnvironmentMetadata {
   version: string;
   build_date: string;
   status: "HEALTHY" | "DEGRADED" | "MAINTENANCE";
-  uptime_pct: number;
+  uptime_pct: number | null;
 }
 
 interface SuperadminContextType {
@@ -108,8 +108,6 @@ interface SuperadminContextType {
 
   // Priority Alerts (Requiere Atención)
   alerts: PlatformAlert[];
-  resolveAlert: (alertId: string, notes?: string) => void;
-  assignAlert: (alertId: string, assignee: string) => void;
 
   // Managed Tenants & 360° View
   tenants: ManagedTenant360[];
@@ -118,7 +116,7 @@ interface SuperadminContextType {
   closeTenant360: () => void;
   updateTenantPlan: (tenantId: string, planId: string, reason: string, stepUpToken?: string) => void;
   extendTenantTrial: (tenantId: string, days: number, reason: string) => void;
-  toggleTenantSuspension: (tenantId: string, reason: string, stepUpToken?: string) => void;
+  toggleTenantSuspension: (tenantId: string, reason: string, stepUpToken?: string) => Promise<void>;
   setTenantCustomLimits: (tenantId: string, limits: { users?: number; branches?: number }) => void;
 
   // Plans & Price Versioning
@@ -136,18 +134,18 @@ interface SuperadminContextType {
   // Delegated Access Monitor & Kill-Switch
   activeGrants: SupportAccessGrant[];
   requestDelegatedAccess: (orgId: string, orgName: string, reason: string, durationMinutes: number) => void;
-  revokeDelegatedAccess: (grantId: string, reason: string) => void;
+  revokeDelegatedAccess: (grantId: string, reason: string) => Promise<void>;
 
   // Support Tickets System
   tickets: SupportTicket[];
-  replyTicketAsAgent: (ticketId: string, message: string, isInternalNote?: boolean) => void;
-  updateTicketStatus: (ticketId: string, status: SupportTicket["status"], reason?: string) => void;
+  replyTicketAsAgent: (ticketId: string, message: string, isInternalNote?: boolean) => Promise<void>;
+  updateTicketStatus: (ticketId: string, status: SupportTicket["status"], reason?: string) => Promise<void>;
   assignTicket: (ticketId: string, agentName: string) => void;
   escalateTicket: (ticketId: string, team: string, reason: string) => void;
 
   // Technical Health
   technicalHealth: TechnicalServiceHealth[];
-  refreshTechnicalHealth: () => void;
+  refreshTechnicalHealth: () => Promise<void>;
 
   // Broadcast & Automations
   broadcasts: PlatformBroadcast[];
@@ -161,8 +159,8 @@ interface SuperadminContextType {
 
   // Step-Up Authentication Modal State
   stepUpModalOpen: boolean;
-  stepUpActionContext: { action: string; resource: string; onConfirm: (token: string, reason: string) => void } | null;
-  requestStepUpAuth: (action: string, resource: string, onConfirm: (token: string, reason: string) => void) => void;
+  stepUpActionContext: { action: string; resource: string; onConfirm: (token: string, reason: string) => void | Promise<void> } | null;
+  requestStepUpAuth: (action: string, resource: string, onConfirm: (token: string, reason: string) => void | Promise<void>) => void;
   closeStepUpModal: () => void;
 
   // Universal Command Palette (Ctrl+K)
@@ -174,23 +172,10 @@ const SuperadminContext = createContext<SuperadminContextType | undefined>(undef
 
 // Initial Technical Health Services (Validated via real API health endpoints)
 const DEFAULT_TECH_HEALTH: TechnicalServiceHealth[] = [
-  { id: "srv_frontend", name: "Next.js Frontend Edge", category: "FRONTEND", status: "OPERATIONAL", latency_ms: 0, uptime_percentage: 100, last_checked: "En vivo" },
-  { id: "srv_api", name: "Core REST API FastAPI", category: "API", status: "OPERATIONAL", latency_ms: 0, uptime_percentage: 100, last_checked: "En vivo" },
-  { id: "srv_database", name: "PostgreSQL 16 Engine", category: "API", status: "OPERATIONAL", latency_ms: 0, uptime_percentage: 100, last_checked: "En vivo" },
-  { id: "srv_atv", name: "Ministerio de Hacienda CR (ATV)", category: "HACIENDA_ATV", status: "OPERATIONAL", latency_ms: 0, uptime_percentage: 100, last_checked: "Verificación Pendiente" },
-];
-
-// Initial Feature Flags
-const DEFAULT_FEATURE_FLAGS: FeatureFlagDefinition[] = [
-  { id: "flag_xades_v44", key: "xades_epes_v44", name: "Firma Criptográfica XAdES-EPES v4.4", description: "Firmado XML conforme a normativa tributaria de Costa Rica", status: "ACTIVE", scope: "GLOBAL", environment: "ALL", created_at: "2026-08-01", updated_at: "2026-08-30" },
-  { id: "flag_idempotency", key: "pos_idempotency_engine", name: "Motor de Idempotencia Transaccional", description: "Prevención estricta de doble cobro y colisión de consecutivos en POS", status: "ACTIVE", scope: "GLOBAL", environment: "ALL", created_at: "2026-08-20", updated_at: "2026-08-31" },
-];
-
-// Initial Automation Rules
-const DEFAULT_AUTOMATION_RULES: PlatformAutomationRule[] = [
-  { id: "rule_1", name: "Alerta de Vencimiento de Prueba (48h antes)", event_trigger: "TRIAL_EXPIRING_48H", action: "SEND_EMAIL_REMINDER", is_enabled: true, execution_count: 0, last_executed_at: "" },
-  { id: "rule_2", name: "Activación Automática de Período de Gracia (7 días)", event_trigger: "PAYMENT_FAILED", action: "TRIGGER_GRACE_PERIOD", is_enabled: true, execution_count: 0, last_executed_at: "" },
-  { id: "rule_3", name: "Escalamiento Urgente por Documentos Rechazados Hacienda", event_trigger: "INVOICE_REJECTED_HACIENDA", action: "CREATE_CRITICAL_ALERT", is_enabled: true, execution_count: 0, last_executed_at: "" },
+  { id: "srv_frontend", name: "Next.js Frontend Edge", category: "FRONTEND", status: "OPERATIONAL", latency_ms: 0, uptime_percentage: 0, last_checked: "Página cargada" },
+  { id: "srv_api", name: "Core REST API FastAPI", category: "API", status: "DEGRADED", latency_ms: 0, uptime_percentage: 0, last_checked: "Sin verificar" },
+  { id: "srv_database", name: "Base de datos", category: "DATABASE", status: "DEGRADED", latency_ms: 0, uptime_percentage: 0, last_checked: "Sin verificar" },
+  { id: "srv_atv", name: "Ministerio de Hacienda CR (ATV)", category: "HACIENDA_ATV", status: "MAINTENANCE", latency_ms: 0, uptime_percentage: 0, last_checked: "No medido por el Hub" },
 ];
 
 export function SuperadminProvider({ children }: { children: React.ReactNode }) {
@@ -207,12 +192,12 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
 
   // Real Environment Metadata
   const [envMetadata, setEnvMetadata] = useState<EnvironmentMetadata>({
-    environment: "PRODUCTION",
-    region: "cr1",
+    environment: "DEVELOPMENT",
+    region: "Costa Rica",
     version: "v2.4.0",
-    build_date: "2026-09-02",
-    status: "HEALTHY",
-    uptime_pct: 100,
+    build_date: "—",
+    status: "DEGRADED",
+    uptime_pct: null,
   });
 
   // Notifications State (Starts empty, populated from real events)
@@ -222,80 +207,145 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
   const [alerts, setAlerts] = useState<PlatformAlert[]>([]);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [priceVersions, setPriceVersions] = useState<PricePlanVersion[]>([]);
-  const [featureFlags, setFeatureFlags] = useState<FeatureFlagDefinition[]>(DEFAULT_FEATURE_FLAGS);
+  const [featureFlags, setFeatureFlags] = useState<FeatureFlagDefinition[]>([]);
   const [transactions, setTransactions] = useState<IdempotentPaymentTransaction[]>([]);
   const [activeGrants, setActiveGrants] = useState<SupportAccessGrant[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [technicalHealth, setTechnicalHealth] = useState<TechnicalServiceHealth[]>(DEFAULT_TECH_HEALTH);
   const [broadcasts, setBroadcasts] = useState<PlatformBroadcast[]>([]);
-  const [automationRules, setAutomationRules] = useState<PlatformAutomationRule[]>(DEFAULT_AUTOMATION_RULES);
+  const [automationRules, setAutomationRules] = useState<PlatformAutomationRule[]>([]);
   const [auditLogs, setAuditLogs] = useState<SuperadminAuditEntry[]>([]);
 
   // Step-Up Modal
   const [stepUpModalOpen, setStepUpModalOpen] = useState(false);
-  const [stepUpActionContext, setStepUpActionContext] = useState<{ action: string; resource: string; onConfirm: (token: string, reason: string) => void } | null>(null);
+  const [stepUpActionContext, setStepUpActionContext] = useState<{ action: string; resource: string; onConfirm: (token: string, reason: string) => void | Promise<void> } | null>(null);
 
   // Universal Command Palette
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // Fetch Environment Metadata from Backend
+  const loadHubData = useCallback(async () => {
+    if (user?.role !== "superadmin") return;
+    const [environment, overview, ticketList, grants, audit] = await Promise.all([
+      api.request<EnvironmentMetadata>("/superadmin/environment"),
+      api.request<any[]>("/superadmin/organizations/overview"),
+      api.request<any[]>("/support/tickets"),
+      api.request<any[]>("/support/admin/delegated-access"),
+      api.request<any[]>("/superadmin/audit?limit=200"),
+    ]);
+
+    setEnvMetadata(environment.data);
+    const mappedTenants: ManagedTenant360[] = overview.data.map((row: any) => ({
+      id: String(row.id),
+      legal_name: row.legal_name,
+      trade_name: row.trade_name,
+      identification_number: row.identification_number,
+      identification_type: row.identification_type,
+      email: row.email,
+      phone: row.phone || "",
+      plan_id: "unconfigured",
+      state: row.is_active ? "active" : "suspended",
+      trial_days_left: 0,
+      created_at: row.created_at,
+      next_billing_date: "",
+      branches_count: Number(row.branches_count || 0),
+      users_count: Number(row.users_count || 0),
+      products_count: Number(row.products_count || 0),
+      sales_count: Number(row.sales_count || 0),
+      total_sales_volume: Number(row.total_sales_volume || 0),
+      hacienda_status: row.accepted_invoices_count > 0
+        ? "OPERATIONAL"
+        : row.fiscal_configuration_complete ? "WARNING" : "CONFIG_REQUIRED",
+      atv_environment: row.atv_environment || "STAGING",
+      tags: [row.is_active ? "Activo" : "Suspendido"],
+    }));
+    setTenants(mappedTenants);
+
+    const ticketDetails = await Promise.all(ticketList.data.map(async (ticket: any) => {
+      const detail = await api.request<any>(`/support/tickets/${ticket.id}`);
+      return detail.data;
+    }));
+    const mappedTickets: SupportTicket[] = ticketDetails.map((row: any) => ({
+      id: String(row.id),
+      ticket_number: row.ticket_number,
+      organization_id: String(row.organization_id),
+      organization_name: row.organization_name,
+      created_by_name: row.created_by_name,
+      created_by_email: row.created_by_email,
+      category: row.category,
+      priority: row.priority,
+      status: row.status,
+      subject: row.subject,
+      description: row.description,
+      telemetry: row.telemetry || undefined,
+      messages: row.messages || [],
+      created_at: row.created_at,
+      updated_at: row.updated_at || row.created_at,
+    }));
+    setTickets(mappedTickets);
+
+    const tenantNames = new Map(mappedTenants.map((tenant) => [tenant.id, tenant.trade_name]));
+    setActiveGrants(grants.data.map((grant: any) => ({
+      id: String(grant.grant_id),
+      organization_id: String(grant.organization_id),
+      organization_name: tenantNames.get(String(grant.organization_id)) || "Empresa",
+      granted_by_user_id: String(grant.granted_by_user_id),
+      reason: grant.reason,
+      permission_level: grant.permission_level,
+      expires_at: grant.expires_at,
+      created_at: grant.created_at,
+      is_revoked: Boolean(grant.is_revoked),
+    })));
+
+    const urgentAlerts: PlatformAlert[] = mappedTickets
+      .filter((ticket) => ["HIGH", "URGENT"].includes(ticket.priority) && !["RESOLVED", "CLOSED"].includes(ticket.status))
+      .map((ticket) => ({
+        id: `ticket_${ticket.id}`,
+        severity: ticket.priority === "URGENT" ? "CRITICAL" : "HIGH",
+        category: "URGENT_TICKET",
+        tenant_id: ticket.organization_id,
+        tenant_name: ticket.organization_name,
+        title: ticket.subject,
+        description: ticket.description,
+        occurred_at: ticket.created_at,
+        recommended_action: "Revisar y responder el ticket de soporte",
+        deep_link: "support",
+        status: ticket.status === "IN_PROGRESS" ? "IN_PROGRESS" : "OPEN",
+      }));
+    setAlerts(urgentAlerts);
+    setNotifications(urgentAlerts.map((alert) => ({
+      id: alert.id,
+      title: alert.title,
+      message: `${alert.tenant_name}: ${alert.description}`,
+      severity: alert.severity === "CRITICAL" ? "CRITICAL" : "WARNING",
+      org_name: alert.tenant_name,
+      created_at: alert.occurred_at,
+      is_read: false,
+      deep_link: "support",
+    })));
+
+    setAuditLogs(audit.data.map((row: any) => ({
+      id: String(row.id),
+      user_id: row.actor_id ? String(row.actor_id) : "system",
+      user_name: row.actor_id ? `Usuario ${String(row.actor_id).slice(0, 8)}` : "Sistema",
+      user_role: "PLATFORM_OWNER",
+      action: row.action,
+      resource: row.resource_id ? `${row.resource}: ${row.resource_id}` : row.resource,
+      tenant_id: row.organization_id ? String(row.organization_id) : undefined,
+      details_masked: row.payload_after || row.payload_before || {},
+      ip_address: row.ip_address || "—",
+      user_agent: "—",
+      session_id: "—",
+      is_critical: ["DELEGATED_ACCESS_ADMIN_REVOKED", "SUPERADMIN_TOGGLE_ORG_STATUS"].includes(row.action),
+      step_up_confirmed: Boolean(row.step_up_token),
+      created_at: row.created_at,
+    })));
+  }, [user?.role]);
+
   useEffect(() => {
-    fetch("/api/v1/superadmin/environment")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          setEnvMetadata(json.data);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Load Real Data from Multi-Tenant Backend API
-  useEffect(() => {
-    async function loadSuperadminData() {
-      try {
-        const [orgsRes, ticketsRes] = await Promise.allSettled([
-          api.request<any[]>("/superadmin/organizations"),
-          api.request<any[]>("/support/tickets"),
-        ]);
-
-        if (orgsRes.status === "fulfilled" && orgsRes.value?.data) {
-          const orgList = orgsRes.value.data;
-          const mapped: ManagedTenant360[] = orgList.map((o) => ({
-            id: o.id,
-            legal_name: o.legal_name || o.name,
-            trade_name: o.trade_name || o.name,
-            identification_number: o.identification_number || "3101000000",
-            identification_type: o.identification_type || "JURIDICA",
-            email: o.email || "contacto@empresa.cr",
-            phone: o.phone || "+506 2200-0000",
-            plan_id: "crece",
-            state: o.is_active ? "active" : "suspended",
-            trial_days_left: 14,
-            created_at: o.created_at ? o.created_at.substring(0, 10) : "2026-08-30",
-            next_billing_date: "2026-09-30",
-            branches_count: 1,
-            users_count: 1,
-            products_count: 0,
-            sales_count: 0,
-            total_sales_volume: 0,
-            hacienda_status: o.identification_number ? "OPERATIONAL" : "CONFIG_REQUIRED",
-            atv_environment: "STAGING",
-            tags: o.is_active ? ["Activo", "PostgreSQL"] : ["Suspendido"],
-          }));
-          setTenants(mapped);
-        }
-
-        if (ticketsRes.status === "fulfilled" && ticketsRes.value?.data) {
-          setTickets(ticketsRes.value.data);
-        }
-      } catch (e) {
-        console.warn("Superadmin backend fetch error:", e);
-      }
-    }
-
-    loadSuperadminData();
-  }, []);
+    loadHubData().catch(() => {
+      setEnvMetadata((previous) => ({ ...previous, status: "DEGRADED" }));
+    });
+  }, [loadHubData]);
 
   const toggleSidebar = () => setIsSidebarCollapsed((prev) => !prev);
 
@@ -308,26 +358,9 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   };
 
-  // Append-only audit logger
+  // Audit entries are authoritative server records only.
   const logAuditEvent = (event: Omit<SuperadminAuditEntry, "id" | "created_at" | "session_id" | "ip_address" | "user_agent">) => {
-    const newEntry: SuperadminAuditEntry = {
-      ...event,
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      session_id: `sess_${Date.now()}`,
-      ip_address: typeof window !== "undefined" ? window.location.hostname : "127.0.0.1",
-      user_agent: typeof navigator !== "undefined" ? navigator.userAgent.substring(0, 40) : "Orbítica Hub Core",
-    };
-
-    setAuditLogs((prev) => {
-      const updated = [newEntry, ...prev];
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("orbitica_superadmin_audit_logs", JSON.stringify(updated.slice(0, 500)));
-        } catch (e) {}
-      }
-      return updated;
-    });
+    void event;
   };
 
   // Permission Check
@@ -338,7 +371,7 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
   };
 
   // Step-Up Reauthentication Trigger
-  const requestStepUpAuth = (action: string, resource: string, onConfirm: (token: string, reason: string) => void) => {
+  const requestStepUpAuth = (action: string, resource: string, onConfirm: (token: string, reason: string) => void | Promise<void>) => {
     setStepUpActionContext({ action, resource, onConfirm });
     setStepUpModalOpen(true);
   };
@@ -348,128 +381,38 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
     setStepUpActionContext(null);
   };
 
-  // Alert Actions
-  const resolveAlert = (alertId: string, notes?: string) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === alertId ? { ...a, status: "RESOLVED", resolved_at: new Date().toISOString(), internal_notes: notes || a.internal_notes } : a))
-    );
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "RESOLVE_ALERT",
-      resource: `Alert #${alertId}`,
-      reason: notes || "Alerta resuelta satisfactoriamente",
-      details_masked: { alert_id: alertId, resolution: notes },
-      is_critical: false,
-      step_up_confirmed: false,
-    });
-  };
-
-  const assignAlert = (alertId: string, assignee: string) => {
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === alertId ? { ...a, assigned_to: assignee, status: "IN_PROGRESS" } : a))
-    );
-  };
-
   // Tenant Operations
   const openTenant360 = (tenantId: string) => setSelectedTenantId(tenantId);
   const closeTenant360 = () => setSelectedTenantId(null);
   const selectedTenant360 = tenants.find((t) => t.id === selectedTenantId) || null;
 
   const updateTenantPlan = (tenantId: string, planId: string, reason: string, stepUpToken?: string) => {
-    setTenants((prev) =>
-      prev.map((t) => (t.id === tenantId ? { ...t, plan_id: planId, state: "active" } : t))
-    );
-    try {
-      const raw = localStorage.getItem(`orbitica_subscription_${tenantId}`);
-      const sub = raw ? JSON.parse(raw) : {};
-      sub.plan_id = planId;
-      sub.state = "active";
-      localStorage.setItem(`orbitica_subscription_${tenantId}`, JSON.stringify(sub));
-    } catch (e) {}
-
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "UPDATE_TENANT_PLAN",
-      resource: `Tenant #${tenantId}`,
-      tenant_id: tenantId,
-      reason,
-      details_masked: { new_plan: planId, step_up: Boolean(stepUpToken) },
-      is_critical: true,
-      step_up_confirmed: Boolean(stepUpToken),
-    });
+    // Billing plans are not persisted until a real billing provider/model exists.
+    void tenantId;
+    void planId;
+    void reason;
+    void stepUpToken;
   };
 
   const extendTenantTrial = (tenantId: string, days: number, reason: string) => {
-    setTenants((prev) =>
-      prev.map((t) => (t.id === tenantId ? { ...t, trial_days_left: t.trial_days_left + days, state: "trial" } : t))
-    );
-    try {
-      const raw = localStorage.getItem(`orbitica_subscription_${tenantId}`);
-      if (raw) {
-        const sub = JSON.parse(raw);
-        sub.state = "trial";
-        const curEnd = new Date(sub.trial_end_at || new Date());
-        curEnd.setDate(curEnd.getDate() + days);
-        sub.trial_end_at = curEnd.toISOString().split("T")[0];
-        localStorage.setItem(`orbitica_subscription_${tenantId}`, JSON.stringify(sub));
-      }
-    } catch (e) {}
-
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "EXTEND_TRIAL",
-      resource: `Tenant #${tenantId}`,
-      tenant_id: tenantId,
-      reason,
-      details_masked: { extended_days: days },
-      is_critical: false,
-      step_up_confirmed: false,
-    });
+    void tenantId;
+    void days;
+    void reason;
   };
 
-  const toggleTenantSuspension = (tenantId: string, reason: string, stepUpToken?: string) => {
-    setTenants((prev) =>
-      prev.map((t) => {
-        if (t.id === tenantId) {
-          const next = t.state === "suspended" ? "active" : "suspended";
-          try {
-            const raw = localStorage.getItem(`orbitica_subscription_${tenantId}`);
-            if (raw) {
-              const sub = JSON.parse(raw);
-              sub.state = next;
-              localStorage.setItem(`orbitica_subscription_${tenantId}`, JSON.stringify(sub));
-            }
-          } catch (e) {}
-          return { ...t, state: next };
-        }
-        return t;
-      })
-    );
-
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "TOGGLE_TENANT_SUSPENSION",
-      resource: `Tenant #${tenantId}`,
-      tenant_id: tenantId,
-      reason,
-      details_masked: { step_up_used: Boolean(stepUpToken) },
-      is_critical: true,
-      step_up_confirmed: Boolean(stepUpToken),
+  const toggleTenantSuspension = async (tenantId: string, reason: string, stepUpToken?: string) => {
+    const tenant = tenants.find((row) => row.id === tenantId);
+    if (!tenant || !stepUpToken) return;
+    await api.request(`/superadmin/organizations/${tenantId}/status?is_active=${tenant.state === "suspended"}&reason=${encodeURIComponent(reason)}`, {
+      method: "PATCH",
+      headers: { "X-Step-Up-Token": stepUpToken },
     });
+    await loadHubData();
   };
 
   const setTenantCustomLimits = (tenantId: string, limits: { users?: number; branches?: number }) => {
-    setTenants((prev) =>
-      prev.map((t) => (t.id === tenantId ? { ...t, custom_limits: { ...t.custom_limits, ...limits } } : t))
-    );
+    void tenantId;
+    void limits;
   };
 
   // Price Versioning
@@ -531,123 +474,36 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
 
   // Delegated Access Request & Kill-switch
   const requestDelegatedAccess = (orgId: string, orgName: string, reason: string, durationMinutes: number) => {
-    const expires = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-    const newGrant: SupportAccessGrant = {
-      id: `grant_${Date.now()}`,
-      organization_id: orgId,
-      organization_name: orgName,
-      granted_by_user_id: "usr_superadmin",
-      reason,
-      permission_level: "READ_ONLY",
-      expires_at: expires,
-      created_at: new Date().toISOString(),
-      is_revoked: false,
-      token: `sup_tok_${Date.now()}`,
-    };
-
-    setActiveGrants((prev) => [newGrant, ...prev]);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(`orbitica_support_grant_${orgId}`, JSON.stringify(newGrant));
-      } catch {}
-    }
-
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "REQUEST_DELEGATED_ACCESS",
-      resource: `Organization: ${orgName}`,
-      tenant_id: orgId,
-      reason,
-      details_masked: { duration_minutes: durationMinutes, permission: "READ_ONLY" },
-      is_critical: false,
-      step_up_confirmed: false,
-    });
+    // Consent is intentionally owner-initiated; the Hub cannot mint its own access.
+    void orgId;
+    void orgName;
+    void reason;
+    void durationMinutes;
   };
 
-  const revokeDelegatedAccess = (grantId: string, reason: string) => {
-    setActiveGrants((prev) => prev.filter((g) => g.id !== grantId));
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "REVOKE_DELEGATED_ACCESS",
-      resource: `Grant #${grantId}`,
-      reason,
-      details_masked: { grant_id: grantId },
-      is_critical: false,
-      step_up_confirmed: false,
+  const revokeDelegatedAccess = async (grantId: string, reason: string) => {
+    await api.request(`/support/admin/delegated-access/${grantId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
     });
+    await loadHubData();
   };
 
   // Ticket Operations
-  const replyTicketAsAgent = (ticketId: string, message: string, isInternalNote: boolean = false) => {
-    const timestamp = new Date().toISOString().replace("T", " ").substring(0, 19);
-    setTickets((prev) =>
-      prev.map((t) => {
-        if (t.id === ticketId) {
-          const updated = {
-            ...t,
-            status: (isInternalNote ? t.status : "WAITING_CLIENT") as SupportTicket["status"],
-            updated_at: timestamp,
-            messages: [
-              ...t.messages,
-              {
-                id: `msg_${Date.now()}`,
-                sender_type: "SUPPORT_AGENT" as const,
-                sender_name: "Especialista Orbítica Hub",
-                message,
-                is_internal_note: isInternalNote,
-                created_at: timestamp,
-              },
-            ],
-          };
-
-          // Sync with tenant local storage
-          if (typeof window !== "undefined") {
-            try {
-              const raw = localStorage.getItem(`orbitica_support_tickets_${t.organization_id}`);
-              const tenantTickets = raw ? JSON.parse(raw) : [];
-              const syncTickets = tenantTickets.map((tk: any) => (tk.id === ticketId ? updated : tk));
-              localStorage.setItem(`orbitica_support_tickets_${t.organization_id}`, JSON.stringify(syncTickets));
-            } catch {}
-          }
-
-          return updated;
-        }
-        return t;
-      })
-    );
-
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: isInternalNote ? "ADD_INTERNAL_NOTE" : "REPLY_SUPPORT_TICKET",
-      resource: `Ticket #${ticketId}`,
-      reason: isInternalNote ? "Nota interna confidencial" : "Respuesta al cliente",
-      details_masked: { ticket_id: ticketId, is_internal: isInternalNote },
-      is_critical: false,
-      step_up_confirmed: false,
+  const replyTicketAsAgent = async (ticketId: string, message: string, isInternalNote: boolean = false) => {
+    await api.request(`/support/tickets/${ticketId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message, is_internal_note: isInternalNote }),
     });
+    await loadHubData();
   };
 
-  const updateTicketStatus = (ticketId: string, status: SupportTicket["status"], reason?: string) => {
-    setTickets((prev) =>
-      prev.map((t) => (t.id === ticketId ? { ...t, status, updated_at: new Date().toISOString().replace("T", " ").substring(0, 19) } : t))
-    );
-    logAuditEvent({
-      user_id: "usr_superadmin",
-      user_name: "Superadministrador",
-      user_role: currentRole,
-      action: "UPDATE_TICKET_STATUS",
-      resource: `Ticket #${ticketId}`,
-      reason: reason || `Estado cambiado a ${status}`,
-      details_masked: { ticket_id: ticketId, new_status: status },
-      is_critical: false,
-      step_up_confirmed: false,
+  const updateTicketStatus = async (ticketId: string, status: SupportTicket["status"], reason?: string) => {
+    await api.request(`/support/tickets/${ticketId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, reason: reason || undefined }),
     });
+    await loadHubData();
   };
 
   const assignTicket = (ticketId: string, agentName: string) => {
@@ -711,10 +567,36 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
     );
   };
 
-  const refreshTechnicalHealth = () => {
-    setTechnicalHealth((prev) =>
-      prev.map((s) => ({ ...s, latency_ms: Math.floor(15 + Math.random() * 30), last_checked: "Justo ahora" }))
-    );
+  const refreshTechnicalHealth = async () => {
+    const startedAt = performance.now();
+    try {
+      const response = await api.request<any>("/health/ready");
+      const latency = Math.round(performance.now() - startedAt);
+      const checks = response.data?.checks || {};
+      const now = new Date().toISOString();
+      setTechnicalHealth((previous) => previous.map((service) => {
+        if (service.id === "srv_api") {
+          return { ...service, status: "OPERATIONAL", latency_ms: latency, last_checked: now };
+        }
+        if (service.id === "srv_database") {
+          return {
+            ...service,
+            status: checks.database === "connected" && checks.migrations === "applied" ? "OPERATIONAL" : "DEGRADED",
+            latency_ms: latency,
+            last_checked: now,
+            incident_notes: checks.migrations === "applied" ? undefined : "Migraciones no verificadas",
+          };
+        }
+        return service;
+      }));
+    } catch {
+      const now = new Date().toISOString();
+      setTechnicalHealth((previous) => previous.map((service) =>
+        ["srv_api", "srv_database"].includes(service.id)
+          ? { ...service, status: "OUTAGE", last_checked: now }
+          : service,
+      ));
+    }
   };
 
   return (
@@ -734,8 +616,6 @@ export function SuperadminProvider({ children }: { children: React.ReactNode }) 
         markNotificationAsRead,
         markAllNotificationsAsRead,
         alerts,
-        resolveAlert,
-        assignAlert,
         tenants,
         selectedTenant360,
         openTenant360,

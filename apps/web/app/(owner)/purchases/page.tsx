@@ -18,14 +18,11 @@ import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
 import { PurchaseRecord } from "@/types";
-import { api } from "@/lib/api-client";
 
 export default function PurchasesPage() {
-  const { purchases, suppliers, products, branches, recordPurchase, settings } = useStore();
+  const { purchases, suppliers, products, recordPurchase, settings } = useStore();
   const [search, setSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [supplierName, setSupplierName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -34,9 +31,10 @@ export default function PurchasesPage() {
   const [productName, setProductName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const openCreateModal = () => {
-    setSaveError(null);
     setSupplierName(suppliers[0]?.name || "");
     setInvoiceNumber(`FAC-${Date.now().toString().slice(-6)}`);
     setPaymentType("CONTADO");
@@ -55,54 +53,26 @@ export default function PurchasesPage() {
 
   const handleCreatePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
-    setSaveError(null);
-
     const prod = products.find((p) => p.id === selectedProductId);
     const pName = prod ? prod.name : productName || "Producto Comprado";
-    const foundSupplier = suppliers.find((s) => s.name.toLowerCase() === supplierName.trim().toLowerCase());
 
-    const invNum = invoiceNumber.trim() || `FAC-${Date.now().toString().slice(-6)}`;
-    const qty = parseFloat(quantity) || 1;
-    const cost = parseFloat(unitCost) || (prod ? prod.cost_price : 0);
-
+    setIsSaving(true);
+    setFormError(null);
     try {
-      if (prod && branches.length > 0) {
-        await api.request("/purchases", {
-          method: "POST",
-          body: {
-            branch_id: branches[0].id,
-            supplier_id: foundSupplier?.id || undefined,
-            invoice_number: invNum,
-            payment_type: paymentType,
-            items: [
-              {
-                product_id: prod.id,
-                quantity: qty,
-                unit_cost: cost,
-              },
-            ],
-          },
-        });
-      }
-
-      recordPurchase({
-        supplierName: supplierName.trim() || "Proveedor General",
-        invoiceNumber: invNum,
+      await recordPurchase({
+        supplierName: supplierName.trim(),
+        invoiceNumber: invoiceNumber.trim() || `FAC-${Date.now()}`,
         paymentType,
-        items: [
-          {
-            productId: prod?.id,
-            productName: pName,
-            quantity: qty,
-            unitCost: cost,
-          },
-        ],
+        items: [{
+          productId: prod?.id,
+          productName: pName,
+          quantity: parseFloat(quantity) || 1,
+          unitCost: parseFloat(unitCost) || 0,
+        }],
       });
-
       setIsModalOpen(false);
-    } catch (err: any) {
-      setSaveError(err?.message || "Error al registrar la compra en el servidor");
+    } catch (error: any) {
+      setFormError(error?.message || "No fue posible registrar la compra.");
     } finally {
       setIsSaving(false);
     }
@@ -214,6 +184,7 @@ export default function PurchasesPage() {
         maxWidth="md"
       >
         <form onSubmit={handleCreatePurchase} className="space-y-4">
+          {formError && <div role="alert" className="p-3 rounded-xl bg-semantic-danger-bg border border-semantic-danger-border text-xs text-semantic-danger-text">{formError}</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
@@ -229,14 +200,7 @@ export default function PurchasesPage() {
                     <option key={s.id} value={s.name}>{s.name}</option>
                   ))}
                 </select>
-              ) : (
-                <Input
-                  placeholder="Ej: Distribuidora La Florida"
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  required
-                />
-              )}
+              ) : <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-500">Primero registra un proveedor en el módulo Proveedores.</p>}
             </div>
 
             <Input
@@ -307,16 +271,12 @@ export default function PurchasesPage() {
             </select>
           </div>
 
-          {saveError && (
-            <p className="text-xs text-semantic-danger-text font-bold">{saveError}</p>
-          )}
-
           <div className="pt-3 border-t border-border flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary" disabled={isSaving}>
-              {isSaving ? "Guardando..." : "Procesar Entrada de Mercadería"}
+            <Button type="submit" variant="primary" disabled={isSaving || suppliers.length === 0 || products.length === 0}>
+              {isSaving ? "Procesando…" : "Procesar Entrada de Mercadería"}
             </Button>
           </div>
         </form>

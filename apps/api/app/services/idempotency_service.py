@@ -4,7 +4,8 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from app.models.idempotency import IdempotencyRecord
 from app.core.exceptions import ConflictException
 
@@ -35,62 +36,46 @@ class IdempotencyService:
         If is_cached is True: record.response_payload contains the cached JSON response.
         If is_cached is False: a new IN_PROGRESS lock was acquired and the operation should execute.
         """
+        if not idempotency_key or len(idempotency_key) > 255:
+            raise ConflictException("Clave de idempotencia inválida")
+        if self.db.get_bind().dialect.name == "postgresql":
+            # Covers the first insert as well as retries; lock lives until the
+            # sale AND its cached response have committed in one transaction.
+            lock_key = int.from_bytes(hashlib.sha256(
+                f"{self.organization_id}:{operation}:{idempotency_key}".encode()
+            ).digest()[:8], byteorder="big", signed=True)
+            await self.db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
         stmt = select(IdempotencyRecord).where(
             IdempotencyRecord.organization_id == self.organization_id,
             IdempotencyRecord.operation == operation,
-            IdempotencyRecord.idempotency_key == idempotency_key
+            IdempotencyRecord.idempotency_key == idempotency_key,
         ).with_for_update()
-        
-        res = await self.db.execute(stmt)
-        record = res.scalar_one_or_none()
-        now = datetime.now(timezone.utc)
-
+        record = (await self.db.execute(stmt)).scalar_one_or_none()
         if record:
+            if record.request_hash != request_hash:
+                raise ConflictException("La clave de idempotencia fue utilizada previamente con un payload diferente.")
             if record.status == "COMPLETED":
-                if record.request_hash != request_hash:
-                    raise ConflictException("La clave de idempotencia fue utilizada previamente con un payload diferente.")
                 return True, record
-            elif record.status == "IN_PROGRESS":
-                if record.expires_at > now:
-                    raise ConflictException("La operación solicitada está actualmente en procesamiento. Intente nuevamente en breve.")
-                # Lock expired, allow takeover
-                record.request_hash = request_hash
-                record.expires_at = now + timedelta(minutes=ttl_minutes)
-                record.status = "IN_PROGRESS"
-                await self.db.commit()
-                return False, record
+            # Older versions committed IN_PROGRESS before the sale; never
+            # reclaim those blindly because a sale may already exist.
+            raise ConflictException("Operación pendiente de conciliación. Consulte soporte antes de repetir el cobro.")
 
-        # Create new record with atomic collision handling
+        new_record = IdempotencyRecord(
+            organization_id=self.organization_id, operation=operation,
+            idempotency_key=idempotency_key, request_hash=request_hash,
+            status="IN_PROGRESS",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes),
+        )
         try:
-            new_record = IdempotencyRecord(
-                organization_id=self.organization_id,
-                operation=operation,
-                idempotency_key=idempotency_key,
-                request_hash=request_hash,
-                status="IN_PROGRESS",
-                expires_at=now + timedelta(minutes=ttl_minutes)
-            )
             self.db.add(new_record)
-            await self.db.commit()
-            return False, new_record
-        except Exception:
+            await self.db.flush()
+        except IntegrityError:
             await self.db.rollback()
-            # A concurrent transaction inserted the record simultaneously! Re-query with lock:
-            retry_stmt = select(IdempotencyRecord).where(
-                IdempotencyRecord.organization_id == self.organization_id,
-                IdempotencyRecord.operation == operation,
-                IdempotencyRecord.idempotency_key == idempotency_key
-            ).with_for_update()
-            retry_res = await self.db.execute(retry_stmt)
-            collided = retry_res.scalar_one_or_none()
-            if collided:
-                if collided.status == "COMPLETED":
-                    if collided.request_hash != request_hash:
-                        raise ConflictException("La clave de idempotencia fue utilizada previamente con un payload diferente.")
-                    return True, collided
-                elif collided.status == "IN_PROGRESS":
-                    raise ConflictException("La operación solicitada está actualmente en procesamiento por otra solicitud concurrente.")
-            raise ConflictException("Conflicto de concurrencia al registrar la clave de idempotencia.")
+            record = (await self.db.execute(stmt)).scalar_one_or_none()
+            if record and record.request_hash == request_hash and record.status == "COMPLETED":
+                return True, record
+            raise ConflictException("Conflicto con otra solicitud que utiliza la misma clave")
+        return False, new_record
 
     async def complete_idempotent_operation(
         self,

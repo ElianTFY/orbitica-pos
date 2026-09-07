@@ -7,7 +7,7 @@ HACIENDA_URLS = {
     "STAGING": {
         "token_url": "https://idp.comprobanteselectronicos.go.cr/auth/realms/rut-stag/protocol/openid-connect/token",
         "client_id": "api-stag",
-        "recepcion_url": "https://api-sandbox.comprobanteselectronicos.go.cr/recepcion/v1/recepcion"
+        "recepcion_url": "https://api.comprobanteselectronicos.go.cr/recepcion-sandbox/v1/recepcion"
     },
     "PRODUCTION": {
         "token_url": "https://idp.comprobanteselectronicos.go.cr/auth/realms/rut/protocol/openid-connect/token",
@@ -78,11 +78,21 @@ class HaciendaAPIClient:
                 json=payload,
                 headers=headers
             )
-            # Hacienda returns 202 Accepted on success
-            if response.status_code not in (200, 202):
-                raise ValueError(f"Hacienda rechazó la recepción ({response.status_code}): {response.text}")
-            
+            if response.status_code == 400:
+                return {
+                    "success": False,
+                    "status_code": 400,
+                    "error": response.headers.get("X-Error-Cause") or response.text,
+                    "headers": dict(response.headers),
+                }
+            # The official API documents HTTP 201 when the document is received
+            # and remains pending validation. Accept 200/202 defensively for
+            # compatible gateways, but never treat them as final acceptance.
+            if response.status_code not in (200, 201, 202):
+                raise ValueError(f"Error de transporte con Hacienda ({response.status_code}): {response.text}")
+
             return {
+                "success": True,
                 "status_code": response.status_code,
                 "headers": dict(response.headers),
                 "location": response.headers.get("Location")
@@ -116,3 +126,14 @@ class HaciendaAPIClient:
                 "respuesta_xml_raw": data.get("respuesta-xml"),
                 "respuesta_xml_decoded": hacienda_xml
             }
+
+    async def check_status(self, token: str, clave: str) -> Dict[str, Any]:
+        """Normalizes the official status response for the outbox worker."""
+        result = await self.query_invoice_status(token=token, clave=clave)
+        status = str(result.get("ind_estado") or "procesando").lower()
+        return {
+            "status_code": 200,
+            "status": status,
+            "response_xml": result.get("respuesta_xml_decoded"),
+            "error": None if status != "rechazado" else "Comprobante rechazado por Hacienda",
+        }

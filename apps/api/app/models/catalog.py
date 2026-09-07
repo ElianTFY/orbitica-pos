@@ -58,7 +58,7 @@ class Product(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     barcode: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     
     # Costa Rica Fiscal v4.4 Fields
-    cabys_code: Mapped[str] = mapped_column(String(13), default="0000000000000", nullable=False)
+    cabys_code: Mapped[str] = mapped_column(String(13), nullable=False)
     unit_of_measure: Mapped[str] = mapped_column(String(10), default="Unid", nullable=False)
     
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

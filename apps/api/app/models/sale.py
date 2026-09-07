@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
-from sqlalchemy import String, Numeric, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import String, Numeric, Text, ForeignKey, DateTime, UniqueConstraint, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, GUID
 
@@ -75,9 +75,11 @@ class SaleItem(Base, UUIDMixin):
     product_sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
     
     # Costa Rica Fiscal Snapshot (Immutable per Sale)
-    cabys_code: Mapped[str] = mapped_column(String(13), default="6339900000000", nullable=False)
+    cabys_code: Mapped[str] = mapped_column(String(13), nullable=False)
     unit_of_measure: Mapped[str] = mapped_column(String(10), default="Unid", nullable=False)
     tax_rate_code: Mapped[str] = mapped_column(String(2), default="08", nullable=False)  # 08=13% General DGT
+    is_service: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    price_includes_tax: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)

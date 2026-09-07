@@ -1,8 +1,9 @@
 import base64
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509 import Certificate
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +12,18 @@ from app.models.fiscal_credential import FiscalCredential
 from app.core.config import settings
 
 def get_fernet_cipher() -> Fernet:
-    # Ensure 32-byte url-safe base64 key
+    # Deterministically derive the 32-byte Fernet key without truncating the
+    # production master secret. The master secret itself must stay outside DB.
+    key_b64 = base64.urlsafe_b64encode(
+        hashlib.sha256(settings.ENCRYPTION_MASTER_KEY.encode("utf-8")).digest()
+    )
+    return Fernet(key_b64)
+
+def get_legacy_fernet_cipher() -> Fernet:
     key = settings.ENCRYPTION_MASTER_KEY
     if len(key) < 32:
         key = key.ljust(32, "0")
-    key_b64 = base64.urlsafe_b64encode(key.encode("utf-8")[:32])
-    return Fernet(key_b64)
+    return Fernet(base64.urlsafe_b64encode(key.encode("utf-8")[:32]))
 
 class FiscalSecurityService:
     @staticmethod
@@ -30,8 +37,13 @@ class FiscalSecurityService:
     def decrypt_data(encrypted_text: str) -> str:
         if not encrypted_text:
             return ""
-        cipher = get_fernet_cipher()
-        return cipher.decrypt(encrypted_text.encode("utf-8")).decode("utf-8")
+        payload = encrypted_text.encode("utf-8")
+        try:
+            return get_fernet_cipher().decrypt(payload).decode("utf-8")
+        except InvalidToken:
+            # Backward compatibility for credentials encrypted by releases
+            # before the SHA-256 derivation. They are re-encrypted on save.
+            return get_legacy_fernet_cipher().decrypt(payload).decode("utf-8")
 
     @staticmethod
     def extract_p12_metadata(p12_bytes: bytes, pin: str) -> Tuple[Optional[datetime], str, str]:
@@ -80,6 +92,12 @@ class FiscalSecurityService:
             exp_date, issuer, subject = cls.extract_p12_metadata(p12_bytes, pin)
             p12_b64 = base64.b64encode(p12_bytes).decode("utf-8")
             enc_p12 = cls.encrypt_data(p12_b64)
+        elif cred and cred.encrypted_p12:
+            # Never replace the PIN blindly: verify it opens the certificate
+            # already stored for this environment.
+            existing_p12_b64 = cls.decrypt_data(cred.encrypted_p12)
+            existing_p12 = base64.b64decode(existing_p12_b64, validate=True)
+            cls.extract_p12_metadata(existing_p12, pin)
 
         enc_pin = cls.encrypt_data(pin)
         enc_user = cls.encrypt_data(atv_username)

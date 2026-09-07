@@ -1,0 +1,3 @@
+-r requirements.txt
+# Independent verifier for XMLDSig; not required by the production API.
+xmlsec==1.3.17

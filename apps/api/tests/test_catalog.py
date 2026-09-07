@@ -33,6 +33,8 @@ async def test_create_category_and_product(client: AsyncClient, sample_organizat
         "tax_rate_id": tax_13,
         "sku": "LAC-001",
         "barcode": "7441009999",
+        "cabys_code": "2132100000100",
+        "unit_of_measure": "Unid",
         "cost_price": 1800,
         "sale_price": 2500,
         "min_stock_alert": 5

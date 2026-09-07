@@ -1,7 +1,9 @@
+> **SUPERADO — 2026-09-07.** Este reporte histórico no certifica preparación comercial ni aceptación de Hacienda. Consultar [FINAL_PRODUCTION_AUDIT.md](FINAL_PRODUCTION_AUDIT.md) y el PR de `codex/final-production-fixes`.
+
 # ORBÍTICA POS — REPORTE DE MADUREZ PARA PRODUCCIÓN (PRODUCTION READINESS)
 
-> **Versión:** 1.0.0-PROD-CANDIDATE  
-> **Fecha:** 3 de Septiembre, 2026  
+> **Versión:** 1.0.0-PROD-CANDIDATE
+> **Fecha:** 3 de Septiembre, 2026
 > **Entorno de Despliegue:** FastAPI (API) + Next.js (Vercel) + PostgreSQL (Aiven/Supabase)
 
 ---

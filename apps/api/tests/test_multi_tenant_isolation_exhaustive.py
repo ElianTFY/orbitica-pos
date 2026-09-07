@@ -53,6 +53,8 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
         tax_rate_id=tax_a.id,
         sku="PAN-ESP-01",
         name="Baguette Espiga",
+        cabys_code="2132100000100",
+        unit_of_measure="Unid",
         sale_price=Decimal("800.00"),
         cost_price=Decimal("400.00")
     )
@@ -86,7 +88,7 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
     )
     db_session.add(user_b)
 
-    tax_b = TaxRate(organization_id=org_b.id, name="IVA 4%", code_cr="02", rate=Decimal("4.00"))
+    tax_b = TaxRate(organization_id=org_b.id, name="IVA 13%", code_cr="01", rate=Decimal("13.00"))
     db_session.add(tax_b)
     cat_b = Category(organization_id=org_b.id, name="Medicamentos")
     db_session.add(cat_b)
@@ -98,6 +100,8 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
         tax_rate_id=tax_b.id,
         sku="MED-LUC-01",
         name="Paracetamol 500mg",
+        cabys_code="2132100000100",
+        unit_of_measure="Unid",
         sale_price=Decimal("1500.00"),
         cost_price=Decimal("600.00")
     )

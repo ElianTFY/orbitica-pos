@@ -206,3 +206,110 @@ async def test_outbox_exponential_backoff_and_contingency(
     assert entry.retry_count == 3
     assert entry.status == "CONTINGENCY"
     assert "contingencia" in str(entry.last_error).lower()
+
+
+@pytest.mark.asyncio
+async def test_durable_sent_marker_is_polled_without_retransmission(
+    db_session: AsyncSession,
+    sample_organization: Organization,
+):
+    branch = (await db_session.execute(
+        select(Branch).where(Branch.organization_id == sample_organization.id)
+    )).scalars().first()
+    invoice_id = uuid.uuid4()
+    clave = "50602092600310199988800100001040000000999111234567"
+    invoice = ElectronicInvoice(
+        id=invoice_id,
+        organization_id=sample_organization.id,
+        branch_id=branch.id,
+        sale_id=uuid.uuid4(),
+        doc_type="04",
+        consecutive_number="00100001040000000999",
+        numeric_key=clave,
+        xml_generated="<dummy/>",
+        xml_signed="<dummy_signed/>",
+        status="PROCESSING",
+        sent_to_hacienda_at=datetime.now(timezone.utc),
+    )
+    db_session.add(invoice)
+    entry = await OutboxService.enqueue_invoice(
+        db=db_session,
+        organization_id=sample_organization.id,
+        branch_id=branch.id,
+        invoice_id=invoice_id,
+        numeric_key=clave,
+        consecutive_number=invoice.consecutive_number,
+        doc_type="04",
+        xml_uncompressed="<dummy/>",
+        xml_signed="<dummy_signed/>",
+    )
+    entry.status = "PENDING"
+    await db_session.commit()
+
+    client = MockHaciendaClient()
+    await HaciendaOutboxWorker(batch_size=1, hacienda_client=client).process_batch(db_session)
+    await db_session.refresh(entry)
+
+    assert client.sent_claves == []
+    assert client.checked_claves == [clave]
+    assert entry.status == "ACCEPTED"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_key_response_is_polled_and_never_retransmitted(
+    db_session: AsyncSession,
+    sample_organization: Organization,
+):
+    class DuplicateKeyClient(MockHaciendaClient):
+        async def send_invoice(self, **kwargs) -> Dict[str, Any]:
+            self.sent_claves.append(kwargs["clave"])
+            return {
+                "success": False,
+                "status_code": 400,
+                "error": "La clave ya fue recibida y se encuentra registrada",
+            }
+
+    branch = (await db_session.execute(
+        select(Branch).where(Branch.organization_id == sample_organization.id)
+    )).scalars().first()
+    invoice_id = uuid.uuid4()
+    clave = "50602092600310199988800100001040000000888111234567"
+    invoice = ElectronicInvoice(
+        id=invoice_id,
+        organization_id=sample_organization.id,
+        branch_id=branch.id,
+        sale_id=uuid.uuid4(),
+        doc_type="04",
+        consecutive_number="00100001040000000888",
+        numeric_key=clave,
+        xml_generated="<dummy/>",
+        xml_signed="<dummy_signed/>",
+        status="QUEUED",
+    )
+    db_session.add(invoice)
+    entry = await OutboxService.enqueue_invoice(
+        db=db_session,
+        organization_id=sample_organization.id,
+        branch_id=branch.id,
+        invoice_id=invoice_id,
+        numeric_key=clave,
+        consecutive_number=invoice.consecutive_number,
+        doc_type="04",
+        xml_uncompressed="<dummy/>",
+        xml_signed="<dummy_signed/>",
+    )
+    await db_session.commit()
+
+    client = DuplicateKeyClient()
+    worker = HaciendaOutboxWorker(batch_size=1, hacienda_client=client)
+    await worker.process_batch(db_session)
+    await db_session.refresh(entry)
+    await db_session.refresh(invoice)
+    assert entry.status == "SENT"
+    assert invoice.sent_to_hacienda_at is not None
+
+    entry.next_retry_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    await db_session.commit()
+    await worker.process_batch(db_session)
+    assert client.sent_claves == [clave]
+    assert client.checked_claves == [clave]

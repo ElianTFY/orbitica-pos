@@ -126,7 +126,7 @@ async def test_two_tenants_isolation_zero_trust_tampering(
         "initial_stock": "100.00",
         "branch_id": str(tenant_a["branch"].id),
         "unit_of_measure": "kg",
-        "cabys_code": "2111100000000"
+        "cabys_code": "2132100000100"
     }, headers=headers_a)
     assert prod_a_res.status_code == 201
     prod_a_id = prod_a_res.json()["data"]["id"]
@@ -231,7 +231,7 @@ async def test_full_sale_lifecycle_and_updates(
         "initial_stock": "10.00",
         "branch_id": str(tenant["branch"].id),
         "unit_of_measure": "Unid",
-        "cabys_code": "2111100000000"
+        "cabys_code": "2132100000100"
     }, headers=headers)
     assert prod_res.status_code == 201
     prod_id = prod_res.json()["data"]["id"]
@@ -300,7 +300,7 @@ async def test_concurrency_race_condition_last_stock_item(
         "initial_stock": "1.00",
         "branch_id": str(tenant["branch"].id),
         "unit_of_measure": "Unid",
-        "cabys_code": "2111100000000"
+        "cabys_code": "2132100000100"
     }, headers=headers)
     assert prod_res.status_code == 201
     prod_id = prod_res.json()["data"]["id"]
@@ -354,7 +354,7 @@ async def test_double_submit_idempotency(
         "initial_stock": "5.00",
         "branch_id": str(tenant["branch"].id),
         "unit_of_measure": "Unid",
-        "cabys_code": "2111100000000"
+        "cabys_code": "2132100000100"
     }, headers=headers)
     assert prod_res.status_code == 201
     prod_id = prod_res.json()["data"]["id"]

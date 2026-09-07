@@ -5,7 +5,7 @@
 ### 1.1 Llaves Principales del Sistema
 | Variable | Longitud / Algoritmo | Propósito | Rotación Recomendada |
 |---|---|---|---|
-| `FERNET_KEY` | 32 bytes base64 (AES-256) | Cifrado de certificados `.p12` y contraseñas ATV | Anual o ante sospecha |
+| `FERNET_KEY` | Secreto maestro de al menos 32 caracteres (Fernet) | Cifrado de certificados `.p12` y contraseñas ATV | Anual o ante sospecha |
 | `SECRET_KEY` | 64 caracteres alfanuméricos | Firma de JWT (HS256) y Step-Up HMAC | Semestral |
 | `DATABASE_URL` | PostgreSQL SSL connection | Acceso a la base de datos | Según política Cloud |
 

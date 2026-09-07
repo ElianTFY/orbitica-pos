@@ -1,0 +1,17 @@
+........................................................................ [ 74%]
+.........................                                                [100%]
+=============================== warnings summary ===============================
+tests/test_auth.py::test_refresh_token_rotation
+tests/test_auth.py::test_refresh_token_rotation
+tests/test_third_audit_remediation.py::test_refresh_token_family_reuse_revocation
+tests/test_third_audit_remediation.py::test_refresh_token_family_reuse_revocation
+tests/test_third_audit_remediation.py::test_refresh_token_family_reuse_revocation
+  /workspace/scratch/cdf276cc80c5/orbitica-validation-venv/lib/python3.12/site-packages/httpx/_client.py:1859: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return await self.request(
+
+tests/test_cabys_and_tax_snapshots.py::test_product_creation_rejects_fake_cabys_and_accepts_official
+  /workspace/scratch/cdf276cc80c5/orbitica-validation-venv/lib/python3.12/site-packages/starlette/_exception_handler.py:59: StarletteDeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await handler(conn, exc)  # type: ignore[arg-type]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+97 passed, 3 deselected, 6 warnings in 41.63s

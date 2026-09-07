@@ -35,7 +35,7 @@ import { api } from "@/lib/api-client";
 type InvoiceDetailTab = "resumen" | "factura" | "xml_enviado" | "respuesta_hacienda" | "historial";
 
 export default function InvoicesPage() {
-  const { invoices, settings, sales } = useStore();
+  const { invoices, settings, sales, retryFetch } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceRecord | null>(null);
@@ -53,16 +53,26 @@ export default function InvoicesPage() {
     const matchesStatus =
       statusFilter === "ALL" ||
       inv.status === statusFilter ||
-      (statusFilter === "PENDING" && (inv.status === "PENDING" || inv.status === "PENDING_RETRY"));
+      (statusFilter === "PENDING" && ["DRAFT", "SIGNED", "QUEUED", "PROCESSING", "SENT", "CONTINGENCY"].includes(inv.status));
 
     return matchesSearch && matchesStatus;
   });
 
-  const handleOpenDetail = (inv: InvoiceRecord, tab: InvoiceDetailTab = "resumen") => {
+  const handleOpenDetail = async (inv: InvoiceRecord, tab: InvoiceDetailTab = "resumen") => {
     setSelectedInvoice(inv);
     setActiveTab(tab);
     setRetryMessage(null);
     setIsDetailModalOpen(true);
+    try {
+      const { data } = await api.request<any>(`/invoices/${inv.id}`);
+      setSelectedInvoice((previous) => previous?.id === inv.id ? {
+        ...previous, status: data.status, environment: data.environment,
+        xml_signed: data.xml_signed, hacienda_response_xml: data.hacienda_response_xml,
+        hacienda_message: data.hacienda_error_message || data.hacienda_status_code,
+        sent_to_hacienda_at: data.sent_to_hacienda_at,
+        hacienda_processed_at: data.hacienda_processed_at, email_sent_at: data.email_sent_at,
+      } : previous);
+    } catch (error: any) { setRetryMessage(error.message || "No se pudo cargar el XML del comprobante"); }
   };
 
   const handleDownloadXml = (content: string | undefined, filename: string) => {
@@ -81,9 +91,10 @@ export default function InvoicesPage() {
     setIsRetrying(true);
     setRetryMessage(null);
     try {
-      const resp = await api.request<any>(`/invoices/${selectedInvoice.id}/send-hacienda`, {
-        method: "POST",
-      });
+      const polling = ["SENT", "PROCESSING"].includes(selectedInvoice.status);
+      const resp = await api.request<any>(polling ? `/hacienda/${selectedInvoice.id}/status` : `/invoices/${selectedInvoice.id}/send-hacienda`, {method: polling ? "GET" : "POST"});
+      await retryFetch();
+      await handleOpenDetail(selectedInvoice, activeTab);
       setRetryMessage(resp?.message || "Comprobante encolado exitosamente para transmisión");
     } catch (err: any) {
       setRetryMessage(err?.message || "Error al solicitar reintento con Hacienda");
@@ -96,7 +107,7 @@ export default function InvoicesPage() {
   const associatedSale = selectedInvoice
     ? sales.find(
         (s) =>
-          s.consecutive_number === selectedInvoice.consecutive_number ||
+          s.id === selectedInvoice.sale_id ||
           s.numeric_key === selectedInvoice.numeric_key
       )
     : null;
@@ -109,7 +120,7 @@ export default function InvoicesPage() {
           <div>
             <h1 className="text-xl font-bold text-text-main tracking-tight">Comprobantes Electrónicos Hacienda CR</h1>
             <p className="text-xs text-text-muted">
-              {settings.trade_name} — Facturas (01), Tiquetes (04) y Notas de Crédito (03) con firmado XAdES-BES
+              {settings.trade_name} — Facturas (01), Tiquetes (04) y Notas de Crédito (03) con firmado XAdES-EPES
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -224,7 +235,7 @@ export default function InvoicesPage() {
                             ? "Aceptado"
                             : inv.status === "REJECTED"
                             ? "Rechazado"
-                            : inv.status === "PENDING_RETRY"
+                            : inv.status === "CONTINGENCY"
                             ? "Reintento Pendiente"
                             : "En Proceso"}
                         </Badge>
@@ -445,7 +456,7 @@ export default function InvoicesPage() {
             {activeTab === "xml_enviado" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-text-secondary">Estructura XML Oficial DGT v4.4 (XAdES-BES)</span>
+                  <span className="font-bold text-text-secondary">Estructura XML Oficial DGT v4.4 (XAdES-EPES)</span>
                   <Button
                     variant="secondary"
                     size="sm"
@@ -456,7 +467,7 @@ export default function InvoicesPage() {
                   </Button>
                 </div>
                 <pre className="p-4 bg-background border border-border rounded-2xl text-[11px] font-mono text-text-secondary overflow-x-auto max-h-96 whitespace-pre-wrap">
-                  {selectedInvoice.xml_signed || "<!-- XML XAdES-BES en proceso de generación -->"}
+                  {selectedInvoice.xml_signed || "<!-- XML XAdES-EPES en proceso de generación -->"}
                 </pre>
               </div>
             )}
@@ -474,14 +485,13 @@ export default function InvoicesPage() {
                     </Badge>
                   </div>
                   <p className="text-text-main font-medium">
-                    {selectedInvoice.hacienda_message || "Comprobante electrónico aceptado y validado en los servidores del Ministerio de Hacienda."}
+                    {selectedInvoice.hacienda_message || "Todavía no se ha registrado una respuesta de Hacienda."}
                   </p>
                 </div>
 
                 <div className="p-3 bg-surface-secondary border border-border rounded-xl space-y-2 font-mono text-[11px]">
-                  <div><strong>Código de Estado:</strong> 1 (Aceptado)</div>
-                  <div><strong>Ambiente de Emisión:</strong> {settings.atv_environment || "STAGING"}</div>
-                  <div><strong>Resolución DGT:</strong> Nº DGT-R-033-2019</div>
+                  <div><strong>Estado registrado:</strong> {selectedInvoice.status}</div>
+                  <div><strong>Ambiente de Emisión:</strong> {selectedInvoice.environment || "Sin información"}</div>
                 </div>
 
                 <div className="flex justify-end">
@@ -490,13 +500,13 @@ export default function InvoicesPage() {
                     size="sm"
                     onClick={() =>
                       handleDownloadXml(
-                        `<MensajeHacienda>\n  <Clave>${selectedInvoice.numeric_key}</Clave>\n  <Estado>1</Estado>\n  <DetalleMensaje>Comprobante aceptado</DetalleMensaje>\n</MensajeHacienda>`,
+                        selectedInvoice.hacienda_response_xml,
                         `${selectedInvoice.numeric_key}-respuesta.xml`
                       )
                     }
                   >
                     <Download className="w-3.5 h-3.5 mr-1" />
-                    Descargar Acuse de Respuesta (.xml)
+                    {selectedInvoice.hacienda_response_xml ? "Descargar respuesta original (.xml)" : "Sin XML de respuesta disponible"}
                   </Button>
                 </div>
               </div>
@@ -506,21 +516,11 @@ export default function InvoicesPage() {
             {activeTab === "historial" && (
               <div className="space-y-3 text-xs">
                 <div className="space-y-2 border-l-2 border-primary/30 pl-4 ml-2 py-1">
-                  <div className="relative">
-                    <div className="w-2.5 h-2.5 bg-primary rounded-full absolute -left-[21px] top-1" />
-                    <p className="font-bold text-text-main">Venta Completada en Punto de Venta</p>
-                    <p className="text-text-muted text-[11px] font-mono">{selectedInvoice.created_at}</p>
-                  </div>
-                  <div className="relative pt-2">
-                    <div className="w-2.5 h-2.5 bg-primary rounded-full absolute -left-[21px] top-3" />
-                    <p className="font-bold text-text-main">Generación de Clave (50 dígitos) y Consecutivo</p>
-                    <p className="text-text-muted text-[11px] font-mono">{selectedInvoice.consecutive_number}</p>
-                  </div>
-                  <div className="relative pt-2">
-                    <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full absolute -left-[21px] top-3" />
-                    <p className="font-bold text-text-main">Firmado Digital XAdES-BES y Validación de Esquema v4.4</p>
-                    <p className="text-emerald-500 text-[11px] font-medium">Esquema XML conforme a especificación DGT</p>
-                  </div>
+                  <p>Creado: {selectedInvoice.created_at}</p>
+                  <p>XML firmado: {selectedInvoice.xml_signed ? "Disponible" : "Pendiente"}</p>
+                  <p>Enviado a Hacienda: {selectedInvoice.sent_to_hacienda_at || "Pendiente"}</p>
+                  <p>Respuesta final: {selectedInvoice.hacienda_processed_at || "Pendiente"}</p>
+                  <p>Correo fiscal enviado: {selectedInvoice.email_sent_at || "Sin constancia de envío"}</p>
                 </div>
 
                 {retryMessage && (
@@ -534,10 +534,10 @@ export default function InvoicesPage() {
                     variant="secondary"
                     size="sm"
                     onClick={handleRetryTransmission}
-                    disabled={isRetrying}
+                    disabled={isRetrying || ["ACCEPTED", "REJECTED", "CANCELLED"].includes(selectedInvoice.status)}
                   >
                     <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
-                    {isRetrying ? "Reintentando transmisión..." : "Reintentar Envío a Hacienda"}
+                    {isRetrying ? "Procesando..." : ["SENT", "PROCESSING"].includes(selectedInvoice.status) ? "Consultar estado en Hacienda" : "Enviar a Hacienda"}
                   </Button>
                 </div>
               </div>

@@ -1,0 +1,10 @@
+Verificando integridad estricta de esquemas oficiales Hacienda v4.4 en /workspace/scratch/cdf276cc80c5/orbitica-pos-third-audit/apps/api/app/schemas_xml/v4.4...
+  [PASS] FacturaElectronica_V4.4.xsd (118,627 bytes, SHA-256: 4d7a1718cf5b...) - Valido y compilado.
+  [PASS] TiqueteElectronico_V4.4.xsd (114,032 bytes, SHA-256: dd649fbdf4ea...) - Valido y compilado.
+  [PASS] NotaCreditoElectronica_V4.4.xsd (118,977 bytes, SHA-256: 4a25fb6653ae...) - Valido y compilado.
+  [PASS] NotaDebitoElectronica_V4.4.xsd (118,995 bytes, SHA-256: d3a9d92ee694...) - Valido y compilado.
+  [PASS] MensajeReceptor_V4.4.xsd (6,432 bytes, SHA-256: deb2198e0cd9...) - Valido y compilado.
+  [PASS] MensajeHacienda_V4.4.xsd (7,591 bytes, SHA-256: c78018ddbc5f...) - Valido y compilado.
+  [PASS] ReciboElectronicoPago_V4.4.xsd (39,405 bytes, SHA-256: 014f73a1fd15...) - Valido y compilado.
+  [PASS] FacturaElectronicaCompra_V4.4.xsd (93,694 bytes, SHA-256: e3bb7e756b88...) - Valido y compilado.
+  [PASS] FacturaElectronicaExportacion_V4.4.xsd (98,239 bytes, SHA-256: 2a2c2507ecd8...) - Valido y compilado.

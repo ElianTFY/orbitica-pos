@@ -25,61 +25,32 @@ VALID_UNITS_OF_MEASURE = {
     "doc",   # Docena
 }
 
-# Códigos CAByS Oficiales representativos del Catálogo BCCR
+# Códigos verificados contra https://api.hacienda.go.cr/fe/cabys.
+# Solo son una caché inicial; la autoridad sigue siendo el API oficial.
 OFFICIAL_CABYS_CATALOG: Dict[str, Dict[str, Any]] = {
     "6339900000000": {
-        "description": "Otros servicios de tecnologías de información y de las computadoras n.c.p.",
-        "default_tax_rate": Decimal("13.00"),
-        "default_unit": "Sp",
-        "category": "Servicios TI"
-    },
-    "8314101000000": {
-        "description": "Servicios de contabilidad y auditoría financiera",
-        "default_tax_rate": Decimal("13.00"),
-        "default_unit": "Sp",
-        "category": "Servicios Profesionales"
-    },
-    "2322000000000": {
-        "description": "Pan fresco, panes especiales y productos de panadería",
+        "description": "Suministro de comida, servicio en mostrador, sin sitios para sentarse",
         "default_tax_rate": Decimal("13.00"),
         "default_unit": "Unid",
         "category": "Alimentos"
     },
-    "2224101000100": {
-        "description": "Leche líquida de vaca pasteurizada entera o semidescremada",
-        "default_tax_rate": Decimal("1.00"),
-        "default_unit": "l",
-        "category": "Canasta Básica Tributaria"
+    "8222100000000": {
+        "description": "Servicios de contabilidad",
+        "default_tax_rate": Decimal("13.00"),
+        "default_unit": "Sp",
+        "category": "Servicios Profesionales"
     },
-    "2111100000100": {
-        "description": "Carne de bovino fresca o refrigerada, en canales o medias canales",
+    "2349002011500": {
+        "description": "Pan pita o pan árabe, sin congelar",
         "default_tax_rate": Decimal("1.00"),
-        "default_unit": "kg",
-        "category": "Canasta Básica Tributaria"
-    },
-    "2341001000100": {
-        "description": "Medicamentos para uso humano con registro sanitario nacional",
-        "default_tax_rate": Decimal("4.00"),
         "default_unit": "Unid",
-        "category": "Salud y Medicamentos"
+        "category": "Alimentos"
     },
-    "0111101000100": {
-        "description": "Granos básicos para consumo y siembra",
-        "default_tax_rate": Decimal("1.00"),
-        "default_unit": "kg",
-        "category": "Sector Agropecuario"
-    },
-    "3532200000100": {
-        "description": "Cerveza de malta envasada",
+    "2132100000100": {
+        "description": "Jugo de tomate concentrado",
         "default_tax_rate": Decimal("13.00"),
         "default_unit": "Unid",
         "category": "Bebidas"
-    },
-    "8411100000000": {
-        "description": "Servicios de educación y capacitación formal",
-        "default_tax_rate": Decimal("0.00"),
-        "default_unit": "Sp",
-        "category": "Educación Exenta"
     }
 }
 
@@ -100,27 +71,28 @@ def map_fiscal_v44_tax_tariff(rate_pct: Decimal, is_exonerated: bool = False, wi
       07 = Tarifa reducida 8%
       08 = Tarifa general 13%
       09 = Tarifa reducida 0.5%
-      10 = Exonerado / Sin derecho a crédito fiscal
+      10 = Tarifa exenta
+      11 = Tarifa 0% sin derecho a crédito fiscal
     """
-    if is_exonerated or without_credit:
+    if without_credit:
+        return "01", "11"
+    if is_exonerated:
         return "01", "10"
 
     pct = rate_pct.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-    if pct >= Decimal("13.00"):
-        return "01", "08"
-    elif pct >= Decimal("8.00"):
-        return "01", "07"
-    elif pct >= Decimal("4.00"):
-        return "01", "04"
-    elif pct >= Decimal("2.00"):
-        return "01", "03"
-    elif pct >= Decimal("1.00"):
-        return "01", "02"
-    elif pct == Decimal("0.50"):
-        return "01", "09"
-    else:
-        return "01", "01"
+    tariff_codes = {
+        Decimal("0.00"): "01",
+        Decimal("0.50"): "09",
+        Decimal("1.00"): "02",
+        Decimal("2.00"): "03",
+        Decimal("4.00"): "04",
+        Decimal("8.00"): "07",
+        Decimal("13.00"): "08",
+    }
+    code = tariff_codes.get(pct)
+    if code is None:
+        raise ValueError(f"La tarifa IVA {pct}% no tiene un código válido en Hacienda v4.4")
+    return "01", code
 
 def validate_cabys_and_rate(cabys_code: str, rate_pct: Decimal, unit_of_measure: str) -> None:
     """

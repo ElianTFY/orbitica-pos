@@ -1,15 +1,19 @@
 import base64
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
 from app.models.invoice import ElectronicInvoice
+from app.models.organization import Organization
+from app.core.config import settings
 from app.security.deps import CurrentUserContext, require_permissions
 from app.schemas.common import StandardResponse
 from app.schemas.hacienda import (
     HaciendaCredentialsInput,
+    HaciendaConnectionTestInput,
     HaciendaCredentialsResponse,
     HaciendaTestConnectionResponse,
     HaciendaTransmitRequest,
@@ -18,8 +22,10 @@ from app.schemas.hacienda import (
 )
 from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.electronic_invoicing_service import ElectronicInvoicingService
+from app.services.invoice_service import InvoiceService
 from app.infrastructure.external.hacienda_api_client import HaciendaAPIClient
 from app.core.exceptions import NotFoundException, BadRequestException
+from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/hacienda", tags=["Hacienda Costa Rica v4.4"])
 
@@ -35,7 +41,7 @@ async def save_hacienda_credentials(
     p12_bytes = None
     if payload.p12_base64:
         try:
-            p12_bytes = base64.b64decode(payload.p12_base64)
+            p12_bytes = base64.b64decode(payload.p12_base64, validate=True)
         except Exception:
             raise BadRequestException("Formato base64 de certificado inválido")
 
@@ -48,6 +54,19 @@ async def save_hacienda_credentials(
         atv_username=payload.atv_username,
         atv_password=payload.atv_password
     )
+    await AuditService.log_action(
+        db=db,
+        action="HACIENDA_CREDENTIALS_UPDATED",
+        resource="FiscalCredential",
+        actor_id=context.user_id,
+        organization_id=context.organization_id,
+        resource_id=str(cred.id),
+        payload_after={
+            "environment": cred.environment,
+            "has_certificate": bool(cred.encrypted_p12),
+        },
+    )
+    await db.commit()
 
     data = HaciendaCredentialsResponse(
         environment=cred.environment,
@@ -66,14 +85,17 @@ async def get_hacienda_credentials_status(
     if not context.organization_id:
         raise BadRequestException("Usuario sin organización")
 
+    org = (await db.execute(
+        select(Organization).where(Organization.id == context.organization_id)
+    )).scalar_one()
     creds = await FiscalSecurityService.get_decrypted_credentials(
         db=db,
         organization_id=context.organization_id,
-        environment="STAGING"
+        environment=org.atv_environment
     )
     if not creds:
         data = HaciendaCredentialsResponse(
-            environment="STAGING",
+            environment=org.atv_environment,
             atv_username="",
             has_certificate=False,
             is_active=False,
@@ -90,9 +112,45 @@ async def get_hacienda_credentials_status(
         )
     return StandardResponse(data=data)
 
+@router.get("/readiness", response_model=StandardResponse[Dict[str, Any]])
+async def get_hacienda_readiness(
+    context: CurrentUserContext = Depends(require_permissions("invoicing:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    org = (await db.execute(
+        select(Organization).where(Organization.id == context.organization_id)
+    )).scalar_one()
+    creds = await FiscalSecurityService.get_decrypted_credentials(
+        db=db,
+        organization_id=context.organization_id,
+        environment=org.atv_environment,
+    )
+
+    checks = [
+        {"code": "LEGAL_ID", "ok": org.identification_type in {"01", "02", "03", "04", "05"} and bool(org.identification_number), "message": "Identificación legal del emisor"},
+        {"code": "ECONOMIC_ACTIVITY", "ok": len(org.economic_activity_code or "") == 6 and str(org.economic_activity_code).isdigit(), "message": "Actividad económica de 6 dígitos"},
+        {"code": "LOCATION", "ok": bool(org.province_code and org.canton_code and org.district_code and org.address_detail), "message": "Ubicación fiscal completa"},
+        {"code": "ATV_USER", "ok": bool(creds and creds.get("username") and creds.get("password")), "message": f"Usuario API de Hacienda ({org.atv_environment})"},
+        {"code": "CERTIFICATE", "ok": bool(creds and creds.get("p12_bytes") and creds.get("pin")), "message": "Llave criptográfica .p12 y PIN"},
+        {"code": "CERTIFICATE_EXPIRY", "ok": bool(creds and creds.get("expiration") and creds["expiration"].replace(tzinfo=creds["expiration"].tzinfo or timezone.utc) > datetime.now(timezone.utc)), "message": "Certificado vigente"},
+        {"code": "PROVIDER_ID", "ok": settings.SOFTWARE_PROVIDER_TAX_ID != "3101000000", "message": "Identificación real del proveedor de sistemas"},
+    ]
+    if org.atv_environment == "PRODUCTION":
+        checks.extend([
+            {"code": "SANDBOX_APPROVED", "ok": settings.HACIENDA_SANDBOX_VALIDATED, "message": "Piloto Sandbox validado"},
+            {"code": "LIVE_ENABLED", "ok": settings.HACIENDA_LIVE_EMISSION_ENABLED, "message": "Emisión en vivo habilitada"},
+            {"code": "SMTP", "ok": bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD), "message": "Entrega de correo fiscal configurada"},
+        ])
+
+    return StandardResponse(data={
+        "ready": all(check["ok"] for check in checks),
+        "environment": org.atv_environment,
+        "checks": checks,
+    })
+
 @router.post("/test-connection", response_model=StandardResponse[HaciendaTestConnectionResponse])
 async def test_hacienda_connection(
-    payload: HaciendaCredentialsInput,
+    payload: HaciendaConnectionTestInput,
     context: CurrentUserContext = Depends(require_permissions("invoicing:read"))
 ):
     client = HaciendaAPIClient()
@@ -133,47 +191,51 @@ async def transmit_to_hacienda(
     if not context.organization_id:
         raise BadRequestException("Usuario sin organización")
 
-    service = ElectronicInvoicingService(db)
-    sale_uuid = uuid.UUID(payload.sale_id)
+    try:
+        sale_uuid = uuid.UUID(payload.sale_id)
+    except ValueError as exc:
+        raise BadRequestException("Identificador de venta inválido") from exc
 
     # Find invoice for sale
-    stmt = select(ElectronicInvoice).where(
-        ElectronicInvoice.sale_id == sale_uuid,
-        ElectronicInvoice.organization_id == context.organization_id
+    stmt = (
+        select(ElectronicInvoice)
+        .where(
+            ElectronicInvoice.sale_id == sale_uuid,
+            ElectronicInvoice.organization_id == context.organization_id,
+            ElectronicInvoice.doc_type.in_(["01", "04"]),
+        )
+        .order_by(ElectronicInvoice.created_at.asc())
+        .limit(1)
     )
     res = await db.execute(stmt)
     inv = res.scalar_one_or_none()
     if not inv:
         raise NotFoundException("Comprobante fiscal no encontrado para la venta")
 
-    result = await service.transmit_invoice_to_hacienda(
-        invoice_id=inv.id,
-        organization_id=context.organization_id
-    )
+    inv = await InvoiceService(db, context.organization_id).queue_invoice_for_transmission(inv.id)
     return StandardResponse(
         data=HaciendaTransmitResponse(
-            invoice_id=result["invoice_id"],
+            invoice_id=str(inv.id),
             sale_id=str(sale_uuid),
-            clave=result["clave"],
+            clave=inv.numeric_key,
             consecutive=inv.consecutive_number,
-            status=result["status"],
-            hacienda_status=result["status"],
+            status=inv.status,
+            hacienda_status=inv.status,
             sent_at=inv.sent_to_hacienda_at.isoformat() if inv.sent_to_hacienda_at else "",
-            message=result["message"] or "Comprobante transmitido al Ministerio de Hacienda"
+            message="Comprobante firmado y encolado para transmisión segura a Hacienda"
         ),
-        message="Transmisión a Hacienda completada"
+        message="Comprobante encolado; el estado final se actualizará con la respuesta oficial de Hacienda"
     )
 
 @router.get("/{invoice_id}/status", response_model=StandardResponse[HaciendaStatusQueryResponse])
 async def get_invoice_hacienda_status(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     context: CurrentUserContext = Depends(require_permissions("invoicing:read")),
     db: AsyncSession = Depends(get_db)
 ):
-    inv_uuid = uuid.UUID(invoice_id)
     service = ElectronicInvoicingService(db)
     result = await service.poll_invoice_status(
-        invoice_id=inv_uuid,
+        invoice_id=invoice_id,
         organization_id=context.organization_id
     )
 

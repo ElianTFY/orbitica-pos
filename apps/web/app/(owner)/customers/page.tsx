@@ -29,7 +29,7 @@ export default function CustomersPage() {
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
 
   const [name, setName] = useState("");
-  const [idType, setIdType] = useState<"FISICA" | "JURIDICA" | "DIMEX" | "EXTRANJERO">("FISICA");
+  const [idType, setIdType] = useState<Customer["identification_type"]>("FISICA");
   const [idNumber, setIdNumber] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -68,7 +68,7 @@ export default function CustomersPage() {
     return clean.length >= 5;
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanId = idNumber.replace(/\D/g, "");
     if (!validateCedula(idType, cleanId)) {
@@ -80,7 +80,7 @@ export default function CustomersPage() {
     }
 
     if (editingCustomer) {
-      updateCustomer(editingCustomer.id, {
+      await updateCustomer(editingCustomer.id, {
         name: name.trim(),
         identification_type: idType,
         identification_number: cleanId,
@@ -89,7 +89,7 @@ export default function CustomersPage() {
         address: address.trim() || undefined,
       });
     } else {
-      addCustomer({
+      await addCustomer({
         name: name.trim(),
         identification_type: idType,
         identification_number: cleanId,
@@ -102,9 +102,9 @@ export default function CustomersPage() {
     setIsModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (customerToDelete) {
-      deleteCustomer(customerToDelete.id);
+      await deleteCustomer(customerToDelete.id);
       setCustomerToDelete(null);
     }
   };

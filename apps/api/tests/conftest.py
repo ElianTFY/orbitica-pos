@@ -15,10 +15,14 @@ from app.models.catalog import TaxRate
 from app.security.password import hash_password
 from app.security.tokens import create_access_token
 from app.core.constants import UserRole
+from app.core.config import settings
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    test_db_url = 'sqlite+aiosqlite:///:memory:'
+async def db_session(request) -> AsyncGenerator[AsyncSession, None]:
+    is_postgres_test = request.node.get_closest_marker("postgres_integration") is not None
+    test_db_url = settings.DATABASE_URL if is_postgres_test else 'sqlite+aiosqlite:///:memory:'
+    if is_postgres_test and "postgresql" not in test_db_url:
+        pytest.fail("postgres_integration requiere DATABASE_URL de PostgreSQL")
     engine = create_async_engine(test_db_url, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -27,8 +31,9 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
         
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    if not is_postgres_test:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 @pytest_asyncio.fixture
@@ -72,7 +77,7 @@ async def superadmin_token(superadmin_user: User) -> str:
     )
 
 @pytest_asyncio.fixture
-async def sample_organization(db_session: AsyncSession) -> Organization:
+async def sample_organization(db_session: AsyncSession, request) -> Organization:
     org = Organization(
         legal_name='Comercializadora El Sol S.A.',
         trade_name='Supermercado El Sol',
@@ -104,7 +109,7 @@ async def sample_organization(db_session: AsyncSession) -> Organization:
 
     owner = User(
         organization_id=org.id,
-        email='owner@elsol.cr',
+        email=f'owner-{org.id}@elsol.cr' if request.node.get_closest_marker('postgres_integration') else 'owner@elsol.cr',
         password_hash=hash_password('OwnerPassword123!'),
         full_name='Carlos Propietario',
         role=UserRole.OWNER

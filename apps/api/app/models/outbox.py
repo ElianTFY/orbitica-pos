@@ -23,6 +23,7 @@ class HaciendaOutbox(Base, UUIDMixin, TimestampMixin):
         GUID(),
         ForeignKey("electronic_invoices.id", ondelete="CASCADE"),
         nullable=False,
+        unique=True,
         index=True
     )
     numeric_key: Mapped[str] = mapped_column(String(50), nullable=False, index=True)

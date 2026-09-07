@@ -32,7 +32,7 @@ import { api } from "@/lib/api-client";
 import Link from "next/link";
 
 export default function QuotesPage() {
-  const { quotes, products, customers, settings, activeCashSession, addQuote, updateQuote, deleteQuote } = useStore();
+  const { quotes, products, customers, settings, activeCashSession, addQuote, updateQuote, deleteQuote, retryFetch } = useStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
@@ -92,9 +92,9 @@ export default function QuotesPage() {
     const unitPrice = prod.sale_price;
     const taxRate = prod.tax_rate;
     const qty = Math.max(1, Number(itemQuantity) || 1);
-    const subtotal = unitPrice * qty;
-    const taxAmount = subtotal * (taxRate / 100);
-    const total = subtotal + taxAmount;
+    const total = Number((unitPrice * qty).toFixed(2));
+    const subtotal = Number((total / (1 + taxRate / 100)).toFixed(2));
+    const taxAmount = total - subtotal;
 
     const newItem: QuoteItem = {
       product_id: prod.id,
@@ -120,7 +120,7 @@ export default function QuotesPage() {
   const taxTotal = items.reduce((acc, it) => acc + it.tax_amount, 0);
   const grandTotal = subtotalTotal + taxTotal;
 
-  const handleSaveQuote = (e: React.FormEvent) => {
+  const handleSaveQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -144,6 +144,7 @@ export default function QuotesPage() {
         (customerName && c.name.toLowerCase() === customerName.toLowerCase())
     );
 
+    try {
     if (editingQuote) {
       updateQuote(editingQuote.id, {
         customer_name: customerName.trim(),
@@ -160,7 +161,7 @@ export default function QuotesPage() {
       });
       setEditingQuote(null);
     } else {
-      addQuote({
+      await addQuote({
         customer_name: customerName.trim(),
         customer_identification: customerCedula.trim() || undefined,
         customer_email: customerEmail.trim() || undefined,
@@ -175,24 +176,10 @@ export default function QuotesPage() {
         status: "SENT",
       });
 
-      // Synchronize with PostgreSQL
-      api.request("/quotes", {
-        method: "POST",
-        body: {
-          customer_id: matchedCustomer?.id || undefined,
-          valid_days: validDays,
-          notes: notes.trim() || undefined,
-          items: items.map((it) => ({
-            product_id: it.product_id,
-            quantity: it.quantity,
-            discount_percentage: 0,
-          })),
-        },
-      }).catch(console.error);
-
       setIsCreateModalOpen(false);
     }
     resetForm();
+    } catch (error: any) { setFormError(error.message || "No se pudo guardar la cotización."); }
   };
 
   const handleConvertQuoteToSale = async (q: Quote) => {
@@ -208,7 +195,7 @@ export default function QuotesPage() {
       });
       if (resp?.data) {
         setConversionMessage(`¡Cotización ${q.quote_number} convertida exitosamente a Venta ${resp.data.sale_number}!`);
-        updateQuote(q.id, { status: "CONVERTED" });
+        await retryFetch();
       }
     } catch (err: any) {
       setConversionMessage(`Error al convertir: ${err?.message || "Verifique que la caja esté abierta y tenga stock suficiente"}`);
@@ -217,11 +204,10 @@ export default function QuotesPage() {
     }
   };
 
-  const handleConfirmDelete = () => {
-    if (quoteToDelete) {
-      deleteQuote(quoteToDelete.id);
-      setQuoteToDelete(null);
-    }
+  const handleConfirmDelete = async () => {
+    if (!quoteToDelete) return;
+    try { await deleteQuote(quoteToDelete.id); setQuoteToDelete(null); }
+    catch (error: any) { setConversionMessage(error.message || "No se pudo eliminar la cotización."); }
   };
 
   const filteredQuotes = quotes.filter((q) => {

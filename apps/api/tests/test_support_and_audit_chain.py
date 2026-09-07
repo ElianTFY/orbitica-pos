@@ -25,7 +25,7 @@ async def test_support_ticket_lifecycle_and_internal_notes(
     create_res = await client.post("/api/v1/support/tickets", json={
         "subject": "Duda sobre configuración de impresora térmica",
         "description": "Necesitamos ayuda configurando la impresora POS para tiquetes.",
-        "category": "HARDWARE",
+        "category": "POS",
         "priority": "HIGH"
     }, headers=headers)
     assert create_res.status_code == 201
@@ -66,7 +66,7 @@ async def test_delegated_access_grant(client: AsyncClient, sample_organization: 
     grant_res = await client.post("/api/v1/support/delegated-access", json={
         "reason": "Autorización temporal para soporte de facturación electrónica",
         "duration_minutes": 60,
-        "permission_level": "FULL"
+        "permission_level": "READ_ONLY"
     }, headers=headers)
     assert grant_res.status_code == 200
     assert "delegated_token" in grant_res.json()["data"]

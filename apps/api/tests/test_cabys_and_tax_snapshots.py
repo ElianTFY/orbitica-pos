@@ -54,7 +54,10 @@ def test_hacienda_v44_exact_tax_tariff_mapping():
     # Exonerado
     assert map_fiscal_v44_tax_tariff(Decimal("13.00"), is_exonerated=True) == ("01", "10")
     # Sin crédito
-    assert map_fiscal_v44_tax_tariff(Decimal("13.00"), without_credit=True) == ("01", "10")
+    assert map_fiscal_v44_tax_tariff(Decimal("13.00"), without_credit=True) == ("01", "11")
+
+    with pytest.raises(ValueError):
+        map_fiscal_v44_tax_tariff(Decimal("5.00"))
 
 @pytest.mark.asyncio
 async def test_product_creation_rejects_fake_cabys_and_accepts_official(client: AsyncClient, sample_organization):
@@ -88,15 +91,15 @@ async def test_product_creation_rejects_fake_cabys_and_accepts_official(client: 
         "/api/v1/products",
         headers=headers,
         json={
-            "name": "Arroz con Cáscara para Siembra",
+            "name": "Jugo de tomate concentrado",
             "tax_rate_id": tax_id,
-            "cabys_code": "0112101000100",
-            "unit_of_measure": "kg",
+            "cabys_code": "2132100000100",
+            "unit_of_measure": "Unid",
             "cost_price": 600,
             "sale_price": 950
         }
     )
     assert good_resp.status_code == 201
     data = good_resp.json()["data"]
-    assert data["cabys_code"] == "0112101000100"
-    assert data["unit_of_measure"] == "kg"
+    assert data["cabys_code"] == "2132100000100"
+    assert data["unit_of_measure"] == "Unid"

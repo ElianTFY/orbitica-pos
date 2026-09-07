@@ -71,9 +71,10 @@ def fiscal_context():
         tax_amount=Decimal("6500.00"),
         line_total=Decimal("56500.00")
     )
-    item1.cabys_code = "6339900000000"
+    item1.cabys_code = "8222100000000"
     item1.unit_of_measure = "Sp"
     item1.is_service = True
+    item1.price_includes_tax = False
 
     # Item 2: Pan Fresco 1% (Canasta Básica)
     item2 = SaleItem(
@@ -89,27 +90,10 @@ def fiscal_context():
         tax_amount=Decimal("40.50"),
         line_total=Decimal("4090.50")
     )
-    item2.cabys_code = "2322000000000"
+    item2.cabys_code = "2349002011500"
     item2.unit_of_measure = "Unid"
     item2.is_service = False
-
-    # Item 3: Medicamento Exento 0%
-    item3 = SaleItem(
-        id=uuid.uuid4(),
-        product_name="Medicamento Esencial",
-        product_sku="MED-001",
-        quantity=Decimal("2.00"),
-        unit_price=Decimal("2000.0000"),
-        unit_cost=Decimal("1000.0000"),
-        discount_percentage=Decimal("0.00"),
-        discount_amount=Decimal("0.00"),
-        tax_rate=Decimal("0.00"),
-        tax_amount=Decimal("0.00"),
-        line_total=Decimal("4000.00")
-    )
-    item3.cabys_code = "6339900000000"
-    item3.unit_of_measure = "Unid"
-    item3.is_service = False
+    item2.price_includes_tax = False
 
     sale = Sale(
         id=uuid.uuid4(),
@@ -119,16 +103,16 @@ def fiscal_context():
         sale_number="FAC-001-000000100",
         status="COMPLETED",
         currency="CRC",
-        subtotal_amount=Decimal("58500.00"),
+        subtotal_amount=Decimal("54500.00"),
         discount_amount=Decimal("450.00"),
         tax_amount=Decimal("6540.50"),
-        total_amount=Decimal("64590.50")
+        total_amount=Decimal("60590.50")
     )
     setattr(sale, "payment_condition", "01")
-    sale.items = [item1, item2, item3]
+    sale.items = [item1, item2]
 
     p1 = SalePayment(id=uuid.uuid4(), payment_method="CASH", amount=Decimal("30000.00"))
-    p2 = SalePayment(id=uuid.uuid4(), payment_method="CREDIT_CARD", amount=Decimal("34590.50"))
+    p2 = SalePayment(id=uuid.uuid4(), payment_method="CREDIT_CARD", amount=Decimal("30590.50"))
     sale.payments = [p1, p2]
 
     return org, branch, customer, sale
@@ -156,6 +140,10 @@ def test_factura_electronica_01_schema_validation(fiscal_context):
     assert "<CodigoActividadEmisor>620101</CodigoActividadEmisor>" in xml_str
     assert "<CodigoActividadReceptor>461001</CodigoActividadReceptor>" in xml_str
     assert "<TotalComprobante>" in xml_str
+    assert "<TotalVenta>54500.00</TotalVenta>" in xml_str
+    assert "<TotalDescuentos>450.00</TotalDescuentos>" in xml_str
+    assert "<TotalVentaNeta>54050.00</TotalVentaNeta>" in xml_str
+    assert "<TotalComprobante>60590.50</TotalComprobante>" in xml_str
 
     # Validate against official XSD directly
     HaciendaXMLGeneratorV44.validate_xml_schema(xml_str, "01")
@@ -303,7 +291,7 @@ def test_multiple_payments_medios_pago(fiscal_context):
 
     p1 = SalePayment(id=uuid.uuid4(), payment_method="CASH", amount=Decimal("20000.00"))
     p2 = SalePayment(id=uuid.uuid4(), payment_method="CREDIT_CARD", amount=Decimal("20000.00"))
-    p3 = SalePayment(id=uuid.uuid4(), payment_method="SINPE_MOVIL", amount=Decimal("24590.50"))
+    p3 = SalePayment(id=uuid.uuid4(), payment_method="SINPE_MOVIL", amount=Decimal("20590.50"))
     sale.payments = [p1, p2, p3]
 
     xml_str = HaciendaXMLGeneratorV44.generate_xml(
@@ -371,3 +359,28 @@ def test_golden_files_exist_and_validate():
         assert len(content) > 500
         # Assert valid against official XSD
         HaciendaXMLGeneratorV44.validate_xml_schema(content, doc_type)
+
+
+@pytest.mark.parametrize("rate,tax,base", [("13", "117", "900"), ("0", "0", "1017")])
+def test_inclusive_discount_zero_iva_and_cash_change(fiscal_context, rate, tax, base):
+    org, branch, customer, sale = fiscal_context
+    item = sale.items[0]
+    item.price_includes_tax = True
+    item.quantity = Decimal("1")
+    item.unit_price = Decimal("1130")
+    item.discount_amount = Decimal("113")
+    item.tax_rate = Decimal(rate)
+    item.tax_amount = Decimal(tax)
+    item.line_total = Decimal("1017")
+    sale.items = [item]
+    sale.payments = [SalePayment(payment_method="CASH_CRC", amount=Decimal("1400"), change_returned=Decimal("383"))]
+    xml = HaciendaXMLGeneratorV44.generate_xml(
+        doc_type="01", numeric_key="50602092600310199988800100001010000000010111234567",
+        consecutive_number="00100001010000000101", sale=sale, org=org, branch=branch, customer=customer,
+    )
+    root = etree.fromstring(xml.encode())
+    ns = {"f": DOC_NAMESPACES["01"]}
+    assert root.xpath("string(//f:TotalComprobante)", namespaces=ns) == "1017.00"
+    assert root.xpath("string(//f:TotalMedioPago)", namespaces=ns) == "1017.00"
+    assert Decimal(root.xpath("string(//f:SubTotal)", namespaces=ns)) == Decimal(base)
+    assert Decimal(root.xpath("string(//f:ImpuestoNeto)", namespaces=ns)) == Decimal(tax)

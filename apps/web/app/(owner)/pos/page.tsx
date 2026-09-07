@@ -74,6 +74,7 @@ export default function POSPage() {
   const [docType, setDocType] = useState<"04" | "01">("04");
   const [lastReceiptData, setLastReceiptData] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [mixedCash, setMixedCash] = useState<string>("");
   const [mixedCard, setMixedCard] = useState<string>("");
@@ -166,16 +167,18 @@ export default function POSPage() {
     }
   }
 
-  const subtotal = Math.max(0, rawSubtotal - discountAmount);
+  const grossTotal = Math.max(0, rawSubtotal - discountAmount);
 
   const totalTax = cart.reduce((acc, item) => {
     const itemRatio = rawSubtotal > 0 ? (item.unitPrice * item.quantity) / rawSubtotal : 0;
     const itemDiscount = discountAmount * itemRatio;
     const taxableAmount = Math.max(0, item.unitPrice * item.quantity - itemDiscount);
-    return acc + taxableAmount * (item.taxRate / 100);
+    const divisor = 1 + item.taxRate / 100;
+    return acc + (taxableAmount - taxableAmount / divisor);
   }, 0);
 
-  const total = subtotal + totalTax;
+  const subtotal = Math.max(0, grossTotal - totalTax);
+  const total = grossTotal;
   const totalItemCount = cart.reduce((acc, it) => acc + it.quantity, 0);
 
   const numCash = parseFloat(cashReceived) || 0;
@@ -249,11 +252,12 @@ export default function POSPage() {
     !isInvoiceMissingCustomer &&
     !isSinpeMissingRef &&
     !isCashInsufficient &&
-    !isMixedInsufficient;
+    isOnline && !isMixedInsufficient;
 
   const completeSale = async () => {
     if (!canCompleteSale) return;
     setIsProcessing(true);
+    setSaleError(null);
     try {
       // Small delay to prevent accidental double-tap
       await new Promise((r) => setTimeout(r, 100));
@@ -271,8 +275,13 @@ export default function POSPage() {
             ]
           : undefined;
 
-      const { receiptData } = recordSale({
-        items: cart.map((c) => ({ product: c.product, quantity: c.quantity })),
+      const globalDiscountPercentage = rawSubtotal > 0 ? (discountAmount / rawSubtotal) * 100 : 0;
+      const { receiptData, fiscalWarning } = await recordSale({
+        items: cart.map((c) => ({
+          product: c.product,
+          quantity: c.quantity,
+          discountPercentage: Math.min(100, c.discountPercentage + globalDiscountPercentage),
+        })),
         paymentMethod,
         payments: paymentsPayload,
         cashReceived: paymentMethod === "CASH_CRC" ? numCash : numMixedCash,
@@ -296,6 +305,9 @@ export default function POSPage() {
       setCustomerName("CLIENTE CONTADO");
       setCustomerCedula("");
       setDocType("04");
+      if (fiscalWarning) setSaleError(fiscalWarning);
+    } catch (error: any) {
+      setSaleError(error?.message || "No se pudo completar la venta.");
     } finally {
       setIsProcessing(false);
     }
@@ -358,6 +370,11 @@ export default function POSPage() {
         Height: fills 100% of POSLayout's inner area (100dvh - topbar-h-16)
       */}
       <div className="h-full flex flex-col">
+        {saleError && (
+          <div role="alert" className="flex-shrink-0 px-4 py-2.5 bg-semantic-danger-bg border-b border-semantic-danger-border text-semantic-danger-text text-xs font-semibold">
+            {saleError}
+          </div>
+        )}
         {/* ── Cash Register Closed Warning Banner ─────────────────── */}
         {!isCashOpen && (
           <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 bg-warning-bg border-b border-warning-border text-warning-text text-xs font-semibold">
@@ -703,7 +720,7 @@ export default function POSPage() {
               <div className="space-y-1.5 text-xs text-text-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span className="font-mono font-bold text-text-main">{formatCRC(rawSubtotal)}</span>
+                  <span className="font-mono font-bold text-text-main">{formatCRC(subtotal)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-500 font-medium">

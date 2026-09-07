@@ -4,6 +4,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.models.consecutive_sequence import ConsecutiveSequence
 
 # Costa Rica Standard Time is strictly UTC-6 (No DST)
@@ -29,7 +31,39 @@ class ConsecutiveService:
         clean_terminal = str(terminal_number).zfill(5)[:5]
         clean_doc_type = str(doc_type).zfill(2)[:2]
 
-        # Lock the sequence row with FOR UPDATE
+        # Create the counter row without a first-use race, then lock it. Two
+        # concurrent first documents must not both attempt to insert value 1.
+        values = {
+            "organization_id": organization_id,
+            "branch_code": clean_branch,
+            "terminal_number": clean_terminal,
+            "doc_type": clean_doc_type,
+            "environment": environment,
+            "current_value": 0,
+        }
+        dialect_name = self.db.bind.dialect.name if self.db.bind else ""
+        if dialect_name == "postgresql":
+            await self.db.execute(
+                pg_insert(ConsecutiveSequence)
+                .values(**values)
+                .on_conflict_do_nothing(
+                    constraint="uq_consecutive_seq_org_branch_term_type_env"
+                )
+            )
+        elif dialect_name == "sqlite":
+            await self.db.execute(
+                sqlite_insert(ConsecutiveSequence)
+                .values(**values)
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        "organization_id", "branch_code", "terminal_number",
+                        "doc_type", "environment",
+                    ]
+                )
+            )
+        await self.db.flush()
+
+        # Lock the sequence row with FOR UPDATE on PostgreSQL.
         stmt = (
             select(ConsecutiveSequence)
             .where(
@@ -45,22 +79,21 @@ class ConsecutiveService:
         seq = res.scalar_one_or_none()
 
         if not seq:
-            # First document for this terminal and doc type
+            # Generic fallback for unsupported development dialects.
             seq = ConsecutiveSequence(
                 organization_id=organization_id,
                 branch_code=clean_branch,
                 terminal_number=clean_terminal,
                 doc_type=clean_doc_type,
                 environment=environment,
-                current_value=1,
+                current_value=0,
             )
             self.db.add(seq)
             await self.db.flush()
-            return 1
-        else:
-            seq.current_value += 1
-            await self.db.flush()
-            return seq.current_value
+
+        seq.current_value += 1
+        await self.db.flush()
+        return seq.current_value
 
     @staticmethod
     def build_consecutivo_20(

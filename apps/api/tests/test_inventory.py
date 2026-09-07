@@ -18,7 +18,7 @@ async def test_inventory_adjustment_and_movements(client: AsyncClient, sample_or
 
     prod_resp = await client.post(
         "/api/v1/products",
-        json={"name": "Arroz Tío Pelón 1kg", "tax_rate_id": tax_id, "sku": "ARR-001", "sale_price": 1100, "min_stock_alert": 10},
+        json={"name": "Jugo de tomate concentrado", "tax_rate_id": tax_id, "sku": "JUG-001", "cabys_code": "2132100000100", "unit_of_measure": "Unid", "sale_price": 1100, "min_stock_alert": 10},
         headers=headers
     )
     prod_id = prod_resp.json()["data"]["id"]

@@ -1,20 +1,20 @@
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 from app.schemas.common import BaseSchema
 
 class QuoteItemCreate(BaseModel):
     product_id: UUID
-    quantity: Decimal = Field(gt=0)
-    discount_percentage: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0.00"), ge=0, le=100, decimal_places=2)
 
 class QuoteCreate(BaseModel):
     branch_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
     items: List[QuoteItemCreate] = Field(min_length=1)
-    currency: str = Field(default="CRC")
+    currency: Literal["CRC"] = "CRC"
     notes: Optional[str] = None
     valid_days: int = Field(default=15, ge=1, le=90)
 

@@ -12,15 +12,15 @@ from app.core.exceptions import BadRequestException
 
 XMLDSIG_NS = "http://www.w3.org/2000/09/xmldsig#"
 XADES_NS = "http://uri.etsi.org/01903/v1.3.2#"
-C14N_ALGO = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"
+C14N_ALGO = "http://www.w3.org/2001/10/xml-exc-c14n#"
 RSA_SHA256_ALGO = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
 SHA256_DIGEST_ALGO = "http://www.w3.org/2001/04/xmlenc#sha256"
-ENVELOPED_SIG_TRANSFORM = "http://www.w3.org/2000/09/xmldsig#enveloped-signature"
+XPATH_TRANSFORM = "http://www.w3.org/TR/1999/REC-xpath-19991116"
 
-POLICY_IDENTIFIER = "https://www.hacienda.go.cr/ATV/ComprobanteElectronico/docs/esquemas/2016/v4.2/ResolucionComprobantesElectronicosDGT-R-48-2016_4.2.pdf"
-POLICY_DIGEST_B64 = "V8/BnPliaasaAcBMB//US0002XA="
+POLICY_IDENTIFIER = "https://cdn.comprobanteselectronicos.go.cr/xml-schemas/Resoluci%C3%B3n_General_sobre_disposiciones_t%C3%A9cnicas_comprobantes_electr%C3%B3nicos_para_efectos_tributarios.pdf"
+POLICY_DIGEST_B64 = "DWxin1xWOeI8OuWQXazh4VjLWAaCLAA954em7DMh0h8="
 
-def c14n(node: etree._Element, exclusive: bool = False, inclusive_prefixes: list = None) -> bytes:
+def c14n(node: etree._Element, exclusive: bool = True, inclusive_prefixes: list = None) -> bytes:
     return etree.tostring(
         node,
         method="c14n",
@@ -41,6 +41,8 @@ class XAdESSignerV44:
         private_key, cert, _ = pkcs12.load_key_and_certificates(p12_bytes, pin.encode("utf-8"))
         if not cert or not private_key:
             raise BadRequestException("Certificado o clave privada no válidos en el archivo .p12")
+        if not isinstance(private_key, rsa.RSAPrivateKey) or private_key.key_size not in {2048, 4096}:
+            raise BadRequestException("Hacienda requiere una llave RSA de 2048 o 4096 bits")
 
         # Validate certificate validity window
         now_utc = datetime.now(timezone.utc)
@@ -68,6 +70,7 @@ class XAdESSignerV44:
         key_info_id = f"KeyInfo-{uuid.uuid4().hex[:12]}"
         signed_props_id = f"SignedProperties-{uuid.uuid4().hex[:12]}"
         qualifying_props_id = f"QualifyingProperties-{uuid.uuid4().hex[:12]}"
+        ref_doc_id = f"Reference-{uuid.uuid4().hex[:12]}"
 
         # 1. Document Digest (URI="") before signature element is added
         doc_c14n = c14n(doc)
@@ -137,6 +140,17 @@ class XAdESSignerV44:
         etree.SubElement(sig_policy_hash, f"{{{XMLDSIG_NS}}}DigestMethod", Algorithm=SHA256_DIGEST_ALGO)
         etree.SubElement(sig_policy_hash, f"{{{XMLDSIG_NS}}}DigestValue").text = POLICY_DIGEST_B64
 
+        signed_data_props = etree.SubElement(
+            signed_props,
+            f"{{{XADES_NS}}}SignedDataObjectProperties",
+        )
+        data_format = etree.SubElement(
+            signed_data_props,
+            f"{{{XADES_NS}}}DataObjectFormat",
+            ObjectReference=f"#{ref_doc_id}",
+        )
+        etree.SubElement(data_format, f"{{{XADES_NS}}}MimeType").text = "application/octet-stream"
+
         signed_props_digest = sha256_base64(c14n(signed_props))
 
         # 5. Build SignedInfo node and insert at position 0 of Signature
@@ -148,9 +162,18 @@ class XAdESSignerV44:
         etree.SubElement(signed_info, f"{{{XMLDSIG_NS}}}SignatureMethod", Algorithm=RSA_SHA256_ALGO)
 
         # Reference 1: Document Root
-        ref_doc = etree.SubElement(signed_info, f"{{{XMLDSIG_NS}}}Reference", URI="")
+        ref_doc = etree.SubElement(signed_info, f"{{{XMLDSIG_NS}}}Reference", Id=ref_doc_id, URI="")
         transforms_doc = etree.SubElement(ref_doc, f"{{{XMLDSIG_NS}}}Transforms")
-        etree.SubElement(transforms_doc, f"{{{XMLDSIG_NS}}}Transform", Algorithm=ENVELOPED_SIG_TRANSFORM)
+        xpath_transform = etree.SubElement(
+            transforms_doc,
+            f"{{{XMLDSIG_NS}}}Transform",
+            Algorithm=XPATH_TRANSFORM,
+        )
+        etree.SubElement(
+            xpath_transform,
+            f"{{{XMLDSIG_NS}}}XPath",
+            nsmap={"ds": XMLDSIG_NS},
+        ).text = "not(ancestor-or-self::ds:Signature)"
         etree.SubElement(transforms_doc, f"{{{XMLDSIG_NS}}}Transform", Algorithm=C14N_ALGO)
         etree.SubElement(ref_doc, f"{{{XMLDSIG_NS}}}DigestMethod", Algorithm=SHA256_DIGEST_ALGO)
         etree.SubElement(ref_doc, f"{{{XMLDSIG_NS}}}DigestValue").text = doc_digest
@@ -226,18 +249,51 @@ class XAdESSignerV44:
                 hashes.SHA256()
             )
 
-            # Verify Reference 1 (Document Digest)
-            ref_doc = signed_info.find(f"{{{XMLDSIG_NS}}}Reference[@URI='']")
-            if ref_doc is not None:
-                expected_doc_digest = ref_doc.find(f"{{{XMLDSIG_NS}}}DigestValue").text.strip()
-                
-                # Clone doc and remove ds:Signature to recalculate document digest
-                doc_copy = etree.fromstring(signed_xml_str.encode("utf-8"))
-                sig_in_copy = doc_copy.find(f".//{{{XMLDSIG_NS}}}Signature")
-                if sig_in_copy is not None:
-                    doc_copy.remove(sig_in_copy)
-                actual_doc_digest = sha256_base64(c14n(doc_copy))
-                if expected_doc_digest != actual_doc_digest:
+            canonicalization = signed_info.find(f"{{{XMLDSIG_NS}}}CanonicalizationMethod")
+            signature_method = signed_info.find(f"{{{XMLDSIG_NS}}}SignatureMethod")
+            if canonicalization is None or canonicalization.get("Algorithm") != C14N_ALGO:
+                return False
+            if signature_method is None or signature_method.get("Algorithm") != RSA_SHA256_ALGO:
+                return False
+
+            policy_identifier = doc.find(f".//{{{XADES_NS}}}SigPolicyId/{{{XADES_NS}}}Identifier")
+            policy_digest = doc.find(f".//{{{XADES_NS}}}SigPolicyHash/{{{XMLDSIG_NS}}}DigestValue")
+            if policy_identifier is None or policy_identifier.text != POLICY_IDENTIFIER:
+                return False
+            if policy_digest is None or policy_digest.text != POLICY_DIGEST_B64:
+                return False
+
+            references = signed_info.findall(f"{{{XMLDSIG_NS}}}Reference")
+            if len(references) < 2:
+                return False
+            for reference in references:
+                digest_method = reference.find(f"{{{XMLDSIG_NS}}}DigestMethod")
+                digest_value = reference.find(f"{{{XMLDSIG_NS}}}DigestValue")
+                if (
+                    digest_method is None
+                    or digest_method.get("Algorithm") != SHA256_DIGEST_ALGO
+                    or digest_value is None
+                    or not digest_value.text
+                ):
+                    return False
+
+                uri = reference.get("URI", "")
+                if uri == "":
+                    target = etree.fromstring(signed_xml_str.encode("utf-8"))
+                    for embedded_signature in target.findall(f".//{{{XMLDSIG_NS}}}Signature"):
+                        parent = embedded_signature.getparent()
+                        if parent is not None:
+                            parent.remove(embedded_signature)
+                elif uri.startswith("#"):
+                    target_id = uri[1:]
+                    matches = doc.xpath("//*[@Id=$target_id]", target_id=target_id)
+                    if len(matches) != 1:
+                        return False
+                    target = matches[0]
+                else:
+                    return False
+
+                if digest_value.text.strip() != sha256_base64(c14n(target)):
                     return False
 
             return True

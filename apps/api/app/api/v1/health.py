@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+from alembic.script import ScriptDirectory
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,21 +47,14 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)):
         await db.execute(text("SELECT 1"))
         checks["database"] = "connected"
 
-        # 2. Migration version check
-        try:
-            ver_res = await db.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-            version_num = ver_res.scalar_one_or_none()
-            checks["migrations"] = "applied" if version_num else "uninitialized"
-        except Exception:
-            # Fallback if alembic_version table doesn't exist yet (development/first boot)
-            checks["migrations"] = "unverified"
-
-        # 3. Outbox table accessibility check
-        try:
-            await db.execute(text("SELECT 1 FROM hacienda_outbox LIMIT 1"))
-            checks["outbox"] = "ready"
-        except Exception:
-            checks["outbox"] = "table_missing"
+        # A reachable database with an old or absent schema is not ready.
+        expected = set(ScriptDirectory(str(Path(__file__).resolve().parents[2] / "db" / "migrations")).get_heads())
+        versions = set((await db.execute(text("SELECT version_num FROM alembic_version"))).scalars())
+        if not expected or versions != expected:
+            raise ValueError("Migraciones pendientes")
+        checks["migrations"] = "current"
+        await db.execute(text("SELECT 1 FROM hacienda_outbox LIMIT 1"))
+        checks["outbox"] = "ready"
 
         # 4. Critical configuration validation
         try:
@@ -74,13 +69,16 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)):
         if getattr(settings, "REDIS_URL", None):
             try:
                 import redis.asyncio as aioredis
-                r = aioredis.from_url(settings.REDIS_URL)
-                await r.ping()
-                await r.aclose()
+                r = aioredis.from_url(settings.REDIS_URL, socket_connect_timeout=2, socket_timeout=2)
+                try:
+                    await r.ping()
+                finally:
+                    await r.aclose()
                 checks["redis"] = "connected"
             except Exception as r_err:
                 logger.warning(f"Aviso de conectividad Redis: {r_err}")
                 checks["redis"] = "unavailable"
+                raise ValueError("Redis configurado no disponible") from r_err
 
         return StandardResponse(
             data={

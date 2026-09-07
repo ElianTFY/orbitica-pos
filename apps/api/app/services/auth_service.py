@@ -684,8 +684,7 @@ class AuthService:
         await self.db.commit()
 
         email_adapter = get_email_adapter()
-        base_frontend = settings.FRONTEND_URL.rstrip('/')
-        recovery_url = f"{base_frontend}/reset-password?token={raw_token}"
+        recovery_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={raw_token}"
         await email_adapter.send_email(
             to_email=user.email,
             subject="Recuperación de Contraseña — Orbítica POS",
@@ -732,6 +731,17 @@ class AuthService:
         user.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
         user.email_verification_attempts = 0
         await self.db.commit()
+        email_adapter = get_email_adapter()
+        await email_adapter.send_email(
+            to_email=user.email,
+            subject="Código de verificación — Orbítica POS",
+            html_content=(
+                f"<p>Hola {user.full_name},</p>"
+                f"<p>Tu código de verificación es <strong>{code}</strong>.</p>"
+                "<p>El código vence en 15 minutos.</p>"
+            ),
+            text_content=f"Tu código de verificación de Orbítica POS es {code}. Vence en 15 minutos.",
+        )
         return code
 
     async def verify_email_code(self, user_id: uuid.UUID, code: str) -> bool:

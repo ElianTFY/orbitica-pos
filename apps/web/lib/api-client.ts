@@ -23,6 +23,7 @@ export interface ApiResponse<T = any> {
 
 class ApiClient {
   private accessToken: string | null = null;
+  private pendingRefresh: Promise<boolean> | null = null;
 
   setToken(token: string | null) {
     this.accessToken = token;
@@ -133,7 +134,14 @@ class ApiClient {
     }
   }
 
-  async refreshToken(): Promise<boolean> {
+  refreshToken(): Promise<boolean> {
+    if (!this.pendingRefresh) {
+      this.pendingRefresh = this.performRefresh().finally(() => { this.pendingRefresh = null; });
+    }
+    return this.pendingRefresh;
+  }
+
+  private async performRefresh(): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",

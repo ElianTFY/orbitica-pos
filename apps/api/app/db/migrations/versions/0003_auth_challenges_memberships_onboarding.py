@@ -17,13 +17,15 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        op.alter_column("alembic_version", "version_num", type_=sa.String(64), existing_type=sa.String(32))
     # 1. Add normalized_email and email_2fa_enabled to users
     op.add_column('users', sa.Column('normalized_email', sa.String(length=255), nullable=True))
     op.add_column('users', sa.Column('email_2fa_enabled', sa.Boolean(), server_default='0', nullable=False))
-    
+
     # Backfill normalized_email
     op.execute("UPDATE users SET normalized_email = lower(email) WHERE normalized_email IS NULL")
-    
+
     with op.batch_alter_table('users') as batch_op:
         batch_op.alter_column('normalized_email', nullable=False)
         batch_op.create_unique_constraint('uq_users_normalized_email', ['normalized_email'])

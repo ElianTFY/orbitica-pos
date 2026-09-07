@@ -18,7 +18,7 @@ interface AuthContextType {
   verify2FA: (challengeToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (perm: string) => boolean;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<UserProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,12 +28,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (): Promise<UserProfile | null> => {
     try {
       const res = await api.request<UserProfile>("/auth/me");
       setUser(res.data);
+      return res.data;
     } catch {
       setUser(null);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -72,16 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         api.setToken(res.data.access_token);
       }
 
-      if (res.data.user) {
-        setUser(res.data.user);
-        if (res.data.user.role === "superadmin") {
-          router.push("/superadmin");
-          return;
-        }
-      } else {
-        await fetchProfile();
-      }
-      router.push("/dashboard");
+      const authenticatedUser = res.data.user || await fetchProfile();
+      if (!authenticatedUser) throw new Error("No se pudo cargar el perfil autenticado");
+      setUser(authenticatedUser);
+      router.push(authenticatedUser.role === "superadmin" ? "/superadmin" : "/dashboard");
     } finally {
       setIsLoading(false);
     }
@@ -99,8 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       api.setToken(res.data.access_token);
-      await fetchProfile();
-      router.push("/dashboard");
+      const profile = await fetchProfile();
+      if (!profile) throw new Error("No se pudo cargar el perfil autenticado");
+      router.push(profile.role === "superadmin" ? "/superadmin" : "/dashboard");
     } finally {
       setIsLoading(false);
     }

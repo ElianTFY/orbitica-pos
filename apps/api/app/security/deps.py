@@ -27,7 +27,8 @@ class CurrentUserContext:
         is_delegated_session: bool = False,
         delegated_grant_id: Optional[UUID] = None,
         delegated_expires_at: Optional[datetime] = None,
-        delegated_reason: Optional[str] = None
+        delegated_reason: Optional[str] = None,
+        delegated_permission_level: Optional[str] = None,
     ):
         self.user = user
         self.user_id = user.id
@@ -42,6 +43,7 @@ class CurrentUserContext:
         self.delegated_grant_id = delegated_grant_id
         self.delegated_expires_at = delegated_expires_at
         self.delegated_reason = delegated_reason
+        self.delegated_permission_level = delegated_permission_level
 
 async def get_current_user_context(
     request: Request,
@@ -96,6 +98,7 @@ async def get_current_user_context(
     delegated_grant_id = None
     delegated_expires_at = None
     delegated_reason = None
+    delegated_permission_level = None
 
     delegated_token_hdr = request.headers.get("X-Delegated-Token")
     if delegated_token_hdr and user.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
@@ -107,7 +110,7 @@ async def get_current_user_context(
         grant_stmt = select(DelegatedAccessGrant).where(
             DelegatedAccessGrant.token_hash == token_hash,
             DelegatedAccessGrant.is_revoked == False
-        )
+        ).with_for_update()
         grant_res = await db.execute(grant_stmt)
         grant = grant_res.scalar_one_or_none()
         if not grant:
@@ -121,6 +124,10 @@ async def get_current_user_context(
         if not grant.support_agent_id:
             grant.support_agent_id = user.id
             await db.flush()
+        elif grant.support_agent_id != user.id:
+            raise ForbiddenException(
+                "El token de acceso delegado ya fue vinculado a otro agente de soporte"
+            )
 
         org_stmt = select(Organization).where(Organization.id == grant.organization_id, Organization.is_active == True)
         org_result = await db.execute(org_stmt)
@@ -133,6 +140,7 @@ async def get_current_user_context(
         delegated_grant_id = grant.id
         delegated_expires_at = exp
         delegated_reason = grant.reason
+        delegated_permission_level = grant.permission_level
 
         await AuditService.log_action(
             db=db,
@@ -182,13 +190,24 @@ async def get_current_user_context(
         is_delegated_session=is_delegated,
         delegated_grant_id=delegated_grant_id,
         delegated_expires_at=delegated_expires_at,
-        delegated_reason=delegated_reason
+        delegated_reason=delegated_reason,
+        delegated_permission_level=delegated_permission_level,
     )
 
 def require_permissions(*required_permissions: str) -> Callable:
-    def dependency(context: CurrentUserContext = Depends(get_current_user_context)) -> CurrentUserContext:
+    def dependency(
+        request: Request,
+        context: CurrentUserContext = Depends(get_current_user_context),
+    ) -> CurrentUserContext:
         if context.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT] and not context.is_delegated_session:
             raise ForbiddenException("Superadmin no puede operar un tenant sin una sesión delegada explícita y vigente")
+
+        if (
+            context.is_delegated_session
+            and context.delegated_permission_level == "READ_ONLY"
+            and request.method not in {"GET", "HEAD", "OPTIONS"}
+        ):
+            raise ForbiddenException("La sesión delegada es de solo lectura y no permite modificar datos")
 
         for perm in required_permissions:
             if not has_permission(context.role, perm):
@@ -201,7 +220,10 @@ def require_superadmin(context: CurrentUserContext = Depends(get_current_user_co
         raise ForbiddenException("Acceso exclusivo para Superadministradores de Orbítica")
     return context
 
-def require_organization_access(context: CurrentUserContext = Depends(get_current_user_context)) -> CurrentUserContext:
+def require_organization_access(
+    request: Request,
+    context: CurrentUserContext = Depends(get_current_user_context),
+) -> CurrentUserContext:
     """
     Enforces that the user belongs to an active tenant organization.
     Superadmins CANNOT operate on a tenant without an explicit, valid delegated session.
@@ -209,6 +231,8 @@ def require_organization_access(context: CurrentUserContext = Depends(get_curren
     if context.role in [UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
         if not context.is_delegated_session or not context.organization_id:
             raise ForbiddenException("Superadmin no puede operar un tenant sin una sesión delegada explícita y vigente")
+        if context.delegated_permission_level == "READ_ONLY" and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            raise ForbiddenException("La sesión delegada es de solo lectura y no permite modificar datos")
     elif not context.organization_id:
         raise ForbiddenException("Acceso denegado: usuario sin organización asignada")
     return context
@@ -226,6 +250,13 @@ def require_branch_access(branch_id_param_name: str = "branch_id") -> Callable:
         context: CurrentUserContext = Depends(get_current_user_context),
         db: AsyncSession = Depends(get_db)
     ) -> Branch:
+        require_organization_access(request, context)
+        if (
+            context.is_delegated_session
+            and context.delegated_permission_level == "READ_ONLY"
+            and request.method not in {"GET", "HEAD", "OPTIONS"}
+        ):
+            raise ForbiddenException("La sesión delegada es de solo lectura y no permite modificar datos")
         # Resolve target branch id from path params, query params, headers, or body
         branch_id_str = (
             request.path_params.get(branch_id_param_name) or
@@ -246,10 +277,9 @@ def require_branch_access(branch_id_param_name: str = "branch_id") -> Callable:
         # Query branch belonging strictly to user organization
         stmt = select(Branch).where(
             Branch.id == target_branch_id,
+            Branch.organization_id == context.organization_id,
             Branch.is_active == True
         )
-        if context.role != UserRole.SUPERADMIN:
-            stmt = stmt.where(Branch.organization_id == context.organization_id)
 
         res = await db.execute(stmt)
         branch = res.scalar_one_or_none()
@@ -276,6 +306,13 @@ def require_resource_tenant_scope(model_class: Any, id_param_name: str = "id") -
         context: CurrentUserContext = Depends(get_current_user_context),
         db: AsyncSession = Depends(get_db)
     ) -> Any:
+        require_organization_access(request, context)
+        if (
+            context.is_delegated_session
+            and context.delegated_permission_level == "READ_ONLY"
+            and request.method not in {"GET", "HEAD", "OPTIONS"}
+        ):
+            raise ForbiddenException("La sesión delegada es de solo lectura y no permite modificar datos")
         resource_id_str = request.path_params.get(id_param_name) or request.query_params.get(id_param_name)
         if not resource_id_str:
             raise ForbiddenException(f"Identificador '{id_param_name}' requerido")
@@ -286,7 +323,7 @@ def require_resource_tenant_scope(model_class: Any, id_param_name: str = "id") -
             raise NotFoundException(f"Recurso '{model_class.__name__}' no encontrado")
 
         stmt = select(model_class).where(model_class.id == resource_id)
-        if hasattr(model_class, "organization_id") and context.role != UserRole.SUPERADMIN:
+        if hasattr(model_class, "organization_id"):
             stmt = stmt.where(model_class.organization_id == context.organization_id)
 
         res = await db.execute(stmt)

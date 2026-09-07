@@ -1,7 +1,7 @@
 """audit append-only triggers
 
 Revision ID: 0002_audit_append_only
-Revises: 0001_initial_production_schema
+Revises: 0001_initial_schema
 Create Date: 2026-09-02 12:15:00.000000
 
 """
@@ -27,8 +27,8 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql;
         """)
 
+        op.execute("DROP TRIGGER IF EXISTS trg_block_audit_log_modifications ON audit_logs")
         op.execute("""
-        DROP TRIGGER IF EXISTS trg_block_audit_log_modifications ON audit_logs;
         CREATE TRIGGER trg_block_audit_log_modifications
         BEFORE UPDATE OR DELETE ON audit_logs
         FOR EACH ROW

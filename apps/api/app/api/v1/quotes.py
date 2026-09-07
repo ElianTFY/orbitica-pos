@@ -2,6 +2,9 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.quote import Quote
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.db.session import get_db
 from app.schemas.quote import QuoteCreate, QuoteResponse, QuoteConvertToSaleRequest
 from app.schemas.sale import SaleResponse
@@ -64,3 +67,21 @@ async def convert_to_sale(
         data=SaleResponse.model_validate(sale),
         message="Cotización convertida exitosamente a venta en firme"
     )
+
+
+@router.delete("/{quote_id}", response_model=StandardResponse[dict])
+async def delete_quote(
+    quote_id: UUID,
+    context: CurrentUserContext = Depends(require_permissions("pos:sell")),
+    db: AsyncSession = Depends(get_db),
+):
+    quote = (await db.execute(select(Quote).where(
+        Quote.id == quote_id, Quote.organization_id == context.organization_id,
+    ).with_for_update())).scalar_one_or_none()
+    if not quote:
+        raise NotFoundException("Cotización no encontrada")
+    if quote.status != "DRAFT":
+        raise BadRequestException("Solo se pueden eliminar cotizaciones en borrador")
+    await db.delete(quote)
+    await db.commit()
+    return StandardResponse(data={"deleted": True})

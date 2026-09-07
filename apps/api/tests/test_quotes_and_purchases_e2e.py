@@ -52,6 +52,7 @@ async def test_quote_creation_and_atomic_conversion_to_sale(
             "branch_id": str(tenant["branch"].id),
             "tax_rate_id": str(tenant["tax"].id),
             "sku": "CEM-50KG",
+            "cabys_code": "2132100000100",
             "barcode": "744100000001",
             "sale_price": "6500.00",
             "cost_price": "4500.00",
@@ -163,6 +164,7 @@ async def test_purchase_intake_increments_stock_and_creates_movements(
             "branch_id": str(tenant["branch"].id),
             "tax_rate_id": str(tenant["tax"].id),
             "sku": "VAR-38",
+            "cabys_code": "2132100000100",
             "sale_price": "3500.00",
             "cost_price": "2400.00",
             "initial_stock": 10

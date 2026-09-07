@@ -13,6 +13,7 @@ from app.models.branch import Branch
 from app.schemas.purchase import PurchaseCreate
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.audit_service import AuditService
+from app.services.consecutive_service import ConsecutiveService
 
 def round_money(val: Decimal) -> Decimal:
     return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -88,13 +89,15 @@ class PurchaseService:
         if not data.items:
             raise BadRequestException("La orden de compra debe contener al menos un producto")
 
-        # 2. Count existing purchases for numbering
-        count_stmt = select(Purchase).where(
-            Purchase.organization_id == self.organization_id,
-            Purchase.branch_id == data.branch_id
+        # 2. Allocate a transaction-safe internal sequence. Counting rows races
+        # under concurrent stock receipts and can violate the unique key.
+        num_count = await ConsecutiveService(self.db).get_next_consecutive_atomic(
+            organization_id=self.organization_id,
+            branch_code=branch.code,
+            terminal_number="00000",
+            doc_type="PC",
+            environment="INTERNAL",
         )
-        count_res = await self.db.execute(count_stmt)
-        num_count = len(count_res.scalars().all()) + 1
         purchase_number = f"COM-{branch.code}-{num_count:06d}"
 
         # 3. Process items and update stock atomically

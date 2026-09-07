@@ -9,7 +9,7 @@ from app.models.branch import Branch
 from app.models.customer import Customer
 from app.core.config import settings
 from app.core.exceptions import BadRequestException
-from app.core.cabys_catalog import map_fiscal_v44_tax_tariff, DEFAULT_OFFICIAL_CABYS
+from app.core.cabys_catalog import map_fiscal_v44_tax_tariff
 
 CR_TIMEZONE = timezone(timedelta(hours=-6))
 
@@ -66,13 +66,15 @@ class HaciendaXMLGeneratorV44:
         if doc_type in _COMPILED_SCHEMAS:
             return _COMPILED_SCHEMAS[doc_type]
 
-        xsd_filename = XSD_FILES.get(doc_type, XSD_FILES["04"])
+        if doc_type not in XSD_FILES:
+            raise BadRequestException("Tipo de documento fiscal no soportado")
+        xsd_filename = XSD_FILES[doc_type]
         base_dir = os.path.dirname(os.path.dirname(__file__))
         schema_dir = os.path.join(base_dir, "schemas_xml", "v4.4")
         xsd_path = os.path.join(schema_dir, xsd_filename)
 
         if not os.path.exists(xsd_path):
-            return None
+            raise BadRequestException("No está instalado el esquema oficial v4.4 requerido")
 
         parser = etree.XMLParser()
         parser.resolvers.add(DsigResolver(schema_dir))
@@ -90,8 +92,6 @@ class HaciendaXMLGeneratorV44:
         Raises BadRequestException if XML does not strictly conform.
         """
         schema = cls.get_compiled_schema(doc_type)
-        if not schema:
-            return
 
         try:
             xml_doc = etree.fromstring(xml_content.encode("utf-8"))
@@ -128,10 +128,17 @@ class HaciendaXMLGeneratorV44:
         customer: Optional[Customer] = None,
         reference_info: Optional[Dict[str, Any]] = None,
         other_charges: Optional[List[Dict[str, Any]]] = None,
+        emission_date: Optional[datetime] = None,
         validate_xsd: bool = True
     ) -> str:
-        ns = DOC_NAMESPACES.get(doc_type, DOC_NAMESPACES["04"])
-        root_tag = ROOT_TAGS.get(doc_type, ROOT_TAGS["04"])
+        if doc_type not in {"01", "02", "03", "04"}:
+            raise BadRequestException("Tipo de comprobante no soportado por este generador")
+        if doc_type == "01" and (not customer or not customer.identification_number):
+            raise BadRequestException("La factura requiere un receptor identificado")
+        if doc_type in {"02", "03"} and (not reference_info or not all(reference_info.get(k) for k in ("doc_type", "number", "date", "reason"))):
+            raise BadRequestException("La nota requiere los datos del comprobante original")
+        ns = DOC_NAMESPACES[doc_type]
+        root_tag = ROOT_TAGS[doc_type]
 
         NSMAP = {
             None: ns,
@@ -160,7 +167,10 @@ class HaciendaXMLGeneratorV44:
         etree.SubElement(root, f"{{{ns}}}NumeroConsecutivo").text = consecutive_number
 
         # 6. FechaEmision (ISO 8601 UTC-6)
-        cr_now = datetime.now(CR_TIMEZONE)
+        source_date = emission_date or datetime.now(timezone.utc)
+        if source_date.tzinfo is None:
+            source_date = source_date.replace(tzinfo=timezone.utc)
+        cr_now = source_date.astimezone(CR_TIMEZONE)
         etree.SubElement(root, f"{{{ns}}}FechaEmision").text = cr_now.isoformat()
 
         # 7. Emisor
@@ -191,7 +201,7 @@ class HaciendaXMLGeneratorV44:
         etree.SubElement(emisor, f"{{{ns}}}CorreoElectronico").text = org.email[:160]
 
         # 8. Receptor (Mandatory for Factura 01, Notas 02/03; Optional for Tiquete 04)
-        if doc_type in ["01", "02", "03"] or (customer and customer.identification_number):
+        if (doc_type == "01") or (customer and customer.identification_number):
             rec_elem = etree.SubElement(root, f"{{{ns}}}Receptor")
             rec_name = customer.name if customer else "Cliente General"
             etree.SubElement(rec_elem, f"{{{ns}}}Nombre").text = rec_name[:100]
@@ -240,9 +250,13 @@ class HaciendaXMLGeneratorV44:
             raw_cabys = getattr(item, "cabys_code", None)
             if not raw_cabys and hasattr(item, "product") and item.product:
                 raw_cabys = getattr(item.product, "cabys_code", None)
-            cabys_code = str(raw_cabys or DEFAULT_OFFICIAL_CABYS).strip()
+            cabys_code = str(raw_cabys or "").strip()
 
-            if not cabys_code.isdigit() or len(cabys_code) != 13 or cabys_code == "0000000000000":
+            if (
+                not cabys_code.isdigit()
+                or len(cabys_code) != 13
+                or cabys_code in {"0000000000000", "5211010000100"}
+            ):
                 raise BadRequestException(
                     f"Línea #{line_num}: Código CAByS '{cabys_code}' inválido. Debe contener 13 dígitos oficiales de Hacienda."
                 )
@@ -258,29 +272,43 @@ class HaciendaXMLGeneratorV44:
 
             raw_qty = Decimal(str(item.quantity))
             raw_price = Decimal(str(item.unit_price))
-            raw_tax = getattr(item, "tax_amount", Decimal("0.00")) or Decimal("0.00")
-            tax_rate_pct = getattr(item, "tax_rate_percentage", None) or getattr(item, "tax_rate", Decimal("13.00")) or Decimal("13.00")
-            disc_val = getattr(item, "discount_amount", Decimal("0.00")) or Decimal("0.00")
+            raw_tax = Decimal(str(getattr(item, "tax_amount", None) or "0"))
+            rate = getattr(item, "tax_rate_percentage", None)
+            if rate is None:
+                rate = getattr(item, "tax_rate", None)
+            if rate is None:
+                raise BadRequestException("La línea no tiene tarifa fiscal registrada")
+            tax_rate_pct = Decimal(str(rate))
+            disc_val = Decimal(str(getattr(item, "discount_amount", Decimal("0.00")) or Decimal("0.00")))
 
-            # In CR fiscal invoicing:
-            # If item was recorded with tax-inclusive price, extract net ex-tax unit price
-            line_total_val = getattr(item, "line_total", None)
-            if line_total_val and raw_tax > Decimal("0.00") and abs(line_total_val - (raw_price * raw_qty)) < Decimal("0.02"):
-                ex_tax_total = line_total_val - raw_tax + disc_val
-                unit_price_ex_tax = (ex_tax_total / raw_qty).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
-            elif tax_rate_pct > Decimal("0.00") and raw_tax > Decimal("0.00") and abs(sale.total_amount - (sale.subtotal_amount + sale.tax_amount)) < Decimal("0.02") and abs(sale.subtotal_amount - (raw_price * raw_qty)) > Decimal("0.02"):
-                ex_tax_total = (raw_price * raw_qty) / (Decimal("1.00") + (tax_rate_pct / Decimal("100.00")))
-                unit_price_ex_tax = (ex_tax_total / raw_qty).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
+            # POS catalog prices include IVA. Preserve that fact explicitly in
+            # the immutable sale snapshot so discounts and tax bases are not
+            # guessed while producing the legal XML.
+            price_includes_tax = bool(getattr(item, "price_includes_tax", True))
+            divisor = Decimal("1.00") + (tax_rate_pct / Decimal("100.00"))
+            if price_includes_tax and tax_rate_pct > Decimal("0.00"):
+                unit_price_ex_tax = (raw_price / divisor).quantize(Decimal("0.00001"), rounding=ROUND_HALF_UP)
+                fiscal_discount = (disc_val / divisor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             else:
                 unit_price_ex_tax = raw_price
+                fiscal_discount = disc_val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             monto_total_linea_bruta = (unit_price_ex_tax * raw_qty).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            subtotal_line = (monto_total_linea_bruta - disc_val).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            subtotal_line = (monto_total_linea_bruta - fiscal_discount).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            # The charged total and IVA are immutable two-decimal snapshots.
+            # Allocate the fiscal discount from those amounts, so XML never
+            # charges a second discount or differs from the POS by a cent.
+            if price_includes_tax and getattr(item, "line_total", None) is not None:
+                subtotal_line = Decimal(str(item.line_total)) - raw_tax
+                if disc_val == 0:
+                    monto_total_linea_bruta = subtotal_line
+                fiscal_discount = monto_total_linea_bruta - subtotal_line
+                if fiscal_discount < 0:
+                    raise BadRequestException("Snapshot fiscal inconsistente: descuento negativo")
 
             unit_val = getattr(item, "unit_of_measure", None) or (getattr(item.product, "unit_of_measure", None) if hasattr(item, "product") else "Unid") or "Unid"
-            is_service = getattr(item, "is_service", False)
-            if not is_service and hasattr(item, "product") and item.product:
-                is_service = getattr(item.product, "is_service", False)
+            # Fiscal goods/services classification follows CAByS, not stock tracking.
+            is_service = int(cabys_code[0]) >= 5
 
             etree.SubElement(line_elem, f"{{{ns}}}Cantidad").text = fmt_money(raw_qty, 3)
             etree.SubElement(line_elem, f"{{{ns}}}UnidadMedida").text = str(unit_val)[:10]
@@ -288,24 +316,24 @@ class HaciendaXMLGeneratorV44:
             etree.SubElement(line_elem, f"{{{ns}}}PrecioUnitario").text = fmt_money(unit_price_ex_tax, 5)
             etree.SubElement(line_elem, f"{{{ns}}}MontoTotal").text = fmt_money_2(monto_total_linea_bruta)
 
-            if disc_val > Decimal("0.00"):
+            if fiscal_discount > Decimal("0.00"):
                 desc_elem = etree.SubElement(line_elem, f"{{{ns}}}Descuento")
-                etree.SubElement(desc_elem, f"{{{ns}}}MontoDescuento").text = fmt_money_2(disc_val)
+                etree.SubElement(desc_elem, f"{{{ns}}}MontoDescuento").text = fmt_money_2(fiscal_discount)
                 etree.SubElement(desc_elem, f"{{{ns}}}CodigoDescuento").text = "04"
-                tot_desc += disc_val
+                tot_desc += fiscal_discount
 
             etree.SubElement(line_elem, f"{{{ns}}}SubTotal").text = fmt_money_2(subtotal_line)
             etree.SubElement(line_elem, f"{{{ns}}}BaseImponible").text = fmt_money_2(subtotal_line)
 
             cod_imp, cod_tarifa = map_tax_rate_code(tax_rate_pct)
             if tax_rate_pct > Decimal("0.00"):
-                monto_imp = (subtotal_line * (tax_rate_pct / Decimal("100.00"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                monto_imp = raw_tax if price_includes_tax else (subtotal_line * (tax_rate_pct / Decimal("100.00"))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 tot_impuesto += monto_imp
-                tot_grav += subtotal_line
+                tot_grav += monto_total_linea_bruta
                 if is_service:
-                    tot_serv_grav += subtotal_line
+                    tot_serv_grav += monto_total_linea_bruta
                 else:
-                    tot_merc_grav += subtotal_line
+                    tot_merc_grav += monto_total_linea_bruta
 
                 tb_key = (cod_imp, cod_tarifa)
                 tax_breakdowns[tb_key] = tax_breakdowns.get(tb_key, Decimal("0.00")) + monto_imp
@@ -320,11 +348,11 @@ class HaciendaXMLGeneratorV44:
                 etree.SubElement(line_elem, f"{{{ns}}}ImpuestoNeto").text = fmt_money_2(monto_imp)
                 etree.SubElement(line_elem, f"{{{ns}}}MontoTotalLinea").text = fmt_money_2(subtotal_line + monto_imp)
             else:
-                tot_exento += subtotal_line
+                tot_exento += monto_total_linea_bruta
                 if is_service:
-                    tot_serv_exento += subtotal_line
+                    tot_serv_exento += monto_total_linea_bruta
                 else:
-                    tot_merc_exenta += subtotal_line
+                    tot_merc_exenta += monto_total_linea_bruta
 
                 imp_elem = etree.SubElement(line_elem, f"{{{ns}}}Impuesto")
                 etree.SubElement(imp_elem, f"{{{ns}}}Codigo").text = "01"
@@ -354,7 +382,9 @@ class HaciendaXMLGeneratorV44:
         curr_elem = etree.SubElement(resumen, f"{{{ns}}}CodigoTipoMoneda")
         doc_curr = sale.currency or "CRC"
         etree.SubElement(curr_elem, f"{{{ns}}}CodigoMoneda").text = doc_curr
-        etree.SubElement(curr_elem, f"{{{ns}}}TipoCambio").text = "1.00000" if doc_curr == "CRC" else fmt_money(sale.exchange_rate or Decimal("520.00"), 5)
+        if doc_curr != "CRC":
+            raise BadRequestException("La emisión en otra moneda requiere un tipo de cambio fiscal persistido")
+        etree.SubElement(curr_elem, f"{{{ns}}}TipoCambio").text = "1.00000"
 
         if tot_serv_grav > Decimal("0.00"):
             etree.SubElement(resumen, f"{{{ns}}}TotalServGravados").text = fmt_money_2(tot_serv_grav)
@@ -400,7 +430,9 @@ class HaciendaXMLGeneratorV44:
             etree.SubElement(mp_elem, f"{{{ns}}}TipoMedioPago").text = "01"
             etree.SubElement(mp_elem, f"{{{ns}}}TotalMedioPago").text = fmt_money_2(tot_venta_neta + tot_impuesto + tot_otros_cargos)
         else:
-            for p in payments_to_emit[:4]:
+            if len(payments_to_emit) > 4:
+                raise BadRequestException("El comprobante admite un máximo de cuatro pagos")
+            for p in payments_to_emit:
                 mp_elem = etree.SubElement(resumen, f"{{{ns}}}MedioPago")
                 pm_str = p.payment_method
                 if "CARD" in pm_str:
@@ -415,7 +447,7 @@ class HaciendaXMLGeneratorV44:
                     cod_p = "01"
 
                 etree.SubElement(mp_elem, f"{{{ns}}}TipoMedioPago").text = cod_p
-                etree.SubElement(mp_elem, f"{{{ns}}}TotalMedioPago").text = fmt_money_2(p.amount)
+                etree.SubElement(mp_elem, f"{{{ns}}}TotalMedioPago").text = fmt_money_2(p.amount - (getattr(p, "change_returned", None) or Decimal("0.00")))
 
         tot_comprobante = tot_venta_neta + tot_impuesto + tot_otros_cargos
         etree.SubElement(resumen, f"{{{ns}}}TotalComprobante").text = fmt_money_2(tot_comprobante)
@@ -429,14 +461,6 @@ class HaciendaXMLGeneratorV44:
             etree.SubElement(ir_elem, f"{{{ns}}}FechaEmisionIR").text = str(ref_date)
             etree.SubElement(ir_elem, f"{{{ns}}}Codigo").text = str(reference_info.get("code", "01")).zfill(2)[:2]  # 01=Anula
             etree.SubElement(ir_elem, f"{{{ns}}}Razon").text = str(reference_info.get("reason", "Anulación / Corrección de Comprobante"))[:180]
-        elif doc_type in ["02", "03"]:
-            # Default reference if not explicitly passed
-            ir_elem = etree.SubElement(root, f"{{{ns}}}InformacionReferencia")
-            etree.SubElement(ir_elem, f"{{{ns}}}TipoDocIR").text = "01"
-            etree.SubElement(ir_elem, f"{{{ns}}}Numero").text = numeric_key[:50]
-            etree.SubElement(ir_elem, f"{{{ns}}}FechaEmisionIR").text = cr_now.isoformat()
-            etree.SubElement(ir_elem, f"{{{ns}}}Codigo").text = "01"
-            etree.SubElement(ir_elem, f"{{{ns}}}Razon").text = "Nota de Crédito por devolución o corrección"
 
         xml_output = etree.tostring(root, encoding="utf-8", xml_declaration=True, pretty_print=True).decode("utf-8")
 

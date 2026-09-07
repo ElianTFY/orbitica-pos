@@ -57,13 +57,14 @@ class OutboxService:
         stuck_minutes: int = 15
     ) -> int:
         """
-        Requeues events stuck in PROCESSING or SENT due to worker unexpected crash.
+        Requeues only transmissions stuck before a durable Hacienda receipt marker.
+        SENT events must remain SENT so the worker polls instead of transmitting again.
         """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=stuck_minutes)
         stmt = (
             update(HaciendaOutbox)
             .where(
-                HaciendaOutbox.status.in_(["PROCESSING", "SENT"]),
+                HaciendaOutbox.status == "PROCESSING",
                 HaciendaOutbox.updated_at < cutoff
             )
             .values(

@@ -1,3 +1,5 @@
+> **SUPERADO — 2026-09-07.** Este reporte histórico no certifica preparación comercial ni aceptación de Hacienda. Consultar [FINAL_PRODUCTION_AUDIT.md](FINAL_PRODUCTION_AUDIT.md) y el PR de `codex/final-production-fixes`.
+
 # INFORME TÉCNICO DE REMEDIACIÓN FINAL EJECUTABLE — ORBÍTICA POS
 **Fecha:** 2 de Septiembre de 2026  
 **Ingeniero Principal:** Antigravity (Advanced Agentic Coding)  

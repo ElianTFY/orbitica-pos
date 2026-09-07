@@ -48,6 +48,7 @@ async def create_sale(
     sale = await service.create_sale(
         data=payload,
         user_id=context.user_id,
+        commit=False,
     )
     resp_obj = StandardResponse(
         data=SaleResponse.model_validate(sale),
@@ -63,6 +64,8 @@ async def create_sale(
             status_code=status.HTTP_201_CREATED
         )
 
+    if not idempotency_key:
+        await db.commit()
     return resp_obj
 
 @router.get("", response_model=StandardResponse[List[SaleResponse]])
@@ -180,7 +183,7 @@ async def refund_sale(
             )
 
     service = SaleService(db, context.organization_id)
-    sale = await service.refund_sale(sale_id=sale_id, data=payload, actor_id=context.user_id)
+    sale = await service.refund_sale(sale_id=sale_id, data=payload, actor_id=context.user_id, commit=False)
     resp_obj = StandardResponse(
         data=SaleResponse.model_validate(sale),
         message="Venta reembolsada y stock reintegrado al inventario"
@@ -195,4 +198,6 @@ async def refund_sale(
             status_code=status.HTTP_200_OK
         )
 
+    if not idempotency_key:
+        await db.commit()
     return resp_obj

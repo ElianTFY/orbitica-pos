@@ -7,7 +7,13 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12, BestAvailableEncryption
-from app.services.xades_signer_v44 import XAdESSignerV44, XMLDSIG_NS, XADES_NS, POLICY_IDENTIFIER
+from app.services.xades_signer_v44 import (
+    XAdESSignerV44,
+    XMLDSIG_NS,
+    XADES_NS,
+    POLICY_IDENTIFIER,
+    POLICY_DIGEST_B64,
+)
 from app.services.xades_service import sign_xml_document, verify_xml_signature
 from app.services.hacienda_xml_generator_v44 import HaciendaXMLGeneratorV44
 from app.core.exceptions import BadRequestException
@@ -89,6 +95,7 @@ def sample_xml():
     )
     item.cabys_code = "6339900000000"
     item.unit_of_measure = "Unid"
+    item.price_includes_tax = False
     sale = Sale(
         id=uuid.uuid4(),
         organization_id=org_id,
@@ -125,6 +132,7 @@ def test_xades_epes_signing_and_verification(sample_xml):
     assert f'xmlns:ds="{XMLDSIG_NS}"' in signed_xml
     assert f'xmlns:xades="{XADES_NS}"' in signed_xml
     assert POLICY_IDENTIFIER in signed_xml
+    assert POLICY_DIGEST_B64 in signed_xml
 
     # Check ds:Signature is inserted right at the end of the root document
     assert signed_xml.strip().endswith("</TiqueteElectronico>")
@@ -168,3 +176,27 @@ def test_tampered_document_fails_verification(sample_xml):
     # Tamper document total
     tampered_xml = signed_xml.replace("<TotalComprobante>1130.00</TotalComprobante>", "<TotalComprobante>9999.00</TotalComprobante>")
     assert verify_xml_signature(tampered_xml) is False
+
+
+def test_tampered_signed_properties_fail_verification(sample_xml):
+    pin = "4321"
+    p12_bytes = generate_custom_p12(pin=pin)
+    signed_xml = sign_xml_document(sample_xml, p12_bytes, pin)
+
+    tampered_xml = signed_xml.replace(POLICY_DIGEST_B64, "A" * 43 + "=")
+    assert verify_xml_signature(tampered_xml) is False
+
+
+def test_signature_verified_by_independent_xmlsec():
+    import xmlsec
+    from lxml import etree
+    from tests.test_final_fiscal_flow import _test_p12
+    from cryptography.hazmat.primitives.serialization import pkcs12, Encoding
+    p12 = _test_p12("1234")
+    _, cert, _ = pkcs12.load_key_and_certificates(p12, b"1234")
+    signed = XAdESSignerV44.sign_xml('<Document xmlns="urn:orbitica:test"><Amount>1130.00</Amount></Document>', p12, "1234")
+    root = etree.fromstring(signed.encode())
+    xmlsec.tree.add_ids(root, ["Id"])
+    context = xmlsec.SignatureContext()
+    context.key = xmlsec.Key.from_memory(cert.public_bytes(Encoding.PEM), xmlsec.KeyFormat.CERT_PEM, None)
+    context.verify(root.find("{http://www.w3.org/2000/09/xmldsig#}Signature"))

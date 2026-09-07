@@ -27,7 +27,7 @@ async def test_pos_mixed_payment_real_persistence(
     headers = {"Authorization": f"Bearer {tenant['token']}"}
 
     # 1. Product priced at ₡20,000 total (after tax)
-    # Using a ₡17,699.12 base + 13% IVA = ₡20,000.00
+    # Catalog prices include IVA: ₡20,000 is the charged price.
     prod_resp = await client.post(
         "/api/v1/products",
         headers=headers,
@@ -36,7 +36,8 @@ async def test_pos_mixed_payment_real_persistence(
             "branch_id": str(tenant["branch"].id),
             "tax_rate_id": str(tenant["tax"].id),
             "sku": "ABARR-01",
-            "sale_price": "17699.12",
+                "cabys_code": "2132100000100",
+            "sale_price": "20000.00",
             "cost_price": "12000.00",
             "initial_stock": 50
         }

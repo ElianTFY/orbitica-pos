@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
 from app.models.audit_log import AuditLog
 
 GENESIS_HASH = "0" * 64
@@ -57,10 +57,16 @@ class AuditService:
         payload_before: Optional[Dict[str, Any]] = None,
         payload_after: Optional[Dict[str, Any]] = None
     ) -> AuditLog:
+        # Serialize append operations in PostgreSQL so two concurrent requests
+        # cannot read the same previous_hash and create a forked chain.
+        bind = db.bind
+        if bind and bind.dialect.name == "postgresql":
+            await db.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": 87420344})
+
         # 1. Fetch last audit log to get previous_hash
         last_stmt = (
             select(AuditLog.event_hash)
-            .order_by(desc(AuditLog.created_at))
+            .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
             .limit(1)
         )
         last_res = await db.execute(last_stmt)
@@ -113,7 +119,7 @@ class AuditService:
         Verifies the cryptographic integrity of the audit log chain.
         Returns: (is_valid, verified_count, error_message_if_broken)
         """
-        stmt = select(AuditLog).order_by(AuditLog.created_at.asc()).limit(limit)
+        stmt = select(AuditLog).order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(limit)
         res = await db.execute(stmt)
         logs: List[AuditLog] = list(res.scalars().all())
 
@@ -122,15 +128,12 @@ class AuditService:
 
         expected_prev_hash = GENESIS_HASH
         for idx, entry in enumerate(logs):
-            if idx == 0:
-                expected_prev_hash = entry.previous_hash or GENESIS_HASH
-            else:
-                if entry.previous_hash != expected_prev_hash:
-                    return (
-                        False,
-                        idx,
-                        f"Ruptura de cadena en evento ID '{entry.id}': previous_hash esperado '{expected_prev_hash}', obtenido '{entry.previous_hash}'"
-                    )
+            if entry.previous_hash != expected_prev_hash:
+                return (
+                    False,
+                    idx,
+                    f"Ruptura de cadena en evento ID '{entry.id}': previous_hash esperado '{expected_prev_hash}', obtenido '{entry.previous_hash}'"
+                )
 
             # Recalculate event hash
             time_str = format_audit_time(entry.created_at)

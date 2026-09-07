@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import smtplib
 from abc import ABC, abstractmethod
 from email.mime.text import MIMEText
@@ -84,12 +85,15 @@ class SmtpEmailAdapter(BaseEmailAdapter):
                     part["Content-Disposition"] = f'attachment; filename="{fname}"'
                     msg.attach(part)
 
-            with smtplib.SMTP(self.host, self.port, timeout=10) as server:
-                if self.use_tls:
-                    server.starttls()
-                if self.user and self.password:
-                    server.login(self.user, self.password)
-                server.sendmail(msg["From"], [to_email], msg.as_string())
+            def _send() -> None:
+                with smtplib.SMTP(self.host, self.port, timeout=10) as server:
+                    if self.use_tls:
+                        server.starttls()
+                    if self.user and self.password:
+                        server.login(self.user, self.password)
+                    server.sendmail(msg["From"], [to_email], msg.as_string())
+
+            await asyncio.to_thread(_send)
             logger.info(f"Correo enviado exitosamente a {to_email}")
             return True
         except Exception as e:

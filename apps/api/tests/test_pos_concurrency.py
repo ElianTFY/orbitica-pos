@@ -36,6 +36,8 @@ async def test_overselling_prevention(client: AsyncClient, db_session: AsyncSess
             "cost_price": 1200.0,
             "sale_price": 1695.0,
             "tax_rate_id": tax_id,
+            "cabys_code": "2132100000100",
+            "unit_of_measure": "Unid",
             "is_service": False
         }
     )
@@ -95,6 +97,8 @@ async def test_consecutive_atomicity_and_zero_duplicate_keys(client: AsyncClient
             "cost_price": 5000.0,
             "sale_price": 10000.0,
             "tax_rate_id": tax_id,
+            "cabys_code": "8222100000000",
+            "unit_of_measure": "Sp",
             "is_service": True
         }
     )
@@ -116,4 +120,4 @@ async def test_consecutive_atomicity_and_zero_duplicate_keys(client: AsyncClient
 
     # Verify all 5 sale numbers are distinct and sequential
     assert len(set(sale_numbers)) == 5
-    assert sale_numbers == ["V-000001", "V-000002", "V-000003", "V-000004", "V-000005"]
+    assert [int(number[-10:]) for number in sale_numbers] == [1, 2, 3, 4, 5]

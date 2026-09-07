@@ -4,9 +4,11 @@ from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from app.models.catalog import Category, TaxRate, Product, BranchProductStock
+from app.models.branch import Branch
 from app.schemas.catalog import CategoryCreate, CategoryUpdate, TaxRateCreate, ProductCreate, ProductUpdate
 from app.core.exceptions import NotFoundException, ConflictException, BadRequestException
 from app.services.audit_service import AuditService
+from app.services.cabys_service import CabysService
 
 class CatalogService:
     def __init__(self, db: AsyncSession, organization_id: uuid.UUID):
@@ -228,6 +230,42 @@ class CatalogService:
         }
 
     async def create_product(self, data: ProductCreate, actor_id: uuid.UUID) -> Product:
+        tax = (await self.db.execute(
+            select(TaxRate).where(
+                TaxRate.id == data.tax_rate_id,
+                TaxRate.organization_id == self.organization_id,
+                TaxRate.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not tax:
+            raise NotFoundException("Tarifa de impuesto no válida para la organización")
+
+        if data.category_id:
+            category = (await self.db.execute(
+                select(Category).where(
+                    Category.id == data.category_id,
+                    Category.organization_id == self.organization_id,
+                    Category.is_active == True,
+                )
+            )).scalar_one_or_none()
+            if not category:
+                raise NotFoundException("Categoría no válida para la organización")
+
+        if data.branch_id:
+            branch = (await self.db.execute(
+                select(Branch).where(
+                    Branch.id == data.branch_id,
+                    Branch.organization_id == self.organization_id,
+                    Branch.is_active == True,
+                )
+            )).scalar_one_or_none()
+            if not branch:
+                raise NotFoundException("Sucursal no válida para la organización")
+
+        await CabysService.validate_official(
+            data.cabys_code.strip(), tax.rate, data.unit_of_measure.strip()
+        )
+
         if data.sku:
             sku_stmt = select(Product).where(
                 Product.organization_id == self.organization_id,
@@ -299,6 +337,35 @@ class CatalogService:
         product = res.scalar_one_or_none()
         if not product:
             raise NotFoundException("Producto no encontrado")
+
+        target_tax = None
+        target_tax_id = data.tax_rate_id or product.tax_rate_id
+        target_tax = (await self.db.execute(
+            select(TaxRate).where(
+                TaxRate.id == target_tax_id,
+                TaxRate.organization_id == self.organization_id,
+                TaxRate.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not target_tax:
+            raise NotFoundException("Tarifa de impuesto no válida para la organización")
+
+        if data.category_id is not None:
+            category = (await self.db.execute(
+                select(Category).where(
+                    Category.id == data.category_id,
+                    Category.organization_id == self.organization_id,
+                    Category.is_active == True,
+                )
+            )).scalar_one_or_none()
+            if not category:
+                raise NotFoundException("Categoría no válida para la organización")
+
+        await CabysService.validate_official(
+            (data.cabys_code or product.cabys_code).strip(),
+            target_tax.rate,
+            (data.unit_of_measure or product.unit_of_measure).strip(),
+        )
 
         if data.sku and data.sku != product.sku:
             sku_stmt = select(Product).where(

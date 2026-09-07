@@ -20,6 +20,13 @@ import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
 import { Product } from "@/types";
+import { api } from "@/lib/api-client";
+
+type CabysResult = {
+  codigo: string;
+  descripcion: string;
+  impuesto: number;
+};
 
 export default function ProductsPage() {
   const { products, addProduct, updateProduct, deleteProduct } = useStore();
@@ -37,6 +44,14 @@ export default function ProductsPage() {
   const [salePrice, setSalePrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
   const [taxRate, setTaxRate] = useState("13");
+  const [cabysCode, setCabysCode] = useState("");
+  const [cabysQuery, setCabysQuery] = useState("");
+  const [cabysDescription, setCabysDescription] = useState("");
+  const [cabysResults, setCabysResults] = useState<CabysResult[]>([]);
+  const [unitOfMeasure, setUnitOfMeasure] = useState("Unid");
+  const [isService, setIsService] = useState(false);
+  const [isSearchingCabys, setIsSearchingCabys] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [stock, setStock] = useState("");
   const [minStockAlert, setMinStockAlert] = useState("5");
   const [formError, setFormError] = useState<string | null>(null);
@@ -55,6 +70,12 @@ export default function ProductsPage() {
     setSalePrice("");
     setCostPrice("");
     setTaxRate("13");
+    setCabysCode("");
+    setCabysQuery("");
+    setCabysDescription("");
+    setCabysResults([]);
+    setUnitOfMeasure("Unid");
+    setIsService(false);
     setStock("0");
     setMinStockAlert("5");
     setFormError(null);
@@ -70,52 +91,96 @@ export default function ProductsPage() {
     setSalePrice(p.sale_price.toString());
     setCostPrice((p.cost_price || 0).toString());
     setTaxRate(p.tax_rate.toString());
+    setCabysCode(p.cabys_code || "");
+    setCabysQuery(p.cabys_code || "");
+    setCabysDescription("");
+    setCabysResults([]);
+    setUnitOfMeasure(p.unit_of_measure || "Unid");
+    setIsService(Boolean(p.is_service));
     setStock((p.stock ?? 0).toString());
     setMinStockAlert(p.min_stock_alert.toString());
     setFormError(null);
     setIsModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleCabysSearch = async () => {
+    const query = cabysQuery.trim();
+    if (query.length < 3) {
+      setFormError("Escribe al menos 3 caracteres para buscar en el catálogo oficial CAByS.");
+      return;
+    }
+    setIsSearchingCabys(true);
+    setFormError(null);
+    try {
+      const response = await api.request<CabysResult[]>(`/products/cabys/search?q=${encodeURIComponent(query)}`);
+      setCabysResults(response.data);
+      if (!response.data.length) setFormError("Hacienda no devolvió códigos CAByS para esa búsqueda.");
+    } catch (error: any) {
+      setFormError(error?.message || "No fue posible consultar el catálogo oficial CAByS.");
+    } finally {
+      setIsSearchingCabys(false);
+    }
+  };
+
+  const selectCabys = (result: CabysResult) => {
+    setCabysCode(result.codigo);
+    setCabysQuery(result.codigo);
+    setCabysDescription(result.descripcion);
+    setTaxRate(String(result.impuesto));
+    setCabysResults([]);
+    setFormError(null);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const priceNum = parseFloat(salePrice);
     if (isNaN(priceNum) || priceNum <= 0) {
       setFormError("El precio de venta debe ser un número mayor a 0.");
       return;
     }
+    if (!/^\d{13}$/.test(cabysCode)) {
+      setFormError("Selecciona un código CAByS oficial de 13 dígitos antes de guardar.");
+      return;
+    }
 
-    if (editingProduct) {
-      updateProduct(editingProduct.id, {
+    setIsSaving(true);
+    setFormError(null);
+    try {
+      const payload = {
         name: name.trim(),
         sku: sku.trim() || null,
         barcode: barcode.trim() || null,
         category_name: categoryName.trim() || "General",
         sale_price: priceNum,
         cost_price: parseFloat(costPrice) || 0,
-        tax_rate: parseFloat(taxRate) || 13,
+        tax_rate: Number(taxRate),
+        cabys_code: cabysCode,
+        unit_of_measure: unitOfMeasure,
+        is_service: isService,
         stock: parseInt(stock, 10) || 0,
         min_stock_alert: parseInt(minStockAlert, 10) || 5,
-      });
-    } else {
-      addProduct({
-        name: name.trim(),
-        sku: sku.trim() || `SKU-${Date.now().toString().slice(-6)}`,
-        barcode: barcode.trim() || null,
-        category_name: categoryName.trim() || "General",
-        sale_price: priceNum,
-        cost_price: parseFloat(costPrice) || 0,
-        tax_rate: parseFloat(taxRate) || 13,
-        stock: parseInt(stock, 10) || 0,
-        min_stock_alert: parseInt(minStockAlert, 10) || 5,
-      });
+      };
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, payload);
+      } else {
+        await addProduct({ ...payload, sku: payload.sku || `SKU-${Date.now().toString().slice(-6)}` });
+      }
+      setIsModalOpen(false);
+    } catch (error: any) {
+      setFormError(error?.message || "No fue posible guardar el producto.");
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (productToDelete) {
-      deleteProduct(productToDelete.id);
-      setProductToDelete(null);
+      try {
+        await deleteProduct(productToDelete.id);
+        setProductToDelete(null);
+      } catch (error: any) {
+        setFormError(error?.message || "No fue posible desactivar el producto.");
+      }
     }
   };
 
@@ -312,6 +377,50 @@ export default function ProductsPage() {
             />
           </div>
 
+          <div className="space-y-2 rounded-xl border border-border bg-surface-secondary/40 p-3">
+            <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+              Código CAByS oficial de Hacienda
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="search"
+                value={cabysQuery}
+                onChange={(e) => {
+                  setCabysQuery(e.target.value);
+                  if (e.target.value !== cabysCode) {
+                    setCabysCode("");
+                    setCabysDescription("");
+                  }
+                }}
+                placeholder="Código o descripción, por ejemplo: pan pita"
+                className="min-w-0 flex-1 px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <Button type="button" variant="secondary" onClick={handleCabysSearch} disabled={isSearchingCabys}>
+                {isSearchingCabys ? "Buscando…" : "Buscar"}
+              </Button>
+            </div>
+            {cabysCode && (
+              <p className="text-xs text-emerald-500">
+                Seleccionado: <span className="font-mono font-bold">{cabysCode}</span>{cabysDescription ? ` — ${cabysDescription}` : ""}
+              </p>
+            )}
+            {cabysResults.length > 0 && (
+              <div className="max-h-44 overflow-y-auto space-y-1" role="listbox" aria-label="Resultados CAByS">
+                {cabysResults.map((result) => (
+                  <button
+                    key={result.codigo}
+                    type="button"
+                    onClick={() => selectCabys(result)}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-left hover:border-primary"
+                  >
+                    <span className="block font-mono text-[11px] font-bold text-primary">{result.codigo} · IVA {result.impuesto}%</span>
+                    <span className="block text-xs text-text-secondary">{result.descripcion}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
@@ -345,9 +454,34 @@ export default function ProductsPage() {
                 <option value="1">1% - Canasta Básica Tributaria</option>
                 <option value="2">2% - Medicamentos e Insumos</option>
                 <option value="4">4% - Servicios de Salud y Boletos</option>
+                <option value="8">8% - Tarifa Reducida</option>
+                <option value="0.5">0.5% - Tarifa Reducida</option>
                 <option value="0">0% - Exento</option>
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Unidad de medida</label>
+              <select
+                value={unitOfMeasure}
+                onChange={(e) => setUnitOfMeasure(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
+              >
+                <option value="Unid">Unidad</option>
+                <option value="kg">Kilogramo</option>
+                <option value="g">Gramo</option>
+                <option value="l">Litro</option>
+                <option value="ml">Mililitro</option>
+                <option value="Sp">Servicio profesional</option>
+                <option value="h">Hora</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 rounded-xl border border-border bg-surface-input px-3.5 py-2.5 text-xs font-bold text-text-secondary self-end">
+              <input type="checkbox" checked={isService} onChange={(e) => setIsService(e.target.checked)} />
+              Es un servicio (sin control de stock)
+            </label>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -390,8 +524,8 @@ export default function ProductsPage() {
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              {editingProduct ? "Guardar Cambios" : "Crear Producto"}
+            <Button type="submit" variant="primary" disabled={isSaving}>
+              {isSaving ? "Guardando…" : editingProduct ? "Guardar Cambios" : "Crear Producto"}
             </Button>
           </div>
         </form>

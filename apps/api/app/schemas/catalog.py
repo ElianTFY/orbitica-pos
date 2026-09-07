@@ -41,7 +41,7 @@ class ProductCreate(BaseModel):
     tax_rate_id: UUID
     sku: Optional[str] = None
     barcode: Optional[str] = None
-    cabys_code: str = Field(default="6339900000000", min_length=13, max_length=13)
+    cabys_code: str = Field(min_length=13, max_length=13)
     unit_of_measure: str = Field(default="Unid", max_length=10)
     description: Optional[str] = None
     cost_price: Decimal = Field(default=Decimal("0.00"), ge=0)
@@ -60,7 +60,7 @@ class ProductCreate(BaseModel):
         return cleaned
 
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=2, max_length=255)
     category_id: Optional[UUID] = None
     tax_rate_id: Optional[UUID] = None
     sku: Optional[str] = None
@@ -68,9 +68,9 @@ class ProductUpdate(BaseModel):
     cabys_code: Optional[str] = None
     unit_of_measure: Optional[str] = None
     description: Optional[str] = None
-    cost_price: Optional[Decimal] = None
-    sale_price: Optional[Decimal] = None
-    min_stock_alert: Optional[Decimal] = None
+    cost_price: Optional[Decimal] = Field(default=None, ge=0)
+    sale_price: Optional[Decimal] = Field(default=None, ge=0)
+    min_stock_alert: Optional[Decimal] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     is_service: Optional[bool] = None
     is_active: Optional[bool] = None

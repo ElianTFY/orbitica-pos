@@ -1,6 +1,7 @@
 from uuid import UUID
+from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from app.schemas.common import BaseSchema
 
 class OrganizationCreate(BaseModel):
@@ -24,22 +25,38 @@ class OrganizationCreate(BaseModel):
     initial_branch_name: str = Field(default="Sucursal Principal", max_length=255)
     initial_branch_address: Optional[str] = None
 
+    @field_validator("identification_type")
+    @classmethod
+    def normalize_identification_type(cls, value: str) -> str:
+        mapping = {"FISICA": "01", "JURIDICA": "02", "DIMEX": "03", "NITE": "04", "EXTRANJERO": "05"}
+        normalized = mapping.get(value.strip().upper(), value.strip())
+        if normalized not in {"01", "02", "03", "04", "05"}:
+            raise ValueError("Tipo de identificación no válido")
+        return normalized
+
 class OrganizationUpdate(BaseModel):
+    legal_name: Optional[str] = Field(default=None, min_length=2, max_length=255)
     trade_name: Optional[str] = None
-    legal_name: Optional[str] = None
     identification_type: Optional[str] = None
-    identification_number: Optional[str] = None
+    identification_number: Optional[str] = Field(default=None, min_length=5, max_length=30)
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     default_currency: Optional[str] = None
-    economic_activity_code: Optional[str] = None
-    province_code: Optional[str] = None
-    canton_code: Optional[str] = None
-    district_code: Optional[str] = None
-    neighborhood_code: Optional[str] = None
-    address_detail: Optional[str] = None
-    tax_regime: Optional[str] = None
-    atv_environment: Optional[str] = None
+    economic_activity_code: Optional[str] = Field(default=None, pattern=r"^\d{6}$")
+    province_code: Optional[str] = Field(default=None, pattern=r"^[1-7]$")
+    canton_code: Optional[str] = Field(default=None, pattern=r"^\d{2}$")
+    district_code: Optional[str] = Field(default=None, pattern=r"^\d{2}$")
+    neighborhood_code: Optional[str] = Field(default=None, max_length=50)
+    address_detail: Optional[str] = Field(default=None, min_length=5, max_length=250)
+    tax_regime: Optional[str] = Field(default=None, pattern=r"^(TRADICIONAL|SIMPLIFICADO)$")
+    atv_environment: Optional[str] = Field(default=None, pattern=r"^(STAGING|PRODUCTION)$")
+
+    @field_validator("identification_type")
+    @classmethod
+    def normalize_identification_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return OrganizationCreate.normalize_identification_type(value)
 
 class OrganizationResponse(BaseSchema):
     id: UUID
@@ -52,6 +69,16 @@ class OrganizationResponse(BaseSchema):
     country_code: str
     default_currency: str
     is_active: bool
+    economic_activity_code: str
+    province_code: str
+    canton_code: str
+    district_code: str
+    neighborhood_code: Optional[str] = None
+    address_detail: Optional[str] = None
+    tax_regime: str
+    atv_environment: str
+    created_at: datetime
+    updated_at: datetime
     access_token: Optional[str] = None
 
 class OrganizationOnboardingResponse(BaseSchema):

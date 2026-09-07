@@ -32,6 +32,9 @@ class SupportTicket(Base, UUIDMixin, TimestampMixin):
     telemetry_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     messages: Mapped[list["SupportMessage"]] = relationship("SupportMessage", back_populates="ticket", cascade="all, delete-orphan")
+    organization: Mapped["Organization"] = relationship("Organization", foreign_keys=[organization_id])
+    created_by: Mapped["User"] = relationship("User", foreign_keys=[created_by_user_id])
+    assigned_to: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_to_user_id])
 
 class SupportMessage(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "support_messages"

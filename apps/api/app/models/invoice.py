@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy import String, Numeric, Text, ForeignKey, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin, GUID
 
 class ElectronicInvoice(Base, UUIDMixin, TimestampMixin):
@@ -64,3 +64,16 @@ class ElectronicInvoice(Base, UUIDMixin, TimestampMixin):
     
     sent_to_hacienda_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     hacienda_processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_retry_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    email_delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    sale: Mapped["Sale | None"] = relationship("Sale")
+
+    @property
+    def has_xml_generated(self) -> bool:
+        return bool(self.xml_generated)
+
+    @property
+    def has_xml_signed(self) -> bool:
+        return bool(self.xml_signed)

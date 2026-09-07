@@ -11,7 +11,7 @@ from app.models.user import User, UserSession
 from app.models.catalog import TaxRate
 from app.models.onboarding import OrganizationOnboarding
 from app.models.subscription import Subscription
-from app.schemas.organization import OrganizationCreate, OrganizationUpdate
+from app.schemas.organization import OrganizationUpdate, OrganizationCreate, OrganizationUpdate
 from app.security.password import hash_password
 from app.security.tokens import create_access_token, generate_refresh_token, hash_token, verify_registration_token
 from app.core.constants import UserRole
@@ -342,3 +342,52 @@ class OrganizationService:
         await self.db.commit()
         await self.db.refresh(record)
         return record
+
+    async def update_organization(
+        self,
+        organization_id: uuid.UUID,
+        data: OrganizationUpdate,
+        actor_id: uuid.UUID,
+    ) -> Organization:
+        org = (await self.db.execute(
+            select(Organization).where(Organization.id == organization_id)
+        )).scalar_one_or_none()
+        if not org:
+            raise NotFoundException("Organización no encontrada")
+
+        changes = data.model_dump(exclude_unset=True)
+        if "identification_number" in changes:
+            duplicate = (await self.db.execute(
+                select(Organization).where(
+                    Organization.identification_number == changes["identification_number"].strip(),
+                    Organization.id != organization_id,
+                )
+            )).scalar_one_or_none()
+            if duplicate:
+                raise ConflictException("La identificación ya pertenece a otra organización")
+
+        before = {
+            "legal_name": org.legal_name,
+            "trade_name": org.trade_name,
+            "identification_number": org.identification_number,
+            "economic_activity_code": org.economic_activity_code,
+            "atv_environment": org.atv_environment,
+        }
+        for field, value in changes.items():
+            if value is not None and isinstance(value, str):
+                value = value.strip()
+            setattr(org, field, str(value) if field == "email" else value)
+
+        await AuditService.log_action(
+            db=self.db,
+            action="ORGANIZATION_UPDATED",
+            resource="Organization",
+            actor_id=actor_id,
+            organization_id=organization_id,
+            resource_id=str(org.id),
+            payload_before=before,
+            payload_after=data.model_dump(exclude_unset=True, mode="json"),
+        )
+        await self.db.commit()
+        await self.db.refresh(org)
+        return org

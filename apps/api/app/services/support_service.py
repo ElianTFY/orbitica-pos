@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 from app.models.support import SupportTicket, SupportMessage, DelegatedAccessGrant
 from app.models.user import User
 from app.models.organization import Organization
@@ -26,7 +27,9 @@ class SupportService:
         priority: str = "NORMAL",
         telemetry: Optional[dict] = None
     ) -> SupportTicket:
-        ticket_num = f"TCK-{secrets.randbelow(900000) + 100000}"
+        # 48 bits of cryptographic entropy make collisions negligible while
+        # remaining within the 20-character database limit.
+        ticket_num = f"TCK-{secrets.token_hex(6).upper()}"
 
         ticket = SupportTicket(
             organization_id=organization_id,
@@ -71,7 +74,15 @@ class SupportService:
         organization_id: Optional[uuid.UUID] = None,
         status: Optional[str] = None
     ) -> List[SupportTicket]:
-        stmt = select(SupportTicket).order_by(desc(SupportTicket.created_at))
+        stmt = (
+            select(SupportTicket)
+            .options(
+                selectinload(SupportTicket.organization),
+                selectinload(SupportTicket.created_by),
+                selectinload(SupportTicket.assigned_to),
+            )
+            .order_by(desc(SupportTicket.updated_at))
+        )
         if organization_id:
             stmt = stmt.where(SupportTicket.organization_id == organization_id)
         if status:
@@ -86,7 +97,15 @@ class SupportService:
         organization_id: Optional[uuid.UUID] = None,
         is_superadmin: bool = False
     ) -> Tuple[SupportTicket, List[SupportMessage]]:
-        stmt = select(SupportTicket).where(SupportTicket.id == ticket_id)
+        stmt = (
+            select(SupportTicket)
+            .options(
+                selectinload(SupportTicket.organization),
+                selectinload(SupportTicket.created_by),
+                selectinload(SupportTicket.assigned_to),
+            )
+            .where(SupportTicket.id == ticket_id)
+        )
         if organization_id and not is_superadmin:
             stmt = stmt.where(SupportTicket.organization_id == organization_id)
 
@@ -107,6 +126,43 @@ class SupportService:
         messages = list(msg_res.scalars().all())
 
         return ticket, messages
+
+    async def update_ticket_status(
+        self,
+        ticket_id: uuid.UUID,
+        status: str,
+        actor_id: uuid.UUID,
+        reason: Optional[str] = None,
+    ) -> SupportTicket:
+        ticket = (await self.db.execute(
+            select(SupportTicket)
+            .options(
+                selectinload(SupportTicket.organization),
+                selectinload(SupportTicket.created_by),
+                selectinload(SupportTicket.assigned_to),
+            )
+            .where(SupportTicket.id == ticket_id)
+            .with_for_update()
+        )).scalar_one_or_none()
+        if not ticket:
+            raise NotFoundException("Ticket de soporte no encontrado")
+
+        previous_status = ticket.status
+        ticket.status = status
+        await AuditService.log_action(
+            db=self.db,
+            action="SUPPORT_TICKET_STATUS_UPDATED",
+            resource="SupportTicket",
+            actor_id=actor_id,
+            organization_id=ticket.organization_id,
+            resource_id=str(ticket.id),
+            reason=reason or f"Estado cambiado de {previous_status} a {status}",
+            payload_before={"status": previous_status},
+            payload_after={"status": status},
+        )
+        await self.db.commit()
+        await self.db.refresh(ticket)
+        return ticket
 
     async def add_message(
         self,
@@ -163,10 +219,30 @@ class SupportService:
         duration_minutes: int = 60,
         permission_level: str = "READ_ONLY"
     ) -> Tuple[DelegatedAccessGrant, str]:
+        # Serialize replacement even when there are no active grants yet.
+        organization = (await self.db.execute(
+            select(Organization).where(Organization.id == organization_id).with_for_update()
+        )).scalar_one_or_none()
+        if not organization:
+            raise NotFoundException("Organización no encontrada")
+        now = datetime.now(timezone.utc)
+        active_grants = list((await self.db.execute(
+            select(DelegatedAccessGrant)
+            .where(
+                DelegatedAccessGrant.organization_id == organization_id,
+                DelegatedAccessGrant.is_revoked == False,
+                DelegatedAccessGrant.expires_at > now,
+            )
+            .with_for_update()
+        )).scalars().all())
+        for active_grant in active_grants:
+            active_grant.is_revoked = True
+            active_grant.revoked_at = now
+            active_grant.revoked_reason = "Reemplazado por una nueva autorización del comercio"
+
         raw_token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-        now = datetime.now(timezone.utc)
         exp = now + timedelta(minutes=duration_minutes)
 
         grant = DelegatedAccessGrant(
@@ -187,9 +263,101 @@ class SupportService:
             actor_id=granted_by_user_id,
             organization_id=organization_id,
             reason=reason,
-            payload_after={"permission_level": permission_level, "duration_minutes": duration_minutes}
+            payload_after={
+                "permission_level": permission_level,
+                "duration_minutes": duration_minutes,
+                "replaced_grant_ids": [str(item.id) for item in active_grants],
+            }
         )
 
         await self.db.commit()
         await self.db.refresh(grant)
         return grant, raw_token
+
+    async def get_active_delegated_access(
+        self,
+        organization_id: uuid.UUID,
+    ) -> Optional[DelegatedAccessGrant]:
+        now = datetime.now(timezone.utc)
+        return (await self.db.execute(
+            select(DelegatedAccessGrant)
+            .where(
+                DelegatedAccessGrant.organization_id == organization_id,
+                DelegatedAccessGrant.is_revoked == False,
+                DelegatedAccessGrant.expires_at > now,
+            )
+            .order_by(DelegatedAccessGrant.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
+    async def list_active_delegated_access(self) -> List[DelegatedAccessGrant]:
+        now = datetime.now(timezone.utc)
+        return list((await self.db.execute(
+            select(DelegatedAccessGrant)
+            .where(
+                DelegatedAccessGrant.is_revoked == False,
+                DelegatedAccessGrant.expires_at > now,
+            )
+            .order_by(DelegatedAccessGrant.created_at.desc())
+        )).scalars().all())
+
+    async def revoke_delegated_access(
+        self,
+        grant_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        actor_id: uuid.UUID,
+    ) -> DelegatedAccessGrant:
+        grant = (await self.db.execute(
+            select(DelegatedAccessGrant).where(
+                DelegatedAccessGrant.id == grant_id,
+                DelegatedAccessGrant.organization_id == organization_id,
+            ).with_for_update()
+        )).scalar_one_or_none()
+        if not grant:
+            raise NotFoundException("Acceso delegado no encontrado")
+        if not grant.is_revoked:
+            grant.is_revoked = True
+            grant.revoked_at = datetime.now(timezone.utc)
+            grant.revoked_reason = "Revocado por el comercio"
+            await AuditService.log_action(
+                db=self.db,
+                action="DELEGATED_ACCESS_REVOKED",
+                resource="DelegatedAccessGrant",
+                actor_id=actor_id,
+                organization_id=organization_id,
+                resource_id=str(grant.id),
+                reason=grant.revoked_reason,
+            )
+            await self.db.commit()
+            await self.db.refresh(grant)
+        return grant
+
+    async def revoke_delegated_access_as_superadmin(
+        self,
+        grant_id: uuid.UUID,
+        actor_id: uuid.UUID,
+        reason: str,
+    ) -> DelegatedAccessGrant:
+        grant = (await self.db.execute(
+            select(DelegatedAccessGrant)
+            .where(DelegatedAccessGrant.id == grant_id)
+            .with_for_update()
+        )).scalar_one_or_none()
+        if not grant:
+            raise NotFoundException("Acceso delegado no encontrado")
+        if not grant.is_revoked:
+            grant.is_revoked = True
+            grant.revoked_at = datetime.now(timezone.utc)
+            grant.revoked_reason = reason.strip()
+            await AuditService.log_action(
+                db=self.db,
+                action="DELEGATED_ACCESS_ADMIN_REVOKED",
+                resource="DelegatedAccessGrant",
+                actor_id=actor_id,
+                organization_id=grant.organization_id,
+                resource_id=str(grant.id),
+                reason=grant.revoked_reason,
+            )
+            await self.db.commit()
+            await self.db.refresh(grant)
+        return grant

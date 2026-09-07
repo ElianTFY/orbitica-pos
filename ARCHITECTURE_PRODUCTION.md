@@ -9,7 +9,7 @@ graph TD
     Client[Next.js 15 Frontend / Web POS] -->|HTTPS / JWT + HttpOnly Cookies| Gateway[FastAPI Backend Application]
     Gateway -->|Tenant Isolation Layer| Context[CurrentUserContext / RBAC]
     Context -->|Async Session / SELECT FOR UPDATE| DB[(PostgreSQL 16 Multi-Tenant DB)]
-    Context -->|AES-256 Decryption| HSM[Fiscal Security Custody]
+    Context -->|Fernet Decryption| HSM[Fiscal Security Custody]
     HSM -->|RSA-SHA256 & C14N| Signer[XAdES-EPES v1.3.2 Engine]
     Signer -->|Signed XML / OAuth2| ATV[Ministerio de Hacienda ATV API]
     Gateway -->|Append-Only SHA-256| Audit[(Forensic Chained Audit Log)]
@@ -35,7 +35,7 @@ graph TD
 
 ### 3.1 Custodia Segura de Credenciales en Reposo
 - Los certificados criptográficos `.p12`, sus contraseñas PIN, y las credenciales del portal ATV de Hacienda nunca se almacenan en texto claro.
-- Se utiliza cifrado simétrico robusto **AES-256-CBC con HMAC-SHA256 (Fernet)** mediante una clave maestra administrada por la variable de entorno `FERNET_KEY`.
+- Se utiliza cifrado simétrico robusto **AES-128-CBC con HMAC-SHA256 (Fernet)** mediante una clave maestra administrada por la variable de entorno `FERNET_KEY`.
 
 ### 3.2 Motor de Firma Digital XAdES-EPES v1.3.2 Enveloped
 - Cumple con la resolución DGT-R-033-2019 y estándar ETSI TS 101 903 v1.3.2.
@@ -54,4 +54,4 @@ graph TD
 | **Frontend** | Next.js / React / TypeScript / Tailwind | Next 15, React 19, TS 5.7 | Interfaz de cajero, inventario, administración y Superadmin Hub |
 | **Backend** | FastAPI / Python / Pydantic v2 | Python 3.13, FastAPI 0.115 | API REST asíncrona de alto rendimiento |
 | **ORM / DB** | SQLAlchemy Async / Alembic / PostgreSQL | SQLAlchemy 2.0, PG 16 | Persistencia relacional, concurrencia transaccional |
-| **Criptografía** | Cryptography / lxml / hashlib / Argon2 | cryptography 44+, lxml 5+ | Firma XAdES-EPES, hashing Argon2id, AES-256 |
+| **Criptografía** | Cryptography / lxml / hashlib / Argon2 | cryptography 44+, lxml 5+ | Firma XAdES-EPES, hashing Argon2id, Fernet |

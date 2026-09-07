@@ -32,7 +32,6 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
   Zap,
   Clock,
   Sparkles,
@@ -62,6 +61,7 @@ interface NavItem {
   label: string;
   icon: any;
   badge?: number;
+  disabled?: boolean;
 }
 
 interface NavGroup {
@@ -103,6 +103,7 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
 
   // Step-Up Modal States
   const [stepUpPassword, setStepUpPassword] = useState("");
+  const [stepUpTotp, setStepUpTotp] = useState("");
   const [stepUpReason, setStepUpReason] = useState("");
   const [stepUpError, setStepUpError] = useState<string | null>(null);
   const [isProcessingStepUp, setIsProcessingStepUp] = useState(false);
@@ -192,7 +193,7 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   // Handle Step-Up Confirm
-  const handleConfirmStepUp = (e: React.FormEvent) => {
+  const handleConfirmStepUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setStepUpError(null);
 
@@ -204,37 +205,35 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
       setStepUpError("Debes justificar el motivo con al menos 10 caracteres para auditoría.");
       return;
     }
+    if (user.totp_enabled && !/^\d{6}$/.test(stepUpTotp.trim())) {
+      setStepUpError("Ingresa el código TOTP de 6 dígitos.");
+      return;
+    }
 
     setIsProcessingStepUp(true);
-    fetch("/api/v1/superadmin/security/step-up", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const response = await api.request<{ step_up_token: string }>("/auth/step-up", {
+        method: "POST",
+        body: JSON.stringify({
         password: stepUpPassword.trim(),
+        totp_code: stepUpTotp.trim() || undefined,
         reason: stepUpReason.trim(),
         action: stepUpActionContext?.action || "CRITICAL_ACTION",
         target_resource: stepUpActionContext?.resource || "GLOBAL",
       }),
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data?.step_up_token) {
-          if (stepUpActionContext) {
-            stepUpActionContext.onConfirm(json.data.step_up_token, stepUpReason.trim());
-          }
-          setStepUpPassword("");
-          setStepUpReason("");
-          closeStepUpModal();
-        } else {
-          setStepUpError(json.error?.message || "Contraseña de reautenticación inválida");
-        }
-      })
-      .catch(() => {
-        setStepUpError("Error de conexión al reautenticar");
-      })
-      .finally(() => {
-        setIsProcessingStepUp(false);
       });
+      if (stepUpActionContext) {
+        await stepUpActionContext.onConfirm(response.data.step_up_token, stepUpReason.trim());
+      }
+      setStepUpPassword("");
+      setStepUpTotp("");
+      setStepUpReason("");
+      closeStepUpModal();
+    } catch (error: any) {
+      setStepUpError(error?.message || "No se pudo completar la reautenticación.");
+    } finally {
+      setIsProcessingStepUp(false);
+    }
   };
 
   const openAlertsCount = alerts.filter((a) => a.status !== "RESOLVED").length;
@@ -248,14 +247,14 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
         { id: "attention", label: "Requiere atención", icon: Flame, badge: openAlertsCount },
         { id: "executive", label: "Dashboard ejecutivo", icon: Activity },
         { id: "tenants", label: "Empresas & 360°", icon: Building2 },
-        { id: "subscriptions", label: "Suscripciones y pagos", icon: CreditCard },
+        { id: "subscriptions", label: "Suscripciones y pagos", icon: CreditCard, disabled: true },
       ],
     },
     {
       title: "PRODUCTO",
       items: [
-        { id: "plans_flags", label: "Planes y precios", icon: Sliders },
-        { id: "comms", label: "Comunicaciones", icon: Zap },
+        { id: "plans_flags", label: "Planes y precios", icon: Sliders, disabled: true },
+        { id: "comms", label: "Comunicaciones", icon: Zap, disabled: true },
       ],
     },
     {
@@ -263,15 +262,15 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
       items: [
         { id: "support", label: "Mesa de Soporte", icon: LifeBuoy, badge: openTicketsCount },
         { id: "delegated_access", label: "Accesos delegados", icon: KeyRound },
-        { id: "incidents", label: "Incidentes", icon: AlertTriangle },
+        { id: "incidents", label: "Incidentes", icon: AlertTriangle, disabled: true },
       ],
     },
     {
       title: "PLATAFORMA",
       items: [
-        { id: "hacienda", label: "Hacienda ATV v4.4", icon: FileCheck2 },
+        { id: "hacienda", label: "Hacienda ATV v4.4", icon: FileCheck2, disabled: true },
         { id: "tech_center", label: "Centro técnico", icon: Radio },
-        { id: "security", label: "Seguridad y sesiones", icon: Shield },
+        { id: "security", label: "Seguridad y sesiones", icon: Shield, disabled: true },
         { id: "audit", label: "Auditoría forense", icon: ShieldCheck },
       ],
     },
@@ -305,10 +304,12 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex items-center gap-3 font-mono text-[10px]">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
-            <span>EN VIVO</span>
+            <span className={`w-2 h-2 rounded-full inline-block ${envMetadata.status === "HEALTHY" ? "bg-emerald-400" : "bg-amber-300"}`} />
+            <span>{envMetadata.status === "HEALTHY" ? "SERVICIO DISPONIBLE" : "ESTADO DEGRADADO"}</span>
           </span>
-          <span className="opacity-80">{envMetadata.build_date}</span>
+          {envMetadata.build_date !== "unknown" && (
+            <span className="opacity-80">Build: {envMetadata.build_date}</span>
+          )}
         </div>
       </div>
 
@@ -363,19 +364,26 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                   return (
                     <button
                       key={item.id}
+                      disabled={item.disabled}
                       onClick={() => {
+                        if (item.disabled) return;
                         setActiveSection(item.id);
                         setMobileSidebarOpen(false);
                       }}
-                      title={isSidebarCollapsed ? item.label : undefined}
+                      title={item.disabled ? `${item.label}: módulo pendiente de backend` : isSidebarCollapsed ? item.label : undefined}
                       className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        item.disabled
+                          ? "text-text-muted opacity-45 cursor-not-allowed"
+                          :
                         isActive
                           ? "bg-primary text-white shadow-sm"
                           : "text-text-secondary hover:text-text-main hover:bg-surface-secondary"
                       } ${isSidebarCollapsed ? "justify-center px-0" : ""}`}
                     >
                       <Icon className="w-4 h-4 flex-shrink-0" />
-                      {!isSidebarCollapsed && <span className="truncate flex-1 text-left">{item.label}</span>}
+                      {!isSidebarCollapsed && (
+                        <span className="truncate flex-1 text-left">{item.label}{item.disabled ? " · pendiente" : ""}</span>
+                      )}
                       {!isSidebarCollapsed && typeof item.badge === "number" && item.badge > 0 && (
                         <span
                           className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
@@ -468,6 +476,11 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                       )}
                     </div>
                     <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                      {notifications.length === 0 && (
+                        <p className="p-4 text-center text-[11px] text-text-muted">
+                          No hay tickets prioritarios pendientes.
+                        </p>
+                      )}
                       {notifications.map((n) => (
                         <div
                           key={n.id}
@@ -525,7 +538,7 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                     <div className="space-y-1 text-xs">
                       <div className="p-2 bg-surface-secondary rounded-xl text-[11px] text-text-muted space-y-1">
                         <p>• Sesión autenticada en backend</p>
-                        <p>• 2FA Activo en plataforma</p>
+                        <p>• 2FA {user.totp_enabled ? "activo" : "no confirmado"}</p>
                       </div>
                     </div>
 
@@ -612,9 +625,9 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                         >
                           <div>
                             <span className="font-bold text-text-main block">{c.trade_name}</span>
-                            <span className="text-[10px] text-text-muted">{c.legal_name} · Céd: {c.cedula}</span>
+                            <span className="text-[10px] text-text-muted">{c.legal_name} · Céd: {c.identification_number}</span>
                           </div>
-                          <Badge variant="blue" className="capitalize">{c.plan}</Badge>
+                          <Badge variant={c.is_active ? "success" : "danger"}>{c.is_active ? "ACTIVA" : "SUSPENDIDA"}</Badge>
                         </button>
                       ))}
                     </div>
@@ -637,7 +650,7 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                         >
                           <div>
                             <span className="font-bold text-text-main block">#{tk.ticket_number} — {tk.subject}</span>
-                            <span className="text-[10px] text-text-muted">{tk.org_name}</span>
+                            <span className="text-[10px] text-text-muted">Ticket de plataforma</span>
                           </div>
                           <Badge variant="warning">{tk.status}</Badge>
                         </button>
@@ -697,6 +710,24 @@ function SuperadminLayoutInner({ children }: { children: React.ReactNode }) {
                   className="text-xs font-mono"
                 />
               </div>
+
+              {user.totp_enabled && (
+                <div>
+                  <label className="block text-xs font-bold text-text-secondary mb-1">
+                    Código TOTP de 6 dígitos *
+                  </label>
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    required
+                    maxLength={6}
+                    value={stepUpTotp}
+                    onChange={(e) => setStepUpTotp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    className="text-xs font-mono tracking-[0.4em]"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-text-secondary mb-1">

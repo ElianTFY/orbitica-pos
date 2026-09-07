@@ -64,31 +64,16 @@ async def get_my_organization(
     )
 
 @router.put("/me", response_model=StandardResponse[OrganizationResponse])
+@router.patch("/me", response_model=StandardResponse[OrganizationResponse])
 async def update_my_organization(
     payload: OrganizationUpdate,
     context: CurrentUserContext = Depends(require_permissions("org:update")),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    org = context.organization
-    if payload.identification_number and payload.identification_number.strip():
-        clean_id = payload.identification_number.strip()
-        if clean_id != org.identification_number:
-            stmt = select(type(org)).where(type(org).identification_number == clean_id, type(org).id != org.id)
-            res = await db.execute(stmt)
-            if res.scalar_one_or_none():
-                raise ConflictException("Ya existe una empresa registrada con ese número de identificación")
-            org.identification_number = clean_id
-
-    for field, val in payload.model_dump(exclude_unset=True).items():
-        if field != "identification_number" and hasattr(org, field) and val is not None:
-            setattr(org, field, val)
-
-    await db.commit()
-    await db.refresh(org)
-    return StandardResponse(
-        data=OrganizationResponse.model_validate(org),
-        message="Datos de la empresa actualizados exitosamente"
+    org = await OrganizationService(db).update_organization(
+        context.organization_id, payload, actor_id=context.user_id
     )
+    return StandardResponse(data=OrganizationResponse.model_validate(org), message="Datos fiscales actualizados")
 
 @router.get("/onboarding", response_model=StandardResponse[OrganizationOnboardingResponse])
 async def get_onboarding_status(

@@ -192,9 +192,9 @@ export default function MigrationCenterPage() {
       return item;
     });
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setImportProgress(60);
-      const batch = executeImportBatch(
+      const batch = await executeImportBatch(
         {
           organization_id: "current",
           entity_type: entityType,
@@ -214,9 +214,9 @@ export default function MigrationCenterPage() {
   };
 
   // Revert / Undo Batch
-  const handleRevert = (batchId: string) => {
+  const handleRevert = async (batchId: string) => {
     if (confirm("¿Estás seguro de que deseas revertir esta importación? Se eliminarán todos los registros creados en este lote.")) {
-      revertImportBatch(batchId);
+      await revertImportBatch(batchId);
     }
   };
 

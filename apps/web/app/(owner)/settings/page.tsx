@@ -11,12 +11,6 @@ import {
   AlertCircle,
   Palette,
   Building,
-  Printer,
-  CreditCard,
-  ShoppingCart,
-  Sliders,
-  Smartphone,
-  Check,
 } from "lucide-react";
 import { OwnerLayout } from "@/components/layouts/owner-layout";
 import { Card } from "@/components/ui/card";
@@ -28,14 +22,14 @@ import { useStore } from "@/features/store/store-context";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api-client";
 
-type SettingsTab = "general" | "pos" | "printing" | "payments" | "hacienda" | "accessibility";
-
 export default function SettingsPage() {
   const { settings, updateSettings } = useStore();
   const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activeTab, setActiveTab] = useState<"general" | "hacienda" | "accessibility">("general");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -43,95 +37,148 @@ export default function SettingsPage() {
   const [tradeName, setTradeName] = useState(settings.trade_name);
   const [legalName, setLegalName] = useState(settings.legal_name);
   const [idNumber, setIdNumber] = useState(settings.identification_number);
+  const [identificationType, setIdentificationType] = useState(settings.identification_type);
   const [email, setEmail] = useState(settings.email);
   const [phone, setPhone] = useState(settings.phone);
   const [address, setAddress] = useState(settings.address);
   const [taxRegime, setTaxRegime] = useState(settings.tax_regime);
   const [currency, setCurrency] = useState(settings.default_currency);
-  const [economicActivity, setEconomicActivity] = useState("471101");
-
-  // Form states for POS
-  const [allowNegativeStock, setAllowNegativeStock] = useState(false);
-  const [requireCashSession, setRequireCashSession] = useState(true);
-  const [autoOpenDrawer, setAutoOpenDrawer] = useState(true);
-
-  // Form states for Printing
-  const [paperWidth, setPaperWidth] = useState<"80mm" | "58mm">("80mm");
-  const [printLogo, setPrintLogo] = useState(true);
-  const [footerMessage, setFooterMessage] = useState(`¡Gracias por su compra en ${settings.trade_name}!`);
-
-  // Form states for Payments
-  const [sinpePhone, setSinpePhone] = useState(settings.phone || "");
-  const [sinpeName, setSinpeName] = useState(settings.trade_name || "");
-  const [enableCash, setEnableCash] = useState(true);
-  const [enableSinpe, setEnableSinpe] = useState(true);
-  const [enableCard, setEnableCard] = useState(true);
+  const [economicActivity, setEconomicActivity] = useState(settings.economic_activity_code);
+  const [provinceCode, setProvinceCode] = useState(settings.province_code);
+  const [cantonCode, setCantonCode] = useState(settings.canton_code);
+  const [districtCode, setDistrictCode] = useState(settings.district_code);
+  const [neighborhoodCode, setNeighborhoodCode] = useState(settings.neighborhood_code);
 
   // Form states for Hacienda
   const [env, setEnv] = useState(settings.atv_environment);
   const [atvUser, setAtvUser] = useState(settings.atv_username);
   const [atvPass, setAtvPass] = useState("");
   const [pin, setPin] = useState("");
+  const [p12File, setP12File] = useState<File | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<{ has_certificate: boolean; is_active: boolean; status_message: string } | null>(null);
+  const [readiness, setReadiness] = useState<{ ready: boolean; environment: string; checks: Array<{ code: string; ok: boolean; message: string }> } | null>(null);
 
   useEffect(() => {
     setTradeName(settings.trade_name);
     setLegalName(settings.legal_name);
     setIdNumber(settings.identification_number);
+    setIdentificationType(settings.identification_type);
     setEmail(settings.email);
     setPhone(settings.phone);
     setAddress(settings.address);
+    setEconomicActivity(settings.economic_activity_code);
+    setProvinceCode(settings.province_code);
+    setCantonCode(settings.canton_code);
+    setDistrictCode(settings.district_code);
+    setNeighborhoodCode(settings.neighborhood_code);
+    setEnv(settings.atv_environment);
+    setAtvUser(settings.atv_username);
   }, [settings]);
+
+  const refreshFiscalStatus = async () => {
+    try {
+      const [credentialsResponse, readinessResponse] = await Promise.all([
+        api.request<any>("/hacienda/credentials"),
+        api.request<any>("/hacienda/readiness"),
+      ]);
+      setCredentialStatus(credentialsResponse.data);
+      setReadiness(readinessResponse.data);
+      if (credentialsResponse.data?.atv_username) setAtvUser(credentialsResponse.data.atv_username);
+    } catch {
+      setCredentialStatus(null);
+      setReadiness(null);
+    }
+  };
+
+  useEffect(() => {
+    void refreshFiscalStatus();
+  }, []);
 
   // Clear connection result whenever the user changes ATV credentials
   useEffect(() => {
     setConnectionResult(null);
   }, [atvUser, atvPass, env]);
 
-  const notifySaved = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleSaveGeneral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettings({
+        trade_name: tradeName,
+        legal_name: legalName,
+        identification_type: identificationType,
+        identification_number: idNumber,
+        email,
+        phone,
+        address,
+        economic_activity_code: economicActivity,
+        province_code: provinceCode,
+        canton_code: cantonCode,
+        district_code: districtCode,
+        neighborhood_code: neighborhoodCode,
+        tax_regime: taxRegime,
+        default_currency: currency,
+      });
+      await refreshFiscalStatus();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error: any) {
+      setSaveError(error?.message || "No fue posible guardar los datos fiscales.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSaveHacienda = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
-      trade_name: tradeName,
-      legal_name: legalName,
-      identification_number: idNumber,
-      email,
-      phone,
-      address,
-      tax_regime: taxRegime,
-      default_currency: currency,
-    });
-    notifySaved();
-  };
-
-  const handleSavePos = (e: React.FormEvent) => {
-    e.preventDefault();
-    notifySaved();
-  };
-
-  const handleSavePrinting = (e: React.FormEvent) => {
-    e.preventDefault();
-    notifySaved();
-  };
-
-  const handleSavePayments = (e: React.FormEvent) => {
-    e.preventDefault();
-    notifySaved();
-  };
-
-  const handleSaveHacienda = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateSettings({
-      atv_environment: env,
-      atv_username: atvUser,
-    });
-    notifySaved();
+    if (!atvUser.trim() || !atvPass || !/^\d{4}$/.test(pin)) {
+      setSaveError("Usuario, contraseña API y PIN de 4 dígitos son obligatorios.");
+      return;
+    }
+    if (!p12File && !credentialStatus?.has_certificate) {
+      setSaveError("Selecciona la llave criptográfica .p12/.pfx antes de guardar.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      let p12Base64: string | undefined;
+      if (p12File) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("No fue posible leer el certificado."));
+          reader.readAsDataURL(p12File);
+        });
+        p12Base64 = dataUrl.split(",", 2)[1];
+      }
+      await api.request("/hacienda/credentials", {
+        method: "POST",
+        body: JSON.stringify({
+          environment: env,
+          atv_username: atvUser.trim(),
+          atv_password: atvPass,
+          pin,
+          p12_base64: p12Base64,
+        }),
+      });
+      await updateSettings({ atv_environment: env, atv_username: atvUser.trim() });
+      await refreshFiscalStatus();
+      setP12File(null);
+      setAtvPass("");
+      setPin("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error: any) {
+      setSaveError(error?.message || "No fue posible guardar las credenciales fiscales.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleTestConnection = async () => {
+    // Client-side guard — never call the API with missing credentials
     if (!atvUser.trim()) {
       setConnectionResult({
         success: false,
@@ -142,34 +189,30 @@ export default function SettingsPage() {
     if (!atvPass.trim()) {
       setConnectionResult({
         success: false,
-        message: "Debe ingresar la Contraseña ATV generada en el portal de Hacienda.",
+        message: "Debe ingresar la Contraseña API ATV antes de validar la conexión.",
       });
       return;
     }
 
     setTestingConnection(true);
     setConnectionResult(null);
-
     try {
-      const response = await api.request<any>("/hacienda/test-connection", {
+      const res = await api.request<{ success: boolean; message: string }>("/hacienda/test-connection", {
         method: "POST",
-        body: {
-          atv_username: atvUser.trim(),
-          atv_password: atvPass.trim(),
+        body: JSON.stringify({
           environment: env,
-        },
+          atv_username: atvUser,
+          atv_password: atvPass,
+        }),
       });
-
       setConnectionResult({
-        success: true,
-        message: response.data?.message || "Conexión autorizada con el Ministerio de Hacienda exitosa.",
+        success: res.data.success,
+        message: res.data.message,
       });
     } catch (err: any) {
       setConnectionResult({
         success: false,
-        message:
-          err?.message ||
-          "Error al autenticar con el servidor de Hacienda. Verifique usuario ATV y contraseña.",
+        message: err.message || "Error al conectar con los servidores de Hacienda",
       });
     } finally {
       setTestingConnection(false);
@@ -179,56 +222,73 @@ export default function SettingsPage() {
   return (
     <OwnerLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-text-main tracking-tight">Centro de Configuración</h1>
-            <p className="text-xs text-text-muted">
-              Parámetros de empresa, operación POS, impresión térmica 58/80mm y facturación electrónica Hacienda CR v4.4
-            </p>
-          </div>
-          {saved && (
-            <Badge variant="success" className="gap-1.5 py-1.5 px-3">
-              <Check className="w-3.5 h-3.5" />
-              Configuración guardada exitosamente
-            </Badge>
-          )}
+        <div>
+          <h1 className="text-xl font-bold text-text-main tracking-tight">Configuración del Negocio</h1>
+          <p className="text-xs text-text-muted">
+            Administra los datos comerciales de tu empresa ({settings.trade_name}), llaves tributarias de Hacienda y apariencia
+          </p>
         </div>
 
         {/* Tab Navigation */}
         <div
           role="tablist"
           aria-label="Pestañas de configuración"
-          className="flex flex-wrap bg-surface-secondary p-1 rounded-2xl border border-border gap-1"
+          className="flex flex-wrap bg-surface-secondary p-1 rounded-2xl border border-border max-w-xl gap-1"
         >
-          {[
-            { key: "general" as const, label: "Empresa", icon: Building },
-            { key: "pos" as const, label: "Punto de Venta", icon: ShoppingCart },
-            { key: "printing" as const, label: "Impresión Térmica", icon: Printer },
-            { key: "payments" as const, label: "Pagos & SINPE", icon: CreditCard },
-            { key: "hacienda" as const, label: "Hacienda v4.4", icon: ShieldCheck },
-            { key: "accessibility" as const, label: "Apariencia", icon: Palette },
-          ].map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === key}
-              onClick={() => setActiveTab(key)}
-              className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === key
-                  ? "bg-surface text-text-main shadow-sm border border-border"
-                  : "text-text-muted hover:text-text-main"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
-            </button>
-          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "general"}
+            onClick={() => setActiveTab("general")}
+            className={`flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "general"
+                ? "bg-surface text-text-main shadow-sm border border-border"
+                : "text-text-muted hover:text-text-main"
+            }`}
+          >
+            <Building className="w-4 h-4" />
+            Datos Comerciales
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "hacienda"}
+            onClick={() => setActiveTab("hacienda")}
+            className={`flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "hacienda"
+                ? "bg-surface text-text-main shadow-sm border border-border"
+                : "text-text-muted hover:text-text-main"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Hacienda v4.4
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "accessibility"}
+            onClick={() => setActiveTab("accessibility")}
+            className={`flex-1 min-w-[120px] py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === "accessibility"
+                ? "bg-surface text-text-main shadow-sm border border-border"
+                : "text-text-muted hover:text-text-main"
+            }`}
+          >
+            <Palette className="w-4 h-4 text-primary" />
+            Apariencia y Accesibilidad
+          </button>
         </div>
 
-        {/* TAB 1: EMPRESA */}
+        {activeTab === "accessibility" && (
+          <div className="max-w-3xl">
+            <AppearanceSettings />
+          </div>
+        )}
+
         {activeTab === "general" && (
-          <Card className="max-w-3xl">
+          <Card className="max-w-2xl">
             <form onSubmit={handleSaveGeneral} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
@@ -248,16 +308,20 @@ export default function SettingsPage() {
                   value={idNumber}
                   onChange={(e) => setIdNumber(e.target.value)}
                   required
+                  helperText="Identificador tributario para Hacienda"
                 />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Tipo de identificación</label>
+                  <select value={identificationType} onChange={(e) => setIdentificationType(e.target.value as typeof identificationType)} className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary">
+                    <option value="01">Cédula física</option>
+                    <option value="02">Cédula jurídica</option>
+                    <option value="03">DIMEX</option>
+                    <option value="04">NITE</option>
+                    <option value="05">Extranjero</option>
+                  </select>
+                </div>
                 <Input
-                  label="Código Actividad Económica DGT (6 dígitos)"
-                  value={economicActivity}
-                  onChange={(e) => setEconomicActivity(e.target.value)}
-                  placeholder="Ej: 471101 (Venta de abarrotes)"
-                  required
-                />
-                <Input
-                  label="Correo Electrónico Comercial"
+                  label="Correo de Facturación"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -267,378 +331,200 @@ export default function SettingsPage() {
                   label="Teléfono Comercial"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
-                <div className="sm:col-span-2">
-                  <Input
-                    label="Dirección Física Exacta (Provincia, Cantón, Distrito, Señas)"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block mb-1.5">
-                    Régimen Tributario DGT
-                  </label>
-                  <select
-                    value={taxRegime}
-                    onChange={(e) => setTaxRegime(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                  >
-                    <option value="TRADICIONAL">Régimen Tradicional (General IVA 13%)</option>
-                    <option value="SIMPLIFICADO">Régimen de Tributación Simplificada</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block mb-1.5">
-                    Moneda Predeterminada
-                  </label>
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                  >
-                    <option value="CRC">Colones Costarricenses (₡ CRC)</option>
-                    <option value="USD">Dólares Americanos ($ USD)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-border flex justify-end">
-                <Button type="submit" variant="primary">
-                  <Save className="w-4 h-4 mr-1.5" />
-                  Guardar Datos de Empresa
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* TAB 2: PUNTO DE VENTA (POS) */}
-        {activeTab === "pos" && (
-          <Card className="max-w-3xl">
-            <form onSubmit={handleSavePos} className="space-y-4">
-              <h3 className="text-sm font-bold text-text-main">Reglas de Operación del Terminal POS</h3>
-              <div className="space-y-3">
-                <label className="flex items-start gap-3 p-3 bg-surface-secondary border border-border rounded-xl cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={requireCashSession}
-                    onChange={(e) => setRequireCashSession(e.target.checked)}
-                    className="mt-0.5 rounded border-border text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <span className="font-bold text-text-main text-xs block">Requerir turno de caja abierto para vender</span>
-                    <span className="text-[11px] text-text-muted">
-                      Bloquea el botón de cobro si el cajero no ha registrado su fondo de apertura inicial.
-                    </span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-3 bg-surface-secondary border border-border rounded-xl cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowNegativeStock}
-                    onChange={(e) => setAllowNegativeStock(e.target.checked)}
-                    className="mt-0.5 rounded border-border text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <span className="font-bold text-text-main text-xs block">Permitir venta con inventario insuficiente (Stock negativo)</span>
-                    <span className="text-[11px] text-text-muted">
-                      Útil para comercios de alta rotación donde la mercadería ingresa antes de digitar la factura del proveedor.
-                    </span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-3 bg-surface-secondary border border-border rounded-xl cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoOpenDrawer}
-                    onChange={(e) => setAutoOpenDrawer(e.target.checked)}
-                    className="mt-0.5 rounded border-border text-primary focus:ring-primary"
-                  />
-                  <div>
-                    <span className="font-bold text-text-main text-xs block">Disparo automático de gaveta de dinero</span>
-                    <span className="text-[11px] text-text-muted">
-                      Envía la señal ESC/POS de apertura de gaveta (RJ11) al completar pagos en efectivo.
-                    </span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="pt-3 border-t border-border flex justify-end">
-                <Button type="submit" variant="primary">
-                  <Save className="w-4 h-4 mr-1.5" />
-                  Guardar Preferencias POS
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* TAB 3: IMPRESIÓN TÉRMICA */}
-        {activeTab === "printing" && (
-          <Card className="max-w-3xl">
-            <form onSubmit={handleSavePrinting} className="space-y-4">
-              <h3 className="text-sm font-bold text-text-main">Parámetros de Comprobante Térmico</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block mb-2">
-                    Ancho de Papel Térmico
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setPaperWidth("80mm")}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                        paperWidth === "80mm"
-                          ? "bg-primary-subtle border-primary text-primary"
-                          : "bg-surface border-border text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <span>80 mm (Estándar POS)</span>
-                      <span className="text-[10px] font-normal text-text-muted">Epson TM-T20, Star Micronics, Bixolon</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaperWidth("58mm")}
-                      className={`p-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 transition-all ${
-                        paperWidth === "58mm"
-                          ? "bg-primary-subtle border-primary text-primary"
-                          : "bg-surface border-border text-text-secondary hover:bg-surface-hover"
-                      }`}
-                    >
-                      <span>58 mm (Compacta)</span>
-                      <span className="text-[10px] font-normal text-text-muted">Mini impresoras portátiles Bluetooth / USB</span>
-                    </button>
-                  </div>
-                </div>
-
-                <label className="flex items-center gap-3 p-3 bg-surface-secondary border border-border rounded-xl cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={printLogo}
-                    onChange={(e) => setPrintLogo(e.target.checked)}
-                    className="rounded border-border text-primary focus:ring-primary"
-                  />
-                  <span className="font-bold text-text-main text-xs">Imprimir membrete y logo en encabezado</span>
-                </label>
-
-                <Input
-                  label="Mensaje de Pie de Comprobante (Agradecimiento / Políticas)"
-                  value={footerMessage}
-                  onChange={(e) => setFooterMessage(e.target.value)}
-                />
-              </div>
-
-              <div className="pt-3 border-t border-border flex justify-end">
-                <Button type="submit" variant="primary">
-                  <Save className="w-4 h-4 mr-1.5" />
-                  Guardar Formato de Impresión
-                </Button>
-              </div>
-            </form>
-          </Card>
-        )}
-
-        {/* TAB 4: PAGOS & SINPE */}
-        {activeTab === "payments" && (
-          <Card className="max-w-3xl">
-            <form onSubmit={handleSavePayments} className="space-y-4">
-              <h3 className="text-sm font-bold text-text-main">Datos para Recepción de Pagos</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Número SINPE Móvil Oficial de la Empresa"
-                  value={sinpePhone}
-                  onChange={(e) => setSinpePhone(e.target.value)}
-                  placeholder="Ej: 8888-8888"
-                  required
                 />
                 <Input
-                  label="Nombre del Titular de la Cuenta SINPE"
-                  value={sinpeName}
-                  onChange={(e) => setSinpeName(e.target.value)}
-                  placeholder="Ej: Mi Tienda S.A."
-                  required
+                  label="Dirección Física"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
                 />
+                <Input label="Actividad económica" value={economicActivity} onChange={(e) => setEconomicActivity(e.target.value.replace(/\D/g, "").slice(0, 6))} helperText="Código de 6 dígitos registrado en Hacienda" required />
+                <Input label="Provincia (1–7)" value={provinceCode} onChange={(e) => setProvinceCode(e.target.value.replace(/\D/g, "").slice(0, 1))} required />
+                <Input label="Cantón (2 dígitos)" value={cantonCode} onChange={(e) => setCantonCode(e.target.value.replace(/\D/g, "").slice(0, 2))} required />
+                <Input label="Distrito (2 dígitos)" value={districtCode} onChange={(e) => setDistrictCode(e.target.value.replace(/\D/g, "").slice(0, 2))} required />
+                <Input label="Barrio (opcional)" value={neighborhoodCode} onChange={(e) => setNeighborhoodCode(e.target.value.replace(/\D/g, "").slice(0, 2))} />
               </div>
 
-              <div className="pt-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block mb-2">
-                  Métodos de Pago Habilitados en Caja
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                  Régimen Tributario (Ministerio de Hacienda)
                 </label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-3 p-2.5 bg-surface-secondary border border-border rounded-xl">
-                    <input
-                      type="checkbox"
-                      checked={enableCash}
-                      onChange={(e) => setEnableCash(e.target.checked)}
-                      className="rounded border-border text-primary"
-                    />
-                    <span className="text-xs font-bold text-text-main">Efectivo (Colones CRC / Dólares USD)</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-2.5 bg-surface-secondary border border-border rounded-xl">
-                    <input
-                      type="checkbox"
-                      checked={enableSinpe}
-                      onChange={(e) => setEnableSinpe(e.target.checked)}
-                      className="rounded border-border text-primary"
-                    />
-                    <span className="text-xs font-bold text-text-main">SINPE Móvil Inmediato</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-2.5 bg-surface-secondary border border-border rounded-xl">
-                    <input
-                      type="checkbox"
-                      checked={enableCard}
-                      onChange={(e) => setEnableCard(e.target.checked)}
-                      className="rounded border-border text-primary"
-                    />
-                    <span className="text-xs font-bold text-text-main">Tarjeta de Débito / Crédito (Datáfono)</span>
-                  </label>
-                </div>
+                <select
+                  value={taxRegime}
+                  onChange={(e) => setTaxRegime(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="TRADICIONAL">Régimen Tradicional (Factura Electrónica Obligatoria)</option>
+                  <option value="SIMPLIFICADO">Régimen de Tributación Simplificada</option>
+                </select>
               </div>
 
-              <div className="pt-3 border-t border-border flex justify-end">
-                <Button type="submit" variant="primary">
-                  <Save className="w-4 h-4 mr-1.5" />
-                  Guardar Canales de Pago
-                </Button>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                  Moneda Base del Sistema
+                </label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="CRC">Colones Costarricenses (CRC - ₡)</option>
+                  <option value="USD" disabled>USD — requiere integración de tipo de cambio</option>
+                </select>
+              </div>
+
+              <div className="pt-3 border-t border-border flex items-center justify-between">
+                {saveError && <span role="alert" className="text-xs text-semantic-danger-text font-bold">{saveError}</span>}
+                {saved && (
+                  <span className="text-xs text-semantic-success-text font-bold flex items-center gap-1">
+                    <CheckCircle className="w-4 h-4" /> Datos comerciales actualizados exitosamente
+                  </span>
+                )}
+                <div className="ml-auto">
+                  <Button type="submit" variant="primary" disabled={saving}>
+                    <Save className="w-4 h-4 mr-2" />
+                    {saving ? "Guardando…" : "Guardar Datos Comerciales"}
+                  </Button>
+                </div>
               </div>
             </form>
           </Card>
         )}
 
-        {/* TAB 5: HACIENDA v4.4 */}
         {activeTab === "hacienda" && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-6">
-              <Card>
-                <form onSubmit={handleSaveHacienda} className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="w-5 h-5 text-primary" />
-                      <h2 className="text-sm font-bold text-text-main">Credenciales de Acceso ATV</h2>
-                    </div>
-                    <Badge variant={env === "PRODUCTION" ? "danger" : "warning"}>
-                      {env === "PRODUCTION" ? "PRODUCCIÓN (DGT)" : "SANDBOX / STAGING"}
-                    </Badge>
+          <Card className="max-w-2xl space-y-6">
+            <div className="flex items-center justify-between p-3.5 bg-surface-secondary rounded-2xl border border-border">
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className={`w-5 h-5 ${atvUser ? "text-emerald-500" : "text-text-muted"}`} />
+                <div>
+                  <span className="text-xs font-bold text-text-main block">Firmador Digital XAdES-EPES & API ATV</span>
+                  <span className="text-[10px] text-text-muted">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda v4.4</span>
+                </div>
+              </div>
+              <Badge variant={credentialStatus?.is_active ? "success" : "default"}>
+                {credentialStatus?.is_active ? "CREDENCIALES REGISTRADAS" : "CREDENCIALES PENDIENTES"}
+              </Badge>
+            </div>
+
+            <form onSubmit={handleSaveHacienda} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
+                  Ambiente de Envío de Hacienda
+                </label>
+                <select
+                  value={env}
+                  onChange={(e) => setEnv(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <option value="STAGING">Sandbox / Pruebas (api-sandbox.comprobanteselectronicos.go.cr)</option>
+                  <option value="PRODUCTION">Producción Oficial (api.comprobanteselectronicos.go.cr)</option>
+                </select>
+              </div>
+
+              <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-primary" />
+                    <span className="text-xs font-bold text-text-main">Llave Criptográfica (.p12 / .pfx)</span>
                   </div>
-
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block mb-1.5">
-                        Ambiente de Transmisión
-                      </label>
-                      <select
-                        value={env}
-                        onChange={(e) => setEnv(e.target.value as any)}
-                        className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary"
-                      >
-                        <option value="STAGING">Sandbox / Staging (Pruebas autorizadas DGT)</option>
-                        <option value="PRODUCTION">Producción Oficial (Efectos tributarios vinculantes)</option>
-                      </select>
-                    </div>
-
-                    <Input
-                      label="Usuario ATV (Generado en portal ATV)"
-                      placeholder="Ej: cpf-01-0123-0456@stag.comprobanteselectronicos.go.cr"
-                      value={atvUser}
-                      onChange={(e) => setAtvUser(e.target.value)}
-                      required
+                  <span className="text-[10px] text-text-muted">Certificado criptográfico de ATV</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-text-muted block mb-1">Archivo de Certificado (.p12 / .pfx)</label>
+                    <input
+                      type="file"
+                      accept=".p12,.pfx"
+                      aria-label="Archivo de certificado llave criptográfica"
+                      onChange={(e) => setP12File(e.target.files?.[0] || null)}
+                      className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-surface file:text-text-main hover:file:bg-surface-hover cursor-pointer border border-border rounded-xl p-1"
                     />
-
-                    <Input
-                      label="Contraseña ATV"
-                      type="password"
-                      placeholder="••••••••••••"
-                      value={atvPass}
-                      onChange={(e) => setAtvPass(e.target.value)}
-                    />
-
-                    <div className="p-3 bg-surface-secondary border border-border rounded-xl text-xs space-y-1">
-                      <p className="font-bold text-text-secondary">Llave Criptográfica (.p12 / .pfx):</p>
-                      <p className="text-text-muted text-[11px]">
-                        La llave criptográfica se gestiona de forma segura y encriptada en el almacén de claves del servidor.
-                      </p>
-                      <Input
-                        label="PIN de la Llave Criptográfica (4 dígitos)"
-                        type="password"
-                        maxLength={4}
-                        placeholder="••••"
-                        value={pin}
-                        onChange={(e) => setPin(e.target.value)}
-                      />
-                    </div>
                   </div>
+                  <Input
+                    label="PIN de Llave Criptográfica (4 dígitos)"
+                    type="password"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    maxLength={4}
+                  />
+                </div>
+              </div>
 
-                  <div className="pt-3 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={handleTestConnection}
-                      disabled={testingConnection}
-                    >
-                      <RefreshCw className={`w-4 h-4 mr-1.5 ${testingConnection ? "animate-spin" : ""}`} />
-                      {testingConnection ? "Validando en Hacienda..." : "Probar Conexión con Hacienda"}
-                    </Button>
-                    <Button type="submit" variant="primary">
-                      <Save className="w-4 h-4 mr-1.5" />
-                      Guardar Credenciales ATV
-                    </Button>
-                  </div>
-                </form>
-              </Card>
+              <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileCode className="w-4 h-4 text-purple-500" />
+                  <span className="text-xs font-bold text-text-main">Credenciales API ATV (Ministerio de Hacienda)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input
+                    label="Usuario ATV (cpf-...)"
+                    value={atvUser}
+                    onChange={(e) => setAtvUser(e.target.value)}
+                  />
+                  <Input
+                    label="Contraseña API ATV"
+                    type="password"
+                    value={atvPass}
+                    onChange={(e) => setAtvPass(e.target.value)}
+                  />
+                </div>
+              </div>
 
               {connectionResult && (
                 <div
-                  className={`p-4 rounded-2xl border flex items-start gap-3 text-xs ${
+                  role="alert"
+                  className={`p-3.5 rounded-2xl border flex items-center gap-2 text-xs font-semibold ${
                     connectionResult.success
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                      : "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
+                      ? "bg-semantic-success-bg border-semantic-success-border text-semantic-success-text"
+                      : "bg-semantic-danger-bg border-semantic-danger-border text-semantic-danger-text"
                   }`}
                 >
-                  {connectionResult.success ? (
-                    <CheckCircle className="w-5 h-5 flex-shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  )}
-                  <div>
-                    <h3 className="font-bold">
-                      {connectionResult.success ? "Conexión Exitosa" : "Error de Conexión con ATV"}
-                    </h3>
-                    <p className="mt-0.5">{connectionResult.message}</p>
-                  </div>
+                  {connectionResult.success ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  <span>{connectionResult.message}</span>
                 </div>
               )}
-            </div>
 
-            {/* Side Info */}
-            <div className="space-y-4">
-              <Card className="space-y-3 text-xs">
-                <h3 className="font-bold text-text-main flex items-center gap-1.5">
-                  <FileCode className="w-4 h-4 text-primary" />
-                  Esquema v4.4 Oficial DGT
-                </h3>
-                <p className="text-text-muted">
-                  Orbítica POS cumple con la resolución <strong>Nº DGT-R-033-2019</strong> y los lineamientos técnicos del Ministerio de Hacienda de Costa Rica.
-                </p>
-                <div className="pt-2 border-t border-border space-y-1 font-mono text-[11px] text-text-secondary">
-                  <div>• Factura Electrónica (01)</div>
-                  <div>• Nota de Débito (02)</div>
-                  <div>• Nota de Crédito (03)</div>
-                  <div>• Tiquete Electrónico (04)</div>
-                  <div>• CABYS 2026 integrado</div>
+              {readiness && (
+                <div className="rounded-2xl border border-border bg-surface-secondary p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-text-main">Preparación para emisión {readiness.environment}</span>
+                    <Badge variant={readiness.ready ? "success" : "warning"}>{readiness.ready ? "LISTO" : "INCOMPLETO"}</Badge>
+                  </div>
+                  {readiness.checks.map((check) => (
+                    <div key={check.code} className="flex items-center gap-2 text-xs">
+                      {check.ok ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-amber-500" />}
+                      <span className={check.ok ? "text-text-secondary" : "text-amber-500"}>{check.message}</span>
+                    </div>
+                  ))}
                 </div>
-              </Card>
-            </div>
-          </div>
-        )}
+              )}
 
-        {/* TAB 6: APARIENCIA */}
-        {activeTab === "accessibility" && (
-          <div className="max-w-3xl">
-            <AppearanceSettings />
-          </div>
+              {saveError && <div role="alert" className="p-3 rounded-xl border border-semantic-danger-border bg-semantic-danger-bg text-xs text-semantic-danger-text">{saveError}</div>}
+
+              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection || !atvUser.trim() || !atvPass.trim()}
+                  title={!atvUser.trim() || !atvPass.trim() ? "Ingrese usuario y contraseña ATV para validar" : undefined}
+                >
+                  {testingConnection ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin text-primary" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4 mr-2 text-emerald-500" />
+                  )}
+                  {testingConnection ? "Probando Conexión..." : "Validar Conexión con Hacienda"}
+                </Button>
+
+                <div className="ml-auto">
+                  <Button type="submit" variant="primary" disabled={saving}>
+                    <Save className="w-4 h-4 mr-2" />
+                    {saving ? "Guardando…" : "Guardar Credenciales"}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </Card>
         )}
       </div>
     </OwnerLayout>

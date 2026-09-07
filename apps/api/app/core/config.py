@@ -7,6 +7,7 @@ from pydantic import Field, field_validator, model_validator
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ORBÍTICA POS API"
     VERSION: str = "2.4.0"
+    BUILD_DATE: str = Field(default="unknown", alias="BUILD_DATE")
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
     
@@ -32,9 +33,6 @@ class Settings(BaseSettings):
     LOCKOUT_MINUTES: int = 15
     STEP_UP_TOKEN_EXPIRE_MINUTES: int = 5
     
-    # Frontend Base URL (used for password reset, email links, etc.)
-    FRONTEND_URL: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
-
     # CORS Configuration (Accepts BACKEND_CORS_ORIGINS or CORS_ORIGINS)
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
@@ -79,6 +77,14 @@ class Settings(BaseSettings):
     # Block live production fiscal emission until ATV Sandbox validation is complete and confirmed.
     HACIENDA_LIVE_EMISSION_ENABLED: bool = Field(default=False, alias="HACIENDA_LIVE_EMISSION_ENABLED")
     HACIENDA_SANDBOX_VALIDATED: bool = Field(default=False, alias="HACIENDA_SANDBOX_VALIDATED")
+
+    # Public web URL and fiscal email delivery
+    FRONTEND_URL: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    SMTP_HOST: Optional[str] = Field(default=None, alias="SMTP_HOST")
+    SMTP_PORT: int = Field(default=587, alias="SMTP_PORT")
+    SMTP_USER: Optional[str] = Field(default=None, alias="SMTP_USER")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    SMTP_TLS: bool = Field(default=True, alias="SMTP_TLS")
     
     # Cookie Configuration
     COOKIE_DOMAIN: Optional[str] = None
@@ -127,18 +133,32 @@ class Settings(BaseSettings):
             # 2. Reject SQLite in production
             if "sqlite" in self.DATABASE_URL.lower():
                 errors.append("DATABASE_URL must be a PostgreSQL connection in production (sqlite is not allowed).")
+            if "postgresql" not in self.SYNC_DATABASE_URL.lower():
+                errors.append("SYNC_DATABASE_URL must be a PostgreSQL connection in production.")
                 
             # 3. Master Encryption Key check
-            if "DEV_MASTER_KEY" in self.ENCRYPTION_MASTER_KEY or len(self.ENCRYPTION_MASTER_KEY) < 16:
-                errors.append("ENCRYPTION_MASTER_KEY / FERNET_KEY must be set with a production encryption key.")
+            if "DEV_MASTER_KEY" in self.ENCRYPTION_MASTER_KEY or len(self.ENCRYPTION_MASTER_KEY) < 32:
+                errors.append("ENCRYPTION_MASTER_KEY / FERNET_KEY must be a high-entropy production secret with at least 32 characters.")
                 
             # 4. CORS validation
             if not self.BACKEND_CORS_ORIGINS or "*" in self.BACKEND_CORS_ORIGINS:
                 errors.append("BACKEND_CORS_ORIGINS / CORS_ORIGINS cannot be empty or '*' in production.")
+            if any(origin.startswith("http://") or "localhost" in origin or "127.0.0.1" in origin for origin in self.BACKEND_CORS_ORIGINS):
+                errors.append("BACKEND_CORS_ORIGINS must contain only explicit HTTPS production origins.")
                 
             # 5. Fiscal emission guardrail
             if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.HACIENDA_SANDBOX_VALIDATED:
                 errors.append("HACIENDA_LIVE_EMISSION_ENABLED cannot be activated in production without prior HACIENDA_SANDBOX_VALIDATED=True.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and not all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD]):
+                errors.append("SMTP_HOST, SMTP_USER and SMTP_PASSWORD are required when live fiscal emission is enabled.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_TAX_ID == "3101000000":
+                errors.append("SOFTWARE_PROVIDER_TAX_ID must be the real registered provider identification before live emission.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_NAME == "ORBITICA STUDIO S.A.":
+                errors.append("SOFTWARE_PROVIDER_NAME must match the real registered software provider before live emission.")
+            if not self.FRONTEND_URL.startswith("https://"):
+                errors.append("FRONTEND_URL must be an HTTPS production URL.")
+            if not self.COOKIE_SECURE:
+                errors.append("COOKIE_SECURE must be true in production.")
                 
             if errors:
                 error_msg = "\n[CRITICAL STARTUP ERROR] Production configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
