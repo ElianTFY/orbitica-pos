@@ -34,7 +34,7 @@ Se corrigió código ejecutable y se integraron los commits `5abe37c` y `64d17e3
 - Los nueve XSD locales se verificaron por SHA-256 y se compilaron correctamente.
 - Se descargó la política oficial; SHA-256 hexadecimal: `0d6c629f5c5639e23c3ae5905dace1e158cb5806822c003de787a6ec3321d21f`. Su valor base64 coincide con `DWxin1xWOeI8OuWQXazh4VjLWAaCLAA954em7DMh0h8=` utilizado en la firma.
 - Migración desde base SQLite vacía hasta `0005_final_production_fixes`: correcta; `alembic check`: sin operaciones nuevas. SQLite no demuestra bloqueos concurrentes de PostgreSQL.
-- PostgreSQL/CI: **pendiente de resultado de GitHub Actions**. Incluye veinte consecutivos concurrentes y veinte reintentos del mismo cobro con una sola venta/una salida de stock. No se afirma haberlos ejecutado localmente: no hay servidor PostgreSQL disponible en este entorno.
+- **GitHub Actions aprobado** para el código `c7670f0bfb6cc03408b40d67f3afac2e322d4df6`: backend (97 pruebas), PostgreSQL 16 (3 pruebas, migración y check sin drift), y frontend (instalación limpia, audit, tipos y build). **100 pruebas aprobadas en total.** Incluye veinte consecutivos concurrentes y veinte reintentos del mismo cobro con una sola venta/una salida de stock. Evidencia: `audit-evidence/2026-09-07/ci-results.json`; [ejecución verificable](https://github.com/ElianTFY/orbitica-pos/actions/runs/34074190666). PostgreSQL se ejecutó en CI, no en el entorno local.
 
 Las pruebas de red fiscal y correo usan dobles controlados donde está indicado. Un estado `ACCEPTED` configurado por una prueba no es evidencia de aceptación externa. El build y TypeScript prueban compilación, no reemplazan una sesión manual del piloto.
 
@@ -48,7 +48,7 @@ La protección append-only bloquea modificaciones normales en la base, pero no s
 
 ## Condiciones que faltan para habilitar emisión real
 
-1. Confirmar CI verde y ejecutar el mismo commit en frontend, API y worker con PostgreSQL migrado; comprobar backup/restauración y almacenamiento persistente de archivos.
+1. CI ya está verde. Ejecutar el mismo código validado en frontend, API y worker con PostgreSQL migrado; comprobar backup/restauración y almacenamiento persistente de archivos.
 2. Configurar identificación real del proveedor, SMTP y credenciales propias de la empresa en Sandbox. Obtener FE, TE y NC **aceptadas por Hacienda**, conservar respuesta original y verificar recepción del correo con XML.
 3. Completar una prueba manual: registro/login, caja, producto CAByS, cliente, venta mixta/descuento, reintento, factura, devolución, ticket y consulta en Hub. Habilitar producción con credenciales de ese ambiente solo al cerrar esas evidencias.
 
