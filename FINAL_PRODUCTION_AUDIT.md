@@ -52,7 +52,7 @@ La protección append-only bloquea modificaciones normales en la base, pero no s
 2. Configurar identificación real del proveedor, SMTP y credenciales propias de la empresa en Sandbox. Obtener FE, TE y NC **aceptadas por Hacienda**, conservar respuesta original y verificar recepción del correo con XML.
 3. Completar una prueba manual: registro/login, caja, producto CAByS, cliente, venta mixta/descuento, reintento, factura, devolución, ticket y consulta en Hub. Habilitar producción con credenciales de ese ambiente solo al cerrar esas evidencias.
 
-La URL pública reportada no pudo verificarse desde la herramienta de navegación; no hay confirmación del commit desplegado ni de la conexión al backend real. Subir esta rama no demuestra que la página de producción ya cambió.
+En una comprobación HTTP posterior del 7 de septiembre, la URL pública respondió 200, pero `/health/ready` devolvió 404 y `/api/v1/health` devolvió 404 con `DNS_HOSTNAME_RESOLVED_PRIVATE`. La página abre, pero esa comprobación no acredita una API conectada y disponible. El 8 de septiembre, la conexión Vercel devolvió 403 para `eliantfys-projects/web` y no enumeró equipos accesibles; el commit desplegado y la configuración del backend siguen sin verificarse. Subir esta rama no demuestra que la página de producción ya cambió.
 
 ## Fuentes primarias consultadas
 
