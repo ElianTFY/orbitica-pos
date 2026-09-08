@@ -1,8 +1,12 @@
+import asyncio
 import os
 import uuid
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
 from app.core.config import settings
 
 logger = logging.getLogger("storage_service")
@@ -50,9 +54,9 @@ class LocalTenantStorageBackend(BaseStorageBackend):
                 # Attempted access to another tenant's folder
                 raise FileNotFoundError("Archivo no pertenece a este tenant.")
 
-        tenant_root = os.path.abspath(os.path.join(self.base_dir, clean_org))
-        full_path = os.path.abspath(os.path.join(tenant_root, clean_rel))
-        if not full_path.startswith(tenant_root):
+        tenant_root = os.path.realpath(os.path.join(self.base_dir, clean_org))
+        full_path = os.path.realpath(os.path.join(tenant_root, clean_rel))
+        if os.path.commonpath([tenant_root, full_path]) != tenant_root:
             raise PermissionError("Acceso denegado: Intento de evasión de aislamiento de tenant.")
         return full_path
 
@@ -90,51 +94,103 @@ class S3TenantStorageBackend(BaseStorageBackend):
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
         region_name: str = "us-east-1",
-        endpoint_url: Optional[str] = None
+        endpoint_url: Optional[str] = None,
+        client: Optional[Any] = None,
     ):
+        if not bucket_name:
+            raise ValueError("S3_BUCKET_NAME es obligatorio para almacenamiento S3/R2.")
         self.bucket = bucket_name
         self.endpoint_url = endpoint_url
         self.region_name = region_name
-        # Fallback to local memory mock if boto3 is not installed or credentials missing in dev
-        self._mock_s3: Dict[str, bytes] = {}
+        self.client = client if client is not None else boto3.client(
+            "s3",
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            region_name=region_name,
+            endpoint_url=endpoint_url,
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=10,
+                read_timeout=30,
+                retries={"mode": "standard", "max_attempts": 3},
+                s3={"addressing_style": "path"},
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            ),
+        )
 
     def _build_key(self, org_id: str, path_suffix: str) -> str:
-        clean_org = str(org_id).replace("..", "").strip("/")
-        clean_suffix = path_suffix.lstrip("/")
-        return f"tenants/{clean_org}/{clean_suffix}"
+        clean_org = str(uuid.UUID(str(org_id)))
+        prefix = f"tenants/{clean_org}/"
+        if path_suffix.startswith("tenants/"):
+            if not path_suffix.startswith(prefix):
+                raise FileNotFoundError("Archivo no pertenece a este tenant.")
+            path_suffix = path_suffix[len(prefix):]
+        if (
+            not path_suffix or path_suffix.startswith("/")
+            or "\\" in path_suffix or "\x00" in path_suffix
+            or any(part in {"", ".", ".."} for part in path_suffix.split("/"))
+        ):
+            raise PermissionError("Ruta de almacenamiento inválida.")
+        return prefix + path_suffix
+
+    @staticmethod
+    def _is_missing(error: ClientError) -> bool:
+        return str(error.response.get("Error", {}).get("Code")) in {"404", "NoSuchKey", "NotFound"}
 
     async def save(self, org_id: str, path_suffix: str, content: bytes) -> str:
         key = self._build_key(org_id, path_suffix)
-        self._mock_s3[key] = content
+        await asyncio.to_thread(self.client.put_object, Bucket=self.bucket, Key=key, Body=content)
         return key
 
     async def read(self, org_id: str, relative_key: str) -> bytes:
-        key = relative_key if relative_key.startswith(f"tenants/{org_id}") else self._build_key(org_id, relative_key)
-        if key not in self._mock_s3:
-            raise FileNotFoundError(f"Objeto S3 no encontrado: {key}")
-        return self._mock_s3[key]
+        key = self._build_key(org_id, relative_key)
+
+        def read_object() -> bytes:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            body = response["Body"]
+            try:
+                return body.read()
+            finally:
+                body.close()
+
+        try:
+            return await asyncio.to_thread(read_object)
+        except ClientError as error:
+            if self._is_missing(error):
+                raise FileNotFoundError("Objeto S3 no encontrado.") from error
+            raise
 
     async def exists(self, org_id: str, relative_key: str) -> bool:
-        key = relative_key if relative_key.startswith(f"tenants/{org_id}") else self._build_key(org_id, relative_key)
-        return key in self._mock_s3
+        key = self._build_key(org_id, relative_key)
+        try:
+            await asyncio.to_thread(self.client.head_object, Bucket=self.bucket, Key=key)
+            return True
+        except ClientError as error:
+            if self._is_missing(error):
+                return False
+            raise
 
     async def delete(self, org_id: str, relative_key: str) -> bool:
-        key = relative_key if relative_key.startswith(f"tenants/{org_id}") else self._build_key(org_id, relative_key)
-        if key in self._mock_s3:
-            del self._mock_s3[key]
-            return True
-        return False
+        key = self._build_key(org_id, relative_key)
+        if not await self.exists(org_id, key):
+            return False
+        await asyncio.to_thread(self.client.delete_object, Bucket=self.bucket, Key=key)
+        return True
 
 class StorageService:
     def __init__(self, backend: Optional[BaseStorageBackend] = None):
         if backend:
             self.backend = backend
         else:
-            storage_type = getattr(settings, "STORAGE_TYPE", "LOCAL").upper()
+            storage_type = settings.STORAGE_TYPE
             if storage_type == "S3":
                 self.backend = S3TenantStorageBackend(
-                    bucket_name=getattr(settings, "S3_BUCKET_NAME", "orbitica-fiscal-vault"),
-                    region_name=getattr(settings, "AWS_REGION", "us-east-1")
+                    bucket_name=settings.S3_BUCKET_NAME,
+                    region_name=settings.AWS_REGION,
+                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                    endpoint_url=settings.S3_ENDPOINT_URL,
                 )
             else:
                 self.backend = LocalTenantStorageBackend()

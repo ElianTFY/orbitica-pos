@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator, model_validator
 
@@ -61,6 +61,33 @@ class Settings(BaseSettings):
         alias="SYNC_DATABASE_URL"
     )
     REDIS_URL: Optional[str] = Field(default=None, alias="REDIS_URL")
+
+    # Persistent uploads: local volume or an S3-compatible store (including R2).
+    STORAGE_TYPE: Literal["LOCAL", "S3"] = "LOCAL"
+    LOCAL_STORAGE_DIR: str = "./storage"
+    S3_BUCKET_NAME: Optional[str] = None
+    S3_ENDPOINT_URL: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+
+    @field_validator("STORAGE_TYPE", mode="before")
+    @classmethod
+    def normalize_storage_type(cls, value: str) -> str:
+        value = value.upper()
+        return "S3" if value == "R2" else value
+
+    @field_validator("DATABASE_URL", "SYNC_DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_postgres_url(cls, value: str, info) -> str:
+        # Hosting providers supply postgres:// or postgresql://. SQLAlchemy's
+        # async engine needs an explicit asyncpg driver. Preserve the complete
+        # credentials/host/query suffix, including percent-encoded passwords.
+        scheme, separator, suffix = value.partition("://")
+        if separator and scheme in {"postgres", "postgresql", "postgresql+asyncpg", "postgresql+psycopg2"}:
+            driver = "postgresql+asyncpg" if info.field_name == "DATABASE_URL" else "postgresql"
+            return f"{driver}://{suffix}"
+        return value
     
     # Regional Costa Rica Defaults
     DEFAULT_CURRENCY: str = "CRC"
@@ -93,6 +120,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def sync_aliases(self) -> "Settings":
+        if "SYNC_DATABASE_URL" not in self.model_fields_set and self.DATABASE_URL.startswith("postgresql+asyncpg://"):
+            self.SYNC_DATABASE_URL = self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
         # Unify SECRET_KEY <-> JWT_SECRET_KEY
         if self.SECRET_KEY and self.JWT_SECRET_KEY == "dev_secret_key_change_in_production_orbitica_pos_2026_super_secure":
             self.JWT_SECRET_KEY = self.SECRET_KEY
@@ -131,10 +160,15 @@ class Settings(BaseSettings):
                 errors.append("JWT_SECRET_KEY / SECRET_KEY must be a secure key with at least 32 characters in production.")
                 
             # 2. Reject SQLite in production
-            if "sqlite" in self.DATABASE_URL.lower():
+            if not self.DATABASE_URL.startswith("postgresql+asyncpg://"):
                 errors.append("DATABASE_URL must be a PostgreSQL connection in production (sqlite is not allowed).")
-            if "postgresql" not in self.SYNC_DATABASE_URL.lower():
+            if not self.SYNC_DATABASE_URL.startswith("postgresql://"):
                 errors.append("SYNC_DATABASE_URL must be a PostgreSQL connection in production.")
+
+            if self.STORAGE_TYPE == "S3" and not self.S3_BUCKET_NAME:
+                errors.append("S3_BUCKET_NAME is required for S3/R2 storage.")
+            if self.STORAGE_TYPE == "S3" and self.S3_ENDPOINT_URL and not self.S3_ENDPOINT_URL.startswith("https://"):
+                errors.append("S3_ENDPOINT_URL must use HTTPS in production.")
                 
             # 3. Master Encryption Key check
             if "DEV_MASTER_KEY" in self.ENCRYPTION_MASTER_KEY or len(self.ENCRYPTION_MASTER_KEY) < 32:

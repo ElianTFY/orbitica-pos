@@ -1,12 +1,13 @@
 import asyncio
 import logging
+import signal
 import uuid
 import base64
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Set
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
-from app.db.session import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal, async_engine, sync_engine
 from app.models.outbox import HaciendaOutbox
 from app.models.invoice import ElectronicInvoice
 from app.models.organization import Organization
@@ -15,6 +16,7 @@ from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.hacienda_client import HaciendaAPIClient
 from app.services.email_service import FiscalEmailService
 from app.core.config import settings
+from app.core.logging import setup_logging
 
 logger = logging.getLogger("hacienda_worker")
 
@@ -33,6 +35,7 @@ class HaciendaOutboxWorker:
         self.max_backoff_seconds = max_backoff_seconds
         self._custom_client = hacienda_client
         self._running = False
+        self._stop_event = asyncio.Event()
 
     async def process_batch(self, db: AsyncSession) -> int:
         """
@@ -343,24 +346,50 @@ class HaciendaOutboxWorker:
 
     async def run_loop(self, poll_interval_seconds: int = 5):
         self._running = True
+        self._stop_event.clear()
         while self._running:
+            idle = False
             try:
                 async with AsyncSessionLocal() as session:
                     processed = await self.process_batch(session)
-                    if processed == 0:
-                        await asyncio.sleep(poll_interval_seconds)
+                    idle = processed == 0
             except Exception as ex:
                 logger.error(f"Error en bucle de Outbox Worker: {ex}")
-                await asyncio.sleep(poll_interval_seconds)
+                idle = True
+            if idle and self._running:
+                try:
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=poll_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
 
     def stop(self):
         self._running = False
+        self._stop_event.set()
 
 
 async def main() -> None:
+    setup_logging()
     settings.validate_production_readiness()
     worker = HaciendaOutboxWorker()
-    await worker.run_loop()
+    loop = asyncio.get_running_loop()
+    registered = []
+    for stop_signal in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(stop_signal, worker.stop)
+            registered.append(stop_signal)
+        except NotImplementedError:
+            pass  # add_signal_handler is unavailable on Windows event loops.
+    logger.info("Hacienda worker iniciado; esperando comprobantes pendientes")
+    try:
+        # SIGTERM stops fetching new batches and lets the current transaction
+        # finish before Render replaces this process.
+        await worker.run_loop()
+    finally:
+        for stop_signal in registered:
+            loop.remove_signal_handler(stop_signal)
+        await async_engine.dispose()
+        sync_engine.dispose()
+        logger.info("Hacienda worker detenido")
 
 
 if __name__ == "__main__":

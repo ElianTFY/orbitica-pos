@@ -13,3 +13,29 @@ Subir o integrar una rama en GitHub no acredita que los servicios estén despleg
 8. Completar las pruebas de Hacienda en Sandbox con la empresa y conservar las respuestas originales de aceptación antes de habilitar emisión real.
 
 Los archivos `apps/api/railway*.json` son configuraciones para Railway; su presencia no demuestra que exista un servicio allí. Confirmar el proveedor y los servicios conectados antes de cambiar destinos.
+
+## Primera instalación en Render
+
+`render.yaml` define recursos nuevos exclusivos del POS: API, worker permanente,
+PostgreSQL 16 y un volumen para los archivos subidos. No se debe aplicar sobre una
+base que contenga datos sin revisar previamente sus migraciones y respaldo.
+
+El Blueprint usa servicios de pago y su aplicación requiere revisar el coste en
+Render. Publicar este archivo en GitHub no crea recursos ni activa cargos. Los
+despliegues automáticos quedan apagados para coordinar API, worker y frontend.
+
+1. Abrir [el instalador de esta rama](https://render.com/deploy?repo=https://github.com/ElianTFY/orbitica-pos/tree/codex/final-production-fixes), revisar `render.yaml` y los planes antes de aplicar.
+2. Introducir en Render el servidor, usuario y contraseña SMTP, y la identificación/nombre reales del proveedor de software. Para SMTP se preparó STARTTLS en el puerto 587; si el proveedor usa otros parámetros, ajustar el grupo `orbitica-pos-runtime`. No introducir contraseñas en GitHub.
+3. Render genera las claves JWT y de cifrado una sola vez y las comparte con el worker. Conservar la clave maestra junto con el procedimiento privado de recuperación; no regenerarla al restaurar una base existente.
+4. La API ejecuta `alembic upgrade head` antes de arrancar. El worker espera los trabajos de la misma base y termina su lote activo al recibir SIGTERM.
+5. Copiar la URL pública HTTPS que Render asigne a la API en `FASTAPI_BACKEND_URL` de Vercel. No usar el hostname interno de Render. Reconstruir y comprobar `/health/ready`, registro, login, venta y soporte antes de promover.
+
+El Blueprint inicial guarda los archivos subidos en el volumen persistente de la
+API; los XML fiscales y acuses se conservan en PostgreSQL. Para cambiar a R2/S3,
+configurar `STORAGE_TYPE=S3`, `S3_BUCKET_NAME`, `S3_ENDPOINT_URL`, `AWS_REGION=auto`
+(para R2), `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY`. El adaptador usa el SDK
+real y propaga los errores de acceso; no simula guardados en memoria. Migrar los
+archivos ya existentes antes de cambiar de backend de almacenamiento.
+
+No se habilita facturación real con este instalador: ambas banderas de Hacienda
+permanecen desactivadas hasta completar las pruebas del piloto.
