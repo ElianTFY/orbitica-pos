@@ -3,6 +3,11 @@
 La guía operativa vigente es [PILOT_GO_LIVE_RUNBOOK.md](PILOT_GO_LIVE_RUNBOOK.md).
 Subir o integrar una rama en GitHub no acredita que los servicios estén desplegados.
 
+Para la primera empresa con presupuesto mínimo, usar la alternativa de
+[un solo servidor](PILOT_SINGLE_SERVER.md). Mantiene web, API, PostgreSQL y worker
+en una misma máquina; no requiere contratar los servicios separados del
+Blueprint de Render.
+
 1. Identificar el proyecto Vercel, el alojamiento real de la API/worker, la rama conectada y la base existente. Registrar los SHA actuales y verificar un respaldo restaurable antes de migrar.
 2. Desplegar API y worker desde el mismo commit validado, con raíz `apps/api` y PostgreSQL. Ejecutar `alembic upgrade head` como paso de despliegue antes de iniciar los procesos. API: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`; worker permanente: `python -m app.workers.hacienda_outbox_worker`.
 3. Configurar en ambos procesos `ENVIRONMENT=production`, `DATABASE_URL`, `SYNC_DATABASE_URL`, `JWT_SECRET_KEY`, `ENCRYPTION_MASTER_KEY`, `FRONTEND_URL`, `BACKEND_CORS_ORIGINS` y `COOKIE_SECURE=true`. Conservar el secreto maestro existente para poder descifrar las credenciales guardadas. Los valores concretos se gestionan en el alojamiento, nunca en GitHub.

@@ -92,3 +92,57 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+
+  single-server-arm:
+    # Exercise the native architecture of an Ampere single-server installation.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      # Disposable CI values, never production credentials.
+      POS_DOMAIN: ci.example.test
+      POSTGRES_PASSWORD: ci_database_password_for_disposable_containers
+      JWT_SECRET_KEY: ci_jwt_secret_for_disposable_containers_only
+      ENCRYPTION_MASTER_KEY: ci_encryption_key_for_disposable_containers_only
+      SOFTWARE_PROVIDER_TAX_ID_TYPE: "02"
+      SOFTWARE_PROVIDER_TAX_ID: "3101999999"
+      SOFTWARE_PROVIDER_NAME: CI test provider
+      SMTP_HOST: smtp.example.test
+      SMTP_USER: ci@example.test
+      SMTP_PASSWORD: ci_unused_mail_password
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose and build API and web images
+        run: |
+          docker compose -f compose.pilot.yml config --quiet
+          docker compose -f compose.pilot.yml build api web
+      - name: Start database, migrations, API, worker and web
+        run: docker compose -f compose.pilot.yml up -d --wait --wait-timeout 180 postgres api worker web
+      - name: Verify the built web image reaches the migrated API
+        run: |
+          docker compose -f compose.pilot.yml exec -T web node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          const origin = 'http://127.0.0.1:3000';
+          const get = path => fetch(origin + path, { signal: AbortSignal.timeout(10000) });
+          assert.equal((await get('/login')).status, 200, 'Login page must load');
+          const readiness = await get('/health/ready');
+          assert.equal(readiness.status, 200, 'Next.js must proxy readiness to FastAPI');
+          const { data } = await readiness.json();
+          assert.equal(data.status, 'ready');
+          assert.equal(data.checks.database, 'connected');
+          assert.equal(data.checks.migrations, 'current');
+          assert.equal(data.checks.outbox, 'ready');
+          assert.equal((await get('/api/v1/auth/me')).status, 401, 'Protected API must require login');
+          console.log('PASS: ARM web image, API proxy, database, migrations and authentication boundary');
+          JS
+          worker_id=$(docker compose -f compose.pilot.yml ps -q worker)
+          test "$(docker inspect -f '{{.State.Running}}' "$worker_id")" = true
+          test "$(docker inspect -f '{{.RestartCount}}' "$worker_id")" = 0
+      - name: Validate production reverse proxy configuration
+        # Do not start public TLS issuance for the disposable CI domain.
+        run: docker compose -f compose.pilot.yml run --rm --no-deps gateway caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f compose.pilot.yml logs --no-color --tail=120
+      - name: Remove disposable CI containers and volumes
+        if: always()
+        run: docker compose -f compose.pilot.yml down --volumes --remove-orphans

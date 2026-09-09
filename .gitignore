@@ -23,6 +23,8 @@ venv/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.pilot
+backups/
 *.p12
 *.pfx
 *.pem

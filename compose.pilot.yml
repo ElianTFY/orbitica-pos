@@ -1,0 +1,129 @@
+# Un solo servidor para la primera empresa. No crea recursos en un proveedor.
+name: orbitica-pos-pilot
+
+x-api-environment: &api-environment
+  ENVIRONMENT: production
+  PYTHONUNBUFFERED: "1"
+  DATABASE_URL: postgresql+asyncpg://orbitica:${POSTGRES_PASSWORD:?required}@postgres:5432/orbitica_pos
+  SYNC_DATABASE_URL: postgresql://orbitica:${POSTGRES_PASSWORD:?required}@postgres:5432/orbitica_pos
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:?required}
+  ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY:?required}
+  FRONTEND_URL: https://${POS_DOMAIN:?required}
+  BACKEND_CORS_ORIGINS: '["https://${POS_DOMAIN:?required}"]'
+  COOKIE_SECURE: "true"
+  COOKIE_SAMESITE: lax
+  SOFTWARE_PROVIDER_TAX_ID_TYPE: ${SOFTWARE_PROVIDER_TAX_ID_TYPE:?required}
+  SOFTWARE_PROVIDER_TAX_ID: ${SOFTWARE_PROVIDER_TAX_ID:?required}
+  SOFTWARE_PROVIDER_NAME: ${SOFTWARE_PROVIDER_NAME:?required}
+  SMTP_HOST: ${SMTP_HOST:?required}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:?required}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:?required}
+  SMTP_TLS: ${SMTP_TLS:-true}
+  STORAGE_TYPE: LOCAL
+  LOCAL_STORAGE_DIR: /var/lib/orbitica/uploads
+  HACIENDA_LIVE_EMISSION_ENABLED: "false"
+  HACIENDA_SANDBOX_VALIDATED: "false"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orbitica_pos
+      POSTGRES_USER: orbitica
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbitica -d orbitica_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  migrate:
+    image: orbitica-pos-api:pilot
+    environment: *api-environment
+    command: alembic upgrade head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: orbitica-pos-api:pilot
+    build:
+      context: ./apps/api
+    environment: *api-environment
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=*
+    restart: unless-stopped
+    stop_grace_period: 120s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - uploads_data:/var/lib/orbitica/uploads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+  worker:
+    image: orbitica-pos-api:pilot
+    environment: *api-environment
+    command: python -m app.workers.hacienda_outbox_worker
+    restart: unless-stopped
+    stop_grace_period: 300s
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/var/lib/orbitica/uploads:ro
+
+  web:
+    image: orbitica-pos-web:pilot
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+        FASTAPI_BACKEND_URL: http://api:8000
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: /api/v1
+      FASTAPI_BACKEND_URL: http://api:8000
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+
+  gateway:
+    image: caddy:2-alpine
+    environment:
+      POS_DOMAIN: ${POS_DOMAIN:?required}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/Caddyfile.pilot:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:
