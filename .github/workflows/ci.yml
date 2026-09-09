@@ -72,6 +72,44 @@ jobs:
       - run: pip install -r requirements-test.txt
       - run: alembic upgrade head
       - run: alembic check
+      - name: Verify Render Free startup with production security checks
+        env:
+          ENVIRONMENT: production
+          FRONTEND_URL: https://ci.example.test
+          BACKEND_CORS_ORIGINS: '["https://ci.example.test"]'
+          COOKIE_SECURE: "true"
+          HACIENDA_LIVE_EMISSION_ENABLED: "false"
+          PORT: "8099"
+        run: |
+          bash scripts/start_render_free.sh > "$RUNNER_TEMP/orbitica-free-start.log" 2>&1 &
+          pilot_pid=$!
+          trap 'kill "$pilot_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8099/health/ready > /dev/null; then
+              break
+            fi
+            if ! kill -0 "$pilot_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/orbitica-free-start.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          python - <<'PY'
+          import json
+          from urllib.request import urlopen
+          from urllib.error import HTTPError
+          with urlopen('http://127.0.0.1:8099/health/ready', timeout=5) as response:
+              data = json.load(response)['data']
+          assert data['status'] == 'ready'
+          assert data['environment'] == 'production'
+          assert data['checks']['migrations'] == 'current'
+          try:
+              urlopen('http://127.0.0.1:8099/api/v1/auth/me', timeout=5)
+              raise AssertionError('Protected endpoint allowed anonymous access')
+          except HTTPError as error:
+              assert error.code == 401
+          print('PASS: Render Free startup, migrations and authentication boundary')
+          PY
       - run: pytest -m "postgres_integration" -q
 
   frontend:

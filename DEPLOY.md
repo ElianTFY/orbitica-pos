@@ -3,6 +3,11 @@
 La guía operativa vigente es [PILOT_GO_LIVE_RUNBOOK.md](PILOT_GO_LIVE_RUNBOOK.md).
 Subir o integrar una rama en GitHub no acredita que los servicios estén desplegados.
 
+Para **pruebas gratuitas en Render**, usar [RENDER_FREE_TESTING.md](RENDER_FREE_TESTING.md)
+y el archivo `render.free.yaml`. Esta opción mantiene la emisión real bloqueada,
+incluye correo por HTTPS y detalla las pruebas que requieren un worker aparte.
+El archivo `render.yaml` principal sigue siendo la alternativa de pago.
+
 Para la primera empresa con presupuesto mínimo, usar la alternativa de
 [un solo servidor](PILOT_SINGLE_SERVER.md). Mantiene web, API, PostgreSQL y worker
 en una misma máquina; no requiere contratar los servicios separados del

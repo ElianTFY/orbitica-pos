@@ -2,7 +2,7 @@ import os
 import sys
 from typing import List, Literal, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator, model_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ORBÍTICA POS API"
@@ -112,6 +112,16 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = Field(default=None, alias="SMTP_USER")
     SMTP_PASSWORD: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
     SMTP_TLS: bool = Field(default=True, alias="SMTP_TLS")
+    EMAIL_PROVIDER: Literal["SMTP", "BREVO"] = "SMTP"
+    BREVO_API_KEY: Optional[str] = None
+    EMAIL_FROM_ADDRESS: Optional[EmailStr] = None
+    EMAIL_FROM_NAME: str = "Orbítica POS"
+
+    @property
+    def email_provider_configured(self) -> bool:
+        if self.EMAIL_PROVIDER == "BREVO":
+            return bool(self.BREVO_API_KEY and self.EMAIL_FROM_ADDRESS)
+        return all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD])
     
     # Cookie Configuration
     COOKIE_DOMAIN: Optional[str] = None
@@ -183,8 +193,8 @@ class Settings(BaseSettings):
             # 5. Fiscal emission guardrail
             if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.HACIENDA_SANDBOX_VALIDATED:
                 errors.append("HACIENDA_LIVE_EMISSION_ENABLED cannot be activated in production without prior HACIENDA_SANDBOX_VALIDATED=True.")
-            if self.HACIENDA_LIVE_EMISSION_ENABLED and not all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD]):
-                errors.append("SMTP_HOST, SMTP_USER and SMTP_PASSWORD are required when live fiscal emission is enabled.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.email_provider_configured:
+                errors.append("Configure SMTP_HOST/SMTP_USER/SMTP_PASSWORD or BREVO_API_KEY/EMAIL_FROM_ADDRESS before enabling live fiscal emission.")
             if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_TAX_ID == "3101000000":
                 errors.append("SOFTWARE_PROVIDER_TAX_ID must be the real registered provider identification before live emission.")
             if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_NAME == "ORBITICA STUDIO S.A.":

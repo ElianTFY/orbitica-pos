@@ -139,7 +139,7 @@ async def get_hacienda_readiness(
         checks.extend([
             {"code": "SANDBOX_APPROVED", "ok": settings.HACIENDA_SANDBOX_VALIDATED, "message": "Piloto Sandbox validado"},
             {"code": "LIVE_ENABLED", "ok": settings.HACIENDA_LIVE_EMISSION_ENABLED, "message": "Emisión en vivo habilitada"},
-            {"code": "SMTP", "ok": bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASSWORD), "message": "Entrega de correo fiscal configurada"},
+            {"code": "SMTP", "ok": settings.email_provider_configured, "message": "Entrega de correo fiscal configurada"},
         ])
 
     return StandardResponse(data={

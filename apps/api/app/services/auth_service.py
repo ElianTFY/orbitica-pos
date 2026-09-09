@@ -39,6 +39,12 @@ class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _send_auth_email(self, **message) -> None:
+        if not await get_email_adapter().send_email(**message):
+            raise BadRequestException(
+                "EMAIL_DELIVERY_FAILED: No se pudo enviar el correo. Intenta de nuevo en unos minutos."
+            )
+
     def _check_ip_rate_limit(self, ip_address: Optional[str]):
         if not ip_address:
             return
@@ -94,15 +100,6 @@ class AuthService:
         )
         self.db.add(challenge)
 
-        # Send email via configured provider
-        if settings.ENVIRONMENT == "production" and not getattr(settings, "SMTP_HOST", None):
-            raise BadRequestException(
-                "BLOCKED_EXTERNAL_CONFIGURATION_EMAIL_PROVIDER: "
-                "El envío de correos no está configurado en producción. "
-                "Variables requeridas: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD"
-            )
-
-        email_adapter = get_email_adapter()
         html_body = f"""
         <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
             <h2 style="color: #0f172a;">Verificación de Correo — Orbítica POS</h2>
@@ -113,7 +110,7 @@ class AuthService:
             <p style="color: #64748b; font-size: 13px; margin-top: 20px;">Este código expirará en 10 minutos. Si no solicitaste este registro, ignora este mensaje.</p>
         </div>
         """
-        await email_adapter.send_email(
+        await self._send_auth_email(
             to_email=normalized_email,
             subject="Código de Verificación — Orbítica POS",
             html_content=html_body,
@@ -266,14 +263,6 @@ class AuthService:
             )
             self.db.add(challenge)
 
-            if settings.ENVIRONMENT == "production" and not getattr(settings, "SMTP_HOST", None):
-                raise BadRequestException(
-                    "BLOCKED_EXTERNAL_CONFIGURATION_EMAIL_PROVIDER: "
-                    "Se requiere configurar SMTP para entregar el código 2FA. "
-                    "Variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD"
-                )
-
-            email_adapter = get_email_adapter()
             html_body = f"""
             <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
                 <h2 style="color: #0f172a;">Código de Seguridad 2FA — Orbítica POS</h2>
@@ -284,7 +273,7 @@ class AuthService:
                 <p style="color: #64748b; font-size: 13px; margin-top: 20px;">Este código expirará en 5 minutos.</p>
             </div>
             """
-            await email_adapter.send_email(
+            await self._send_auth_email(
                 to_email=user.email,
                 subject="Tu Código 2FA — Orbítica POS",
                 html_content=html_body,
@@ -683,9 +672,8 @@ class AuthService:
         user.recovery_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         await self.db.commit()
 
-        email_adapter = get_email_adapter()
         recovery_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={raw_token}"
-        await email_adapter.send_email(
+        await self._send_auth_email(
             to_email=user.email,
             subject="Recuperación de Contraseña — Orbítica POS",
             html_content=f"<p>Hola {user.full_name},</p><p>Has solicitado restablecer tu contraseña en Orbítica POS. Usa este enlace para completar el cambio:</p><p><a href='{recovery_url}'>{recovery_url}</a></p><p>Este enlace expirará en 1 hora.</p>",
@@ -731,8 +719,7 @@ class AuthService:
         user.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
         user.email_verification_attempts = 0
         await self.db.commit()
-        email_adapter = get_email_adapter()
-        await email_adapter.send_email(
+        await self._send_auth_email(
             to_email=user.email,
             subject="Código de verificación — Orbítica POS",
             html_content=(
