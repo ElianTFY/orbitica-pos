@@ -28,6 +28,8 @@ export default function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState<"general" | "hacienda" | "accessibility">("general");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -35,56 +37,144 @@ export default function SettingsPage() {
   const [tradeName, setTradeName] = useState(settings.trade_name);
   const [legalName, setLegalName] = useState(settings.legal_name);
   const [idNumber, setIdNumber] = useState(settings.identification_number);
+  const [identificationType, setIdentificationType] = useState(settings.identification_type);
   const [email, setEmail] = useState(settings.email);
   const [phone, setPhone] = useState(settings.phone);
   const [address, setAddress] = useState(settings.address);
   const [taxRegime, setTaxRegime] = useState(settings.tax_regime);
   const [currency, setCurrency] = useState(settings.default_currency);
+  const [economicActivity, setEconomicActivity] = useState(settings.economic_activity_code);
+  const [provinceCode, setProvinceCode] = useState(settings.province_code);
+  const [cantonCode, setCantonCode] = useState(settings.canton_code);
+  const [districtCode, setDistrictCode] = useState(settings.district_code);
+  const [neighborhoodCode, setNeighborhoodCode] = useState(settings.neighborhood_code);
 
   // Form states for Hacienda
   const [env, setEnv] = useState(settings.atv_environment);
   const [atvUser, setAtvUser] = useState(settings.atv_username);
   const [atvPass, setAtvPass] = useState("");
   const [pin, setPin] = useState("");
+  const [p12File, setP12File] = useState<File | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<{ has_certificate: boolean; is_active: boolean; status_message: string } | null>(null);
+  const [readiness, setReadiness] = useState<{ ready: boolean; environment: string; checks: Array<{ code: string; ok: boolean; message: string }> } | null>(null);
 
   useEffect(() => {
     setTradeName(settings.trade_name);
     setLegalName(settings.legal_name);
     setIdNumber(settings.identification_number);
+    setIdentificationType(settings.identification_type);
     setEmail(settings.email);
     setPhone(settings.phone);
     setAddress(settings.address);
+    setEconomicActivity(settings.economic_activity_code);
+    setProvinceCode(settings.province_code);
+    setCantonCode(settings.canton_code);
+    setDistrictCode(settings.district_code);
+    setNeighborhoodCode(settings.neighborhood_code);
+    setEnv(settings.atv_environment);
+    setAtvUser(settings.atv_username);
   }, [settings]);
+
+  const refreshFiscalStatus = async () => {
+    try {
+      const [credentialsResponse, readinessResponse] = await Promise.all([
+        api.request<any>("/hacienda/credentials"),
+        api.request<any>("/hacienda/readiness"),
+      ]);
+      setCredentialStatus(credentialsResponse.data);
+      setReadiness(readinessResponse.data);
+      if (credentialsResponse.data?.atv_username) setAtvUser(credentialsResponse.data.atv_username);
+    } catch {
+      setCredentialStatus(null);
+      setReadiness(null);
+    }
+  };
+
+  useEffect(() => {
+    void refreshFiscalStatus();
+  }, []);
 
   // Clear connection result whenever the user changes ATV credentials
   useEffect(() => {
     setConnectionResult(null);
   }, [atvUser, atvPass, env]);
 
-  const handleSaveGeneral = (e: React.FormEvent) => {
+  const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
-      trade_name: tradeName,
-      legal_name: legalName,
-      identification_number: idNumber,
-      email,
-      phone,
-      address,
-      tax_regime: taxRegime,
-      default_currency: currency,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateSettings({
+        trade_name: tradeName,
+        legal_name: legalName,
+        identification_type: identificationType,
+        identification_number: idNumber,
+        email,
+        phone,
+        address,
+        economic_activity_code: economicActivity,
+        province_code: provinceCode,
+        canton_code: cantonCode,
+        district_code: districtCode,
+        neighborhood_code: neighborhoodCode,
+        tax_regime: taxRegime,
+        default_currency: currency,
+      });
+      await refreshFiscalStatus();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error: any) {
+      setSaveError(error?.message || "No fue posible guardar los datos fiscales.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSaveHacienda = (e: React.FormEvent) => {
+  const handleSaveHacienda = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
-      atv_environment: env,
-      atv_username: atvUser,
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    if (!atvUser.trim() || !atvPass || !/^\d{4}$/.test(pin)) {
+      setSaveError("Usuario, contraseña API y PIN de 4 dígitos son obligatorios.");
+      return;
+    }
+    if (!p12File && !credentialStatus?.has_certificate) {
+      setSaveError("Selecciona la llave criptográfica .p12/.pfx antes de guardar.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      let p12Base64: string | undefined;
+      if (p12File) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("No fue posible leer el certificado."));
+          reader.readAsDataURL(p12File);
+        });
+        p12Base64 = dataUrl.split(",", 2)[1];
+      }
+      await api.request("/hacienda/credentials", {
+        method: "POST",
+        body: JSON.stringify({
+          environment: env,
+          atv_username: atvUser.trim(),
+          atv_password: atvPass,
+          pin,
+          p12_base64: p12Base64,
+        }),
+      });
+      await updateSettings({ atv_environment: env, atv_username: atvUser.trim() });
+      await refreshFiscalStatus();
+      setP12File(null);
+      setAtvPass("");
+      setPin("");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (error: any) {
+      setSaveError(error?.message || "No fue posible guardar las credenciales fiscales.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleTestConnection = async () => {
@@ -113,7 +203,6 @@ export default function SettingsPage() {
           environment: env,
           atv_username: atvUser,
           atv_password: atvPass,
-          pin: pin,
         }),
       });
       setConnectionResult({
@@ -221,6 +310,16 @@ export default function SettingsPage() {
                   required
                   helperText="Identificador tributario para Hacienda"
                 />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">Tipo de identificación</label>
+                  <select value={identificationType} onChange={(e) => setIdentificationType(e.target.value as typeof identificationType)} className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary">
+                    <option value="01">Cédula física</option>
+                    <option value="02">Cédula jurídica</option>
+                    <option value="03">DIMEX</option>
+                    <option value="04">NITE</option>
+                    <option value="05">Extranjero</option>
+                  </select>
+                </div>
                 <Input
                   label="Correo de Facturación"
                   type="email"
@@ -238,6 +337,11 @@ export default function SettingsPage() {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                 />
+                <Input label="Actividad económica" value={economicActivity} onChange={(e) => setEconomicActivity(e.target.value.replace(/\D/g, "").slice(0, 6))} helperText="Código de 6 dígitos registrado en Hacienda" required />
+                <Input label="Provincia (1–7)" value={provinceCode} onChange={(e) => setProvinceCode(e.target.value.replace(/\D/g, "").slice(0, 1))} required />
+                <Input label="Cantón (2 dígitos)" value={cantonCode} onChange={(e) => setCantonCode(e.target.value.replace(/\D/g, "").slice(0, 2))} required />
+                <Input label="Distrito (2 dígitos)" value={districtCode} onChange={(e) => setDistrictCode(e.target.value.replace(/\D/g, "").slice(0, 2))} required />
+                <Input label="Barrio (opcional)" value={neighborhoodCode} onChange={(e) => setNeighborhoodCode(e.target.value.replace(/\D/g, "").slice(0, 2))} />
               </div>
 
               <div className="space-y-1.5">
@@ -264,20 +368,21 @@ export default function SettingsPage() {
                   className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <option value="CRC">Colones Costarricenses (CRC - ₡)</option>
-                  <option value="USD">Dólares Americanos (USD - $)</option>
+                  <option value="USD" disabled>USD — requiere integración de tipo de cambio</option>
                 </select>
               </div>
 
               <div className="pt-3 border-t border-border flex items-center justify-between">
+                {saveError && <span role="alert" className="text-xs text-semantic-danger-text font-bold">{saveError}</span>}
                 {saved && (
                   <span className="text-xs text-semantic-success-text font-bold flex items-center gap-1">
                     <CheckCircle className="w-4 h-4" /> Datos comerciales actualizados exitosamente
                   </span>
                 )}
                 <div className="ml-auto">
-                  <Button type="submit" variant="primary">
+                  <Button type="submit" variant="primary" disabled={saving}>
                     <Save className="w-4 h-4 mr-2" />
-                    Guardar Datos Comerciales
+                    {saving ? "Guardando…" : "Guardar Datos Comerciales"}
                   </Button>
                 </div>
               </div>
@@ -291,12 +396,12 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className={`w-5 h-5 ${atvUser ? "text-emerald-500" : "text-text-muted"}`} />
                 <div>
-                  <span className="text-xs font-bold text-text-main block">Firmador Digital XAdES-BES & API ATV</span>
+                  <span className="text-xs font-bold text-text-main block">Firmador Digital XAdES-EPES & API ATV</span>
                   <span className="text-[10px] text-text-muted">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda v4.4</span>
                 </div>
               </div>
-              <Badge variant={atvUser ? "success" : "default"}>
-                {atvUser ? "CREDENCIALES REGISTRADAS" : "CREDENCIALES PENDIENTES"}
+              <Badge variant={credentialStatus?.is_active ? "success" : "default"}>
+                {credentialStatus?.is_active ? "CREDENCIALES REGISTRADAS" : "CREDENCIALES PENDIENTES"}
               </Badge>
             </div>
 
@@ -330,6 +435,7 @@ export default function SettingsPage() {
                       type="file"
                       accept=".p12,.pfx"
                       aria-label="Archivo de certificado llave criptográfica"
+                      onChange={(e) => setP12File(e.target.files?.[0] || null)}
                       className="w-full text-xs text-text-secondary file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-surface file:text-text-main hover:file:bg-surface-hover cursor-pointer border border-border rounded-xl p-1"
                     />
                   </div>
@@ -377,6 +483,23 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {readiness && (
+                <div className="rounded-2xl border border-border bg-surface-secondary p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-text-main">Preparación para emisión {readiness.environment}</span>
+                    <Badge variant={readiness.ready ? "success" : "warning"}>{readiness.ready ? "LISTO" : "INCOMPLETO"}</Badge>
+                  </div>
+                  {readiness.checks.map((check) => (
+                    <div key={check.code} className="flex items-center gap-2 text-xs">
+                      {check.ok ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-amber-500" />}
+                      <span className={check.ok ? "text-text-secondary" : "text-amber-500"}>{check.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {saveError && <div role="alert" className="p-3 rounded-xl border border-semantic-danger-border bg-semantic-danger-bg text-xs text-semantic-danger-text">{saveError}</div>}
+
               <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
                 <Button
                   type="button"
@@ -394,9 +517,9 @@ export default function SettingsPage() {
                 </Button>
 
                 <div className="ml-auto">
-                  <Button type="submit" variant="primary">
+                  <Button type="submit" variant="primary" disabled={saving}>
                     <Save className="w-4 h-4 mr-2" />
-                    Guardar Credenciales
+                    {saving ? "Guardando…" : "Guardar Credenciales"}
                   </Button>
                 </div>
               </div>

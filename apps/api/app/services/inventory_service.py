@@ -18,7 +18,17 @@ class InventoryService:
         self.organization_id = organization_id
 
     async def adjust_stock(self, data: InventoryAdjustmentCreate, actor_id: uuid.UUID) -> BranchProductStock:
-        # Verify Product exists
+        # Validate both sides of the stock key belong to the active tenant.
+        branch = (await self.db.execute(
+            select(Branch).where(
+                Branch.id == data.branch_id,
+                Branch.organization_id == self.organization_id,
+                Branch.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not branch:
+            raise NotFoundException("Sucursal no encontrada")
+
         prod_stmt = select(Product).where(Product.id == data.product_id, Product.organization_id == self.organization_id)
         prod_res = await self.db.execute(prod_stmt)
         prod = prod_res.scalar_one_or_none()
@@ -29,7 +39,7 @@ class InventoryService:
         stk_stmt = select(BranchProductStock).where(
             BranchProductStock.branch_id == data.branch_id,
             BranchProductStock.product_id == data.product_id
-        )
+        ).with_for_update()
         stk_res = await self.db.execute(stk_stmt)
         stock_record = stk_res.scalar_one_or_none()
 
@@ -82,11 +92,31 @@ class InventoryService:
         if data.from_branch_id == data.to_branch_id:
             raise BadRequestException("La sucursal de origen y destino deben ser distintas")
 
+        branches = (await self.db.execute(
+            select(Branch.id).where(
+                Branch.id.in_([data.from_branch_id, data.to_branch_id]),
+                Branch.organization_id == self.organization_id,
+                Branch.is_active == True,
+            )
+        )).scalars().all()
+        if len(set(branches)) != 2:
+            raise NotFoundException("Sucursal de origen o destino no encontrada")
+
+        product = (await self.db.execute(
+            select(Product.id).where(
+                Product.id == data.product_id,
+                Product.organization_id == self.organization_id,
+                Product.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not product:
+            raise NotFoundException("Producto no encontrado")
+
         # 1. Check stock in source branch
         from_stk_stmt = select(BranchProductStock).where(
             BranchProductStock.branch_id == data.from_branch_id,
             BranchProductStock.product_id == data.product_id
-        )
+        ).with_for_update()
         from_res = await self.db.execute(from_stk_stmt)
         from_stock = from_res.scalar_one_or_none()
 
@@ -103,7 +133,7 @@ class InventoryService:
         to_stk_stmt = select(BranchProductStock).where(
             BranchProductStock.branch_id == data.to_branch_id,
             BranchProductStock.product_id == data.product_id
-        )
+        ).with_for_update()
         to_res = await self.db.execute(to_stk_stmt)
         to_stock = to_res.scalar_one_or_none()
 
@@ -168,7 +198,10 @@ class InventoryService:
         )
 
         if branch_id:
-            stmt = stmt.where(BranchProductStock.branch_id == branch_id)
+            stmt = stmt.where(
+                BranchProductStock.branch_id == branch_id,
+                Branch.organization_id == self.organization_id,
+            )
 
         res = await self.db.execute(stmt)
         rows = res.all()

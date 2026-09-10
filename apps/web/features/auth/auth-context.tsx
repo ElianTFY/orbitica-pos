@@ -3,14 +3,22 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { UserProfile } from "@/types";
 import { api } from "@/lib/api-client";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
+
+export interface LoginResult {
+  requires2FA?: boolean;
+  challengeToken?: string;
+  deliveryMethod?: string;
+}
 
 interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
-  login: (email: string, pass: string) => Promise<void>;
+  login: (email: string, pass: string, totpCode?: string) => Promise<LoginResult | void>;
+  verify2FA: (challengeToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   hasPermission: (perm: string) => boolean;
+  refreshProfile: () => Promise<UserProfile | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,14 +27,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (): Promise<UserProfile | null> => {
     try {
       const res = await api.request<UserProfile>("/auth/me");
       setUser(res.data);
+      return res.data;
     } catch {
       setUser(null);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -36,24 +45,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchProfile();
   }, []);
 
-  const login = async (email: string, pass: string) => {
+  const login = async (email: string, pass: string, totpCode?: string): Promise<LoginResult | void> => {
     setIsLoading(true);
     try {
-      const res = await api.request<{ access_token: string; user?: UserProfile }>("/auth/login", {
+      const payload: Record<string, any> = { email, password: pass };
+      if (totpCode) payload.totp_code = totpCode.trim();
+
+      const res = await api.request<{
+        access_token?: string;
+        requires_2fa?: boolean;
+        challenge_token?: string;
+        delivery_method?: string;
+        user?: UserProfile;
+      }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password: pass }),
+        body: JSON.stringify(payload),
       });
-      api.setToken(res.data.access_token);
-      if (res.data.user) {
-        setUser(res.data.user);
-        if (res.data.user.role === "superadmin") {
-          router.push("/superadmin");
-          return;
-        }
-      } else {
-        await fetchProfile();
+
+      if (res.data.requires_2fa) {
+        return {
+          requires2FA: true,
+          challengeToken: res.data.challenge_token,
+          deliveryMethod: res.data.delivery_method,
+        };
       }
-      router.push("/dashboard");
+
+      if (res.data.access_token) {
+        api.setToken(res.data.access_token);
+      }
+
+      const authenticatedUser = res.data.user || await fetchProfile();
+      if (!authenticatedUser) throw new Error("No se pudo cargar el perfil autenticado");
+      setUser(authenticatedUser);
+      router.push(authenticatedUser.role === "superadmin" ? "/superadmin" : "/dashboard");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verify2FA = async (challengeToken: string, code: string) => {
+    setIsLoading(true);
+    try {
+      const res = await api.request<{ access_token: string }>("/auth/2fa/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          challenge_token: challengeToken,
+          code: code.trim(),
+        }),
+      });
+
+      api.setToken(res.data.access_token);
+      const profile = await fetchProfile();
+      if (!profile) throw new Error("No se pudo cargar el perfil autenticado");
+      router.push(profile.role === "superadmin" ? "/superadmin" : "/dashboard");
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +122,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, hasPermission }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        login,
+        verify2FA,
+        logout,
+        hasPermission,
+        refreshProfile: fetchProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

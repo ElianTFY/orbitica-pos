@@ -254,7 +254,7 @@ test("11. Technical Operations: Latency and uptime checks for core services", ()
   const services = [
     { name: "Frontend Edge", uptime: 99.99, latency: 18, status: "OPERATIONAL" },
     { name: "Hacienda ATV v4.4", uptime: 99.85, latency: 210, status: "OPERATIONAL" },
-    { name: "Offline Sync Engine", uptime: 100, latency: 12, status: "OPERATIONAL" },
+    { name: "Core REST API", uptime: 99.98, latency: 26, status: "OPERATIONAL" },
   ];
 
   const allOperational = services.every((s) => s.status === "OPERATIONAL" && s.uptime > 99.0);

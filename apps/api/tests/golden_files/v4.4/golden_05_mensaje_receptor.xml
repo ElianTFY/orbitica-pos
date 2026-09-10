@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<MensajeReceptor xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeReceptor">
+  <Clave>50602092600310155566600100001010000000001112345678</Clave>
+  <NumeroCedulaEmisor>3101555666</NumeroCedulaEmisor>
+  <FechaEmisionDoc>2026-09-02T12:06:02.796991-06:00</FechaEmisionDoc>
+  <Mensaje>1</Mensaje>
+  <DetalleMensaje>Aceptación total del comprobante electrónico de compra</DetalleMensaje>
+  <MontoTotalImpuesto>2520.00</MontoTotalImpuesto>
+  <CodigoActividad>620101</CodigoActividad>
+  <CondicionImpuesto>01</CondicionImpuesto>
+  <TotalFactura>26520.00</TotalFactura>
+  <NumeroCedulaReceptor>3101999888</NumeroCedulaReceptor>
+  <NumeroConsecutivoReceptor>00100001050000000001</NumeroConsecutivoReceptor>
+</MensajeReceptor>

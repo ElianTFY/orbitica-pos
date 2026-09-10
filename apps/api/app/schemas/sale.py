@@ -1,18 +1,18 @@
 from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 from app.schemas.common import BaseSchema
 
 class SaleItemCreate(BaseModel):
     product_id: UUID
-    quantity: Decimal = Field(gt=0)
-    discount_percentage: Decimal = Field(default=Decimal("0.00"), ge=0, le=100)
+    quantity: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    discount_percentage: Decimal = Field(default=Decimal("0.00"), ge=0, le=100, decimal_places=2)
 
 class SalePaymentCreate(BaseModel):
-    payment_method: str = Field(default="CASH_CRC")  # CASH_CRC, CASH_USD, CARD, SINPE, TRANSFER
-    amount: Decimal = Field(gt=0)
+    payment_method: Literal["CASH_CRC", "CASH", "CARD", "CREDIT_CARD", "DEBIT_CARD", "SINPE", "SINPE_MOVIL", "TRANSFER", "CHECK"] = "CASH_CRC"
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     reference_number: Optional[str] = None
 
 class SaleCreate(BaseModel):
@@ -20,15 +20,17 @@ class SaleCreate(BaseModel):
     cash_session_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
     items: List[SaleItemCreate] = Field(min_length=1)
-    payments: List[SalePaymentCreate] = Field(min_length=1)
+    payments: List[SalePaymentCreate] = Field(min_length=1, max_length=4)
     notes: Optional[str] = None
-    currency: str = Field(default="CRC")
+    # Foreign currency requires a persisted, verified exchange rate first.
+    currency: Literal["CRC"] = "CRC"
 
 class SaleItemResponse(BaseSchema):
     id: UUID
     product_id: UUID
     product_name: str
     product_sku: Optional[str] = None
+    is_service: bool = False
     quantity: Decimal
     unit_price: Decimal
     unit_cost: Decimal

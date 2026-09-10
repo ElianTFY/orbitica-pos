@@ -1,4 +1,4 @@
-﻿# Node
+# Node
 node_modules/
 .next/
 out/
@@ -23,6 +23,8 @@ venv/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.pilot
+backups/
 *.p12
 *.pfx
 *.pem
@@ -40,3 +42,8 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Artifacts & Bundles
+*.bundle
+*.patch
+storage/

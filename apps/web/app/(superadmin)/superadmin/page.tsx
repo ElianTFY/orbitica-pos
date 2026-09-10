@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -23,7 +23,6 @@ import {
   Plus,
   Trash2,
   DollarSign,
-  TrendingUp,
   RefreshCw,
   Lock,
   Unlock,
@@ -31,7 +30,6 @@ import {
   Sparkles,
   ExternalLink,
   MessageSquare,
-  Check,
   AlertCircle,
   Tag,
   Headphones,
@@ -61,8 +59,6 @@ export default function SuperadminMasterHubPage() {
     currentRole,
     hasPermission,
     alerts,
-    resolveAlert,
-    assignAlert,
     tenants,
     selectedTenant360,
     openTenant360,
@@ -76,7 +72,6 @@ export default function SuperadminMasterHubPage() {
     featureFlags,
     toggleFeatureFlag,
     activeGrants,
-    requestDelegatedAccess,
     revokeDelegatedAccess,
     tickets,
     replyTicketAsAgent,
@@ -113,11 +108,8 @@ export default function SuperadminMasterHubPage() {
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>("ALL");
   const [ticketCategoryFilter, setTicketCategoryFilter] = useState<string>("ALL");
   const [cannedReplyKey, setCannedReplyKey] = useState("");
-
-  // Delegated Access Request Modal State
-  const [isRequestingGrantModal, setIsRequestingGrantModal] = useState(false);
-  const [grantReason, setGrantReason] = useState("");
-  const [grantDuration, setGrantDuration] = useState(30);
+  const [isHubActionBusy, setIsHubActionBusy] = useState(false);
+  const [hubActionError, setHubActionError] = useState<string | null>(null);
 
   // Broadcast Form
   const [bcastTitle, setBcastTitle] = useState("");
@@ -131,22 +123,20 @@ export default function SuperadminMasterHubPage() {
   // Metrics Calculations
   const totalTenantsCount = tenants.length;
   const activeTenantsCount = tenants.filter((t) => t.state === "active").length;
-  const trialTenantsCount = tenants.filter((t) => t.state === "trial").length;
   const suspendedTenantsCount = tenants.filter((t) => t.state === "suspended").length;
-
-  const totalMRR = tenants.reduce((acc, t) => {
-    if (t.state !== "active") return acc;
-    if (t.plan_id === "inicio") return acc + 9900;
-    if (t.plan_id === "crece") return acc + 17900;
-    if (t.plan_id === "escala") return acc + 27900;
-    return acc;
-  }, 0);
-  const projectedARR = totalMRR * 12;
   const totalVolumeProcessed = tenants.reduce((acc, t) => acc + t.total_sales_volume, 0);
+  const apiHealth = technicalHealth.find((service) => service.id === "srv_api");
+  const databaseHealth = technicalHealth.find((service) => service.id === "srv_database");
 
   const openAlerts = alerts.filter((a) => a.status !== "RESOLVED");
   const openTicketsCount = tickets.filter((t) => t.status !== "RESOLVED" && t.status !== "CLOSED").length;
   const activeTicket = tickets.find((t) => t.id === selectedTicketId) || (tickets.length > 0 ? tickets[0] : null);
+
+  useEffect(() => {
+    if (!selectedTicketId && tickets.length > 0) {
+      setSelectedTicketId(tickets[0].id);
+    }
+  }, [selectedTicketId, tickets]);
 
   const filteredTenants = tenants.filter((t) => {
     const matchesSearch =
@@ -176,7 +166,7 @@ export default function SuperadminMasterHubPage() {
   const CANNED_RESPONSES = [
     { key: "hacienda_pin", label: "🔑 Error Llave/PIN Hacienda", text: "Hemos revisado tus credenciales ATV. Por favor verifica que tu usuario de 50 caracteres esté sin espacios y que el PIN de 4 dígitos corresponda a la llave criptográfica descargada en ATV." },
     { key: "csv_import", label: "📊 Ayuda con CSV / Excel", text: "Puedes descargar nuestra plantilla oficial desde /migration. Asegúrate de guardar el archivo en formato UTF-8 para que las tildes y caracteres especiales se reconozcan correctamente." },
-    { key: "offline_sync", label: "⚡ Modo Offline y Contingencia", text: "Tus ventas se han guardado de forma segura en tu navegador local (IndexedDB). Tan pronto se estabilice tu conexión, Orbítica las enviará automáticamente a Hacienda con el consecutivo correspondiente." },
+    { key: "offline_contingency", label: "📄 Régimen de Contingencia", text: "Por disposición tributaria oficial, las ventas en contingencia física deben emitirse mediante talonario preimpreso autorizado por la DGT cuando no exista conectividad con el servidor central." },
   ];
 
   // Action Handlers with Step-Up Interception
@@ -188,7 +178,7 @@ export default function SuperadminMasterHubPage() {
 
   const handleTriggerSuspension = (tenantId: string) => {
     requestStepUpAuth("Suspensión / Reactivación de Organización", `Tenant #${tenantId}`, (token, reason) => {
-      toggleTenantSuspension(tenantId, reason, token);
+      return toggleTenantSuspension(tenantId, reason, token);
     });
   };
 
@@ -228,16 +218,13 @@ export default function SuperadminMasterHubPage() {
     setBcastMessage("");
   };
 
-  const handleRequestDelegatedAccessSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeTicket || !grantReason.trim()) return;
-    requestDelegatedAccess(activeTicket.organization_id, activeTicket.organization_name, grantReason.trim(), grantDuration);
-    setIsRequestingGrantModal(false);
-    setGrantReason("");
-  };
-
   return (
     <div className="space-y-6">
+      {hubActionError && (
+        <div role="alert" className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-xs text-red-500">
+          {hubActionError}
+        </div>
+      )}
       {/* =========================================================================
           SECTION 1: REQUIERE ATENCIÓN
          ========================================================================= */}
@@ -250,7 +237,7 @@ export default function SuperadminMasterHubPage() {
                 Bandeja Prioritaria: Requiere Atención Inmediata
               </h2>
               <p className="text-xs text-text-muted">
-                Incidentes críticos, vencimientos de prueba, errores de Hacienda y riesgos operativos clasificados por severidad.
+                Tickets reales de soporte con prioridad alta o urgente que requieren seguimiento.
               </p>
             </div>
             <Badge variant="danger">{openAlerts.length} Incidentes Abiertos</Badge>
@@ -259,8 +246,8 @@ export default function SuperadminMasterHubPage() {
           {openAlerts.length === 0 ? (
             <Card className="p-8 text-center text-xs text-text-muted space-y-2">
               <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-              <p className="font-bold text-text-main text-sm">¡Todo Bajo Control en Orbítica POS!</p>
-              <p className="text-[11px]">No hay alertas críticas pendientes en este momento.</p>
+              <p className="font-bold text-text-main text-sm">Sin tickets prioritarios pendientes</p>
+              <p className="text-[11px]">Esta vista no sustituye un sistema externo de monitoreo o incidentes.</p>
             </Card>
           ) : (
             <div className="space-y-3">
@@ -316,11 +303,11 @@ export default function SuperadminMasterHubPage() {
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => resolveAlert(alert.id, "Resuelto desde el centro de mando")}
-                        className="text-xs font-bold gap-1 bg-emerald-600 hover:bg-emerald-500"
+                        onClick={() => setActiveSection("support")}
+                        className="text-xs font-bold gap-1"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                        Marcar Resuelto
+                        <LifeBuoy className="w-3.5 h-3.5" />
+                        Gestionar Ticket
                       </Button>
                     </div>
                   </div>
@@ -339,23 +326,20 @@ export default function SuperadminMasterHubPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <Card className="p-5 border border-border space-y-1">
               <span className="text-[10px] font-bold uppercase text-text-muted">MRR (Recurrente Mensual)</span>
-              <div className="text-2xl font-black text-emerald-500 font-mono">{formatCRC(totalMRR)}</div>
-              <div className="flex items-center gap-1 text-[10px] text-emerald-500 font-bold">
-                <TrendingUp className="w-3 h-3" />
-                <span>+18.4% vs mes anterior</span>
-              </div>
+              <div className="text-lg font-black text-text-muted">No disponible</div>
+              <span className="text-[10px] text-text-muted">El módulo real de cobros aún no está implementado</span>
             </Card>
 
             <Card className="p-5 border border-border space-y-1">
               <span className="text-[10px] font-bold uppercase text-text-muted">ARR Anual Proyectado</span>
-              <div className="text-2xl font-black text-text-main font-mono">{formatCRC(projectedARR)}</div>
-              <span className="text-[10px] text-text-muted">Base de suscriptores activos</span>
+              <div className="text-lg font-black text-text-muted">No disponible</div>
+              <span className="text-[10px] text-text-muted">Sin datos de suscripciones o pagos</span>
             </Card>
 
             <Card className="p-5 border border-border space-y-1">
               <span className="text-[10px] font-bold uppercase text-text-muted">Empresas Registradas</span>
               <div className="text-2xl font-black text-primary font-mono">{totalTenantsCount}</div>
-              <span className="text-[10px] text-text-muted">{activeTenantsCount} Activas · {trialTenantsCount} Trial</span>
+              <span className="text-[10px] text-text-muted">{activeTenantsCount} activas · {suspendedTenantsCount} suspendidas</span>
             </Card>
 
             <Card className="p-5 border border-border space-y-1">
@@ -368,26 +352,11 @@ export default function SuperadminMasterHubPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="p-5 border border-border space-y-3">
               <h3 className="text-xs font-black text-text-main uppercase tracking-wider">
-                Distribución por Plan Activo
+                Estado de Facturación SaaS
               </h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Orbítica Inicio (₡9.900)</span>
-                  <span className="font-bold text-text-main">{tenants.filter((t) => t.plan_id === "inicio").length} empresas</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Orbítica Crece ⭐ (₡17.900)</span>
-                  <span className="font-bold text-primary">{tenants.filter((t) => t.plan_id === "crece").length} empresas</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Orbítica Escala (₡27.900)</span>
-                  <span className="font-bold text-purple-400">{tenants.filter((t) => t.plan_id === "escala").length} empresas</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Orbítica Empresarial (Cotización)</span>
-                  <span className="font-bold text-cyan-400">{tenants.filter((t) => t.plan_id === "empresarial").length} empresas</span>
-                </div>
-              </div>
+              <p className="text-xs text-text-muted leading-relaxed">
+                No se muestran planes, MRR ni ARR hasta que exista un modelo de suscripción persistente y una pasarela de cobros verificable.
+              </p>
             </Card>
 
             <Card className="p-5 border border-border space-y-3">
@@ -396,15 +365,12 @@ export default function SuperadminMasterHubPage() {
               </h3>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Conversión Trial a Pago</span>
+                  <span className="text-text-muted">Organizaciones activas</span>
                   <span className="font-bold text-emerald-500">
                     {totalTenantsCount > 0 ? ((activeTenantsCount / totalTenantsCount) * 100).toFixed(0) : 0}%
                   </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Tasa de Abandono (Churn)</span>
-                  <span className="font-bold text-text-main">1.8% / mes</span>
-                </div>
+                <div className="flex justify-between items-center"><span className="text-text-muted">Churn</span><span className="font-bold text-text-main">No disponible</span></div>
                 <div className="flex justify-between items-center">
                   <span className="text-text-muted">Empresas Suspendidas</span>
                   <span className="font-bold text-red-500">{suspendedTenantsCount}</span>
@@ -418,16 +384,16 @@ export default function SuperadminMasterHubPage() {
               </h3>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Uptime Global Plataforma</span>
-                  <span className="font-bold text-emerald-500">99.98%</span>
+                  <span className="text-text-muted">API</span>
+                  <span className="font-bold text-text-main">{apiHealth?.status || "Sin verificar"}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Conexión Hacienda ATV</span>
-                  <span className="font-bold text-emerald-500">Operativa (210ms)</span>
+                  <span className="text-text-muted">Base de datos</span>
+                  <span className="font-bold text-text-main">{databaseHealth?.status || "Sin verificar"}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Sincronización Offline</span>
-                  <span className="font-bold text-emerald-500">100% Sincronizado</span>
+                  <span className="text-text-muted">Hacienda ATV</span>
+                  <span className="font-bold text-text-main">No medido por el Hub</span>
                 </div>
               </div>
             </Card>
@@ -457,8 +423,7 @@ export default function SuperadminMasterHubPage() {
               className="bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
             >
               <option value="ALL">Todos los Estados</option>
-              <option value="trial">En Prueba (Trial 14d)</option>
-              <option value="active">Suscripción Activa</option>
+              <option value="active">Organización Activa</option>
               <option value="suspended">Suspendidas</option>
             </select>
           </div>
@@ -553,28 +518,9 @@ export default function SuperadminMasterHubPage() {
                   </Button>
                 </div>
 
-                <div className="flex items-center gap-1 border-b border-border pb-2 overflow-x-auto text-xs">
-                  {(
-                    [
-                      { id: "summary", label: "Resumen & KPIs" },
-                      { id: "users", label: "Usuarios & Permisos" },
-                      { id: "branches", label: "Sucursales & Cajas" },
-                      { id: "subscription", label: "Suscripción & Límites" },
-                      { id: "hacienda", label: "Hacienda ATV" },
-                    ] as Array<{ id: any; label: string }>
-                  ).map((st) => (
-                    <button
-                      key={st.id}
-                      onClick={() => setActive360SubTab(st.id)}
-                      className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                        active360SubTab === st.id
-                          ? "bg-primary text-white"
-                          : "text-text-muted hover:text-text-main"
-                      }`}
-                    >
-                      {st.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1 border-b border-border pb-2 text-xs">
+                  <span className="px-3 py-1.5 rounded-xl font-bold bg-primary text-white">Resumen verificado</span>
+                  <span className="text-[10px] text-text-muted">Datos leídos del backend; facturación de planes aún no está conectada.</span>
                 </div>
 
                 {active360SubTab === "summary" && (
@@ -582,7 +528,7 @@ export default function SuperadminMasterHubPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                       <div className="p-3 bg-surface-secondary rounded-xl border border-border">
                         <span className="text-text-muted block text-[10px]">Plan Actual</span>
-                        <span className="font-black text-primary uppercase text-sm">{selectedTenant360.plan_id}</span>
+                        <span className="font-black text-text-muted text-sm">Sin módulo de cobro</span>
                       </div>
                       <div className="p-3 bg-surface-secondary rounded-xl border border-border">
                         <span className="text-text-muted block text-[10px]">Ventas Procesadas</span>
@@ -594,37 +540,13 @@ export default function SuperadminMasterHubPage() {
                       </div>
                       <div className="p-3 bg-surface-secondary rounded-xl border border-border">
                         <span className="text-text-muted block text-[10px]">Próxima Facturación</span>
-                        <span className="font-black text-text-main text-sm font-mono">{selectedTenant360.next_billing_date}</span>
+                        <span className="font-black text-text-muted text-sm">No disponible</span>
                       </div>
                     </div>
 
                     <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
-                      <span className="text-xs font-black text-text-main block">Acciones Administrativas Disponibles</span>
+                      <span className="text-xs font-black text-text-main block">Acción Administrativa Disponible</span>
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => extendTenantTrial(selectedTenant360.id, 7, "Extensión de prueba a solicitud de cliente")}
-                          className="text-xs font-bold"
-                        >
-                          +7 Días de Prueba
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleTriggerPlanUpdate(selectedTenant360.id, "crece")}
-                          className="text-xs font-bold"
-                        >
-                          Cambiar a Plan Crece
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleTriggerPlanUpdate(selectedTenant360.id, "escala")}
-                          className="text-xs font-bold"
-                        >
-                          Cambiar a Plan Escala
-                        </Button>
                         <Button
                           variant={selectedTenant360.state === "suspended" ? "primary" : "danger"}
                           size="sm"
@@ -724,7 +646,18 @@ export default function SuperadminMasterHubPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <select
                       value={activeTicket.status}
-                      onChange={(e) => updateTicketStatus(activeTicket.id, e.target.value as any)}
+                      disabled={isHubActionBusy}
+                      onChange={async (e) => {
+                        setIsHubActionBusy(true);
+                        setHubActionError(null);
+                        try {
+                          await updateTicketStatus(activeTicket.id, e.target.value as SupportTicket["status"]);
+                        } catch (error: any) {
+                          setHubActionError(error?.message || "No se pudo actualizar el ticket.");
+                        } finally {
+                          setIsHubActionBusy(false);
+                        }
+                      }}
                       className="bg-surface border border-border rounded-xl px-2.5 py-1.5 text-xs font-bold text-text-main"
                     >
                       <option value="OPEN">Abierto</option>
@@ -734,15 +667,9 @@ export default function SuperadminMasterHubPage() {
                       <option value="CLOSED">Cerrado</option>
                     </select>
 
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setIsRequestingGrantModal(true)}
-                      className="text-xs font-bold gap-1 bg-purple-500/10 text-purple-400 border border-purple-500/30"
-                    >
-                      <KeyRound className="w-3.5 h-3.5" />
-                      Solicitar Acceso Delegado
-                    </Button>
+                    <span className="text-[10px] text-text-muted max-w-[220px]">
+                      El acceso delegado debe autorizarlo el propietario desde su Centro de Soporte.
+                    </span>
                   </div>
                 </div>
 
@@ -801,11 +728,19 @@ export default function SuperadminMasterHubPage() {
 
                 {/* Response Form */}
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
                     if (!replyText.trim()) return;
-                    replyTicketAsAgent(activeTicket.id, replyText.trim(), isInternalNote);
-                    setReplyText("");
+                    setIsHubActionBusy(true);
+                    setHubActionError(null);
+                    try {
+                      await replyTicketAsAgent(activeTicket.id, replyText.trim(), isInternalNote);
+                      setReplyText("");
+                    } catch (error: any) {
+                      setHubActionError(error?.message || "No se pudo enviar la respuesta.");
+                    } finally {
+                      setIsHubActionBusy(false);
+                    }
                   }}
                   className="space-y-2"
                 >
@@ -834,9 +769,9 @@ export default function SuperadminMasterHubPage() {
                       </span>
                     </label>
 
-                    <Button type="submit" variant="primary" size="sm" className="font-bold text-xs gap-1.5">
+                    <Button type="submit" disabled={isHubActionBusy} variant="primary" size="sm" className="font-bold text-xs gap-1.5">
                       <Send className="w-3.5 h-3.5" />
-                      {isInternalNote ? "Guardar Nota Interna" : "Enviar al Cliente"}
+                      {isHubActionBusy ? "Guardando..." : isInternalNote ? "Guardar Nota Interna" : "Enviar al Cliente"}
                     </Button>
                   </div>
                 </form>
@@ -895,7 +830,18 @@ export default function SuperadminMasterHubPage() {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => revokeDelegatedAccess(grant.id, "Revocación inmediata por el superadmin")}
+                      onClick={async () => {
+                        setIsHubActionBusy(true);
+                        setHubActionError(null);
+                        try {
+                          await revokeDelegatedAccess(grant.id, "Revocación inmediata por el superadmin");
+                        } catch (error: any) {
+                          setHubActionError(error?.message || "No se pudo revocar el acceso delegado.");
+                        } finally {
+                          setIsHubActionBusy(false);
+                        }
+                      }}
+                      disabled={isHubActionBusy}
                       className="text-xs font-bold h-7"
                     >
                       Terminar Sesión (Kill-Switch)
@@ -1050,7 +996,7 @@ export default function SuperadminMasterHubPage() {
                   Estado Técnico de Infraestructura & Servicios
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Monitoreo en vivo de endpoints, pasarela fiscal de Hacienda CR, sincronización offline y almacenamiento.
+                  Diagnóstico bajo demanda de la API, la base de datos y sus migraciones. Hacienda no se declara disponible sin una prueba fiscal real.
                 </p>
               </div>
               <Button variant="secondary" size="sm" onClick={refreshTechnicalHealth} className="text-xs font-bold gap-1">
@@ -1064,11 +1010,11 @@ export default function SuperadminMasterHubPage() {
                 <div key={srv.id} className="p-3.5 rounded-2xl bg-surface-secondary border border-border text-xs space-y-1.5">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-text-main truncate max-w-[180px]">{srv.name}</span>
-                    <Badge variant="success">{srv.status}</Badge>
+                    <Badge variant={srv.status === "OPERATIONAL" ? "success" : srv.status === "OUTAGE" ? "danger" : "warning"}>{srv.status}</Badge>
                   </div>
                   <div className="flex justify-between items-center text-[10px] text-text-muted font-mono">
                     <span>Latencia: {srv.latency_ms} ms</span>
-                    <span>Uptime: {srv.uptime_percentage}%</span>
+                    <span>{srv.uptime_percentage > 0 ? `Uptime: ${srv.uptime_percentage}%` : "Sin historial de uptime"}</span>
                   </div>
                   <span className="text-[10px] text-text-muted block">Revisado: {srv.last_checked}</span>
                 </div>
@@ -1273,64 +1219,6 @@ export default function SuperadminMasterHubPage() {
         </div>
       )}
 
-      {/* REQUEST DELEGATED ACCESS MODAL */}
-      {isRequestingGrantModal && activeTicket && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full p-6 border border-border shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-border pb-2">
-              <div className="flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-purple-400" />
-                <h3 className="text-sm font-black text-text-main">Solicitar Acceso Delegado</h3>
-              </div>
-              <button onClick={() => setIsRequestingGrantModal(false)} className="text-text-muted hover:text-text-main">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-text-secondary">
-              Se creará una solicitud de acceso temporal de <strong>Solo Lectura</strong> para la empresa{" "}
-              <strong>{activeTicket.organization_name}</strong>.
-            </p>
-
-            <form onSubmit={handleRequestDelegatedAccessSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">Motivo Técnico *</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={grantReason}
-                  onChange={(e) => setGrantReason(e.target.value)}
-                  placeholder="Ej. Diagnóstico de configuración de certificados y PIN Hacienda..."
-                  className="w-full bg-surface border border-border rounded-xl p-2.5 text-xs text-text-main resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">Duración de la Sesión</label>
-                <select
-                  value={grantDuration}
-                  onChange={(e) => setGrantDuration(Number(e.target.value))}
-                  className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
-                >
-                  <option value={15}>15 Minutos</option>
-                  <option value={30}>30 Minutos (Recomendado)</option>
-                  <option value={60}>1 Hora</option>
-                  <option value={120}>2 Horas Máximo</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                <Button type="button" variant="secondary" size="sm" onClick={() => setIsRequestingGrantModal(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit" variant="primary" size="sm" className="font-bold text-xs bg-purple-600 hover:bg-purple-500">
-                  Emitir Solicitud
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

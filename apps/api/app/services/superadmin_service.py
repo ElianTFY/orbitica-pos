@@ -1,10 +1,15 @@
 import uuid
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.branch import Branch
+from app.models.support import SupportTicket
+from app.models.catalog import Product
+from app.models.sale import Sale
+from app.models.invoice import ElectronicInvoice
+from app.models.audit_log import AuditLog
 from app.core.exceptions import NotFoundException
 from app.services.audit_service import AuditService
 
@@ -17,7 +22,65 @@ class SuperadminService:
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
 
-    async def toggle_organization_status(self, org_id: uuid.UUID, is_active: bool, actor_id: uuid.UUID) -> Organization:
+    async def list_organization_overviews(self) -> List[Dict[str, Any]]:
+        organizations = await self.list_all_organizations()
+        rows: List[Dict[str, Any]] = []
+        for organization in organizations:
+            org_id = organization.id
+            branch_count = (await self.db.execute(
+                select(func.count(Branch.id)).where(Branch.organization_id == org_id)
+            )).scalar_one()
+            user_count = (await self.db.execute(
+                select(func.count(User.id)).where(User.organization_id == org_id)
+            )).scalar_one()
+            product_count = (await self.db.execute(
+                select(func.count(Product.id)).where(Product.organization_id == org_id)
+            )).scalar_one()
+            sale_count, sales_volume = (await self.db.execute(
+                select(func.count(Sale.id), func.coalesce(func.sum(Sale.total_amount), 0)).where(
+                    Sale.organization_id == org_id,
+                    Sale.status.in_(["COMPLETED", "REFUNDED"]),
+                )
+            )).one()
+            accepted_invoices = (await self.db.execute(
+                select(func.count(ElectronicInvoice.id)).where(
+                    ElectronicInvoice.organization_id == org_id,
+                    ElectronicInvoice.status == "ACCEPTED",
+                )
+            )).scalar_one()
+            rows.append({
+                "id": str(org_id),
+                "legal_name": organization.legal_name,
+                "trade_name": organization.trade_name,
+                "identification_number": organization.identification_number,
+                "identification_type": organization.identification_type,
+                "email": organization.email,
+                "phone": organization.phone,
+                "is_active": organization.is_active,
+                "created_at": organization.created_at.isoformat(),
+                "branches_count": branch_count,
+                "users_count": user_count,
+                "products_count": product_count,
+                "sales_count": sale_count,
+                "total_sales_volume": float(sales_volume or 0),
+                "accepted_invoices_count": accepted_invoices,
+                "atv_environment": organization.atv_environment,
+                "fiscal_configuration_complete": bool(
+                    organization.economic_activity_code
+                    and organization.address_detail
+                    and organization.identification_number
+                ),
+            })
+        return rows
+
+    async def toggle_organization_status(
+        self,
+        org_id: uuid.UUID,
+        is_active: bool,
+        actor_id: uuid.UUID,
+        reason: str,
+        step_up_token: str,
+    ) -> Organization:
         stmt = select(Organization).where(Organization.id == org_id)
         res = await self.db.execute(stmt)
         org = res.scalar_one_or_none()
@@ -31,6 +94,9 @@ class SuperadminService:
             resource="Organization",
             actor_id=actor_id,
             resource_id=str(org_id),
+            organization_id=org_id,
+            reason=reason,
+            step_up_token=step_up_token,
             payload_after={"is_active": is_active}
         )
         await self.db.commit()
@@ -41,8 +107,67 @@ class SuperadminService:
         org_count = (await self.db.execute(select(func.count(Organization.id)))).scalar_one()
         user_count = (await self.db.execute(select(func.count(User.id)))).scalar_one()
         branch_count = (await self.db.execute(select(func.count(Branch.id)))).scalar_one()
+        sales_count, sales_volume = (await self.db.execute(
+            select(func.count(Sale.id), func.coalesce(func.sum(Sale.total_amount), 0)).where(
+                Sale.status.in_(["COMPLETED", "REFUNDED"])
+            )
+        )).one()
+        invoice_count = (await self.db.execute(
+            select(func.count(ElectronicInvoice.id))
+        )).scalar_one()
+        accepted_invoice_count = (await self.db.execute(
+            select(func.count(ElectronicInvoice.id)).where(ElectronicInvoice.status == "ACCEPTED")
+        )).scalar_one()
         return {
             "total_organizations": org_count,
             "total_users": user_count,
-            "total_branches": branch_count
+            "total_branches": branch_count,
+            "total_sales": sales_count,
+            "total_sales_volume": float(sales_volume or 0),
+            "total_invoices": invoice_count,
+            "accepted_invoices": accepted_invoice_count,
+        }
+
+    async def list_platform_audit(self, limit: int = 200) -> List[AuditLog]:
+        return list((await self.db.execute(
+            select(AuditLog).order_by(desc(AuditLog.created_at)).limit(limit)
+        )).scalars().all())
+
+    async def search_platform(self, query: str) -> Dict[str, Any]:
+        clean_q = f"%{query.strip().lower()}%"
+        
+        org_stmt = select(Organization).where(
+            func.lower(Organization.trade_name).like(clean_q) |
+            func.lower(Organization.legal_name).like(clean_q) |
+            Organization.identification_number.like(clean_q)
+        ).limit(10)
+        orgs = (await self.db.execute(org_stmt)).scalars().all()
+
+        ticket_stmt = select(SupportTicket).where(
+            func.lower(SupportTicket.subject).like(clean_q) |
+            func.lower(SupportTicket.ticket_number).like(clean_q)
+        ).limit(10)
+        tickets = (await self.db.execute(ticket_stmt)).scalars().all()
+
+        return {
+            "companies": [
+                {
+                    "id": str(o.id),
+                    "trade_name": o.trade_name,
+                    "legal_name": o.legal_name,
+                    "identification_number": o.identification_number,
+                    "is_active": o.is_active,
+                }
+                for o in orgs
+            ],
+            "tickets": [
+                {
+                    "id": str(t.id),
+                    "ticket_number": t.ticket_number,
+                    "subject": t.subject,
+                    "status": t.status,
+                    "priority": t.priority,
+                }
+                for t in tickets
+            ]
         }

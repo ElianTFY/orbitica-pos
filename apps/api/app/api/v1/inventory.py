@@ -11,6 +11,7 @@ from app.schemas.inventory import (
 )
 from app.schemas.common import StandardResponse
 from app.services.inventory_service import InventoryService
+from app.services.catalog_service import CatalogService
 from app.security.deps import CurrentUserContext, require_permissions
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -68,3 +69,15 @@ async def list_movements(
         offset=offset
     )
     return StandardResponse(data=[InventoryMovementResponse.model_validate(m) for m in movements])
+
+@router.get("/stock", response_model=StandardResponse[List[dict]])
+async def get_branch_stock(
+    branch_id: Optional[UUID] = Query(None),
+    context: CurrentUserContext = Depends(require_permissions("inventory:read")),
+    db: AsyncSession = Depends(get_db)
+):
+    b_id = branch_id or context.selected_branch_id
+    cat_service = CatalogService(db, context.organization_id)
+    prods = await cat_service.list_products(branch_id=b_id)
+    data = [{"product_id": str(p["id"]), "name": p["name"], "quantity": p["current_stock"]} for p in prods]
+    return StandardResponse(data=data)

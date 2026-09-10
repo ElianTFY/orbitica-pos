@@ -2,8 +2,11 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.invoice import ElectronicInvoice
+from app.core.exceptions import NotFoundException
 from app.db.session import get_db
-from app.schemas.invoice import InvoiceResponse
+from app.schemas.invoice import InvoiceResponse, InvoiceDetailResponse
 from app.schemas.common import StandardResponse
 from app.services.invoice_service import InvoiceService
 from app.security.deps import CurrentUserContext, require_permissions
@@ -30,8 +33,23 @@ async def send_to_hacienda(
     db: AsyncSession = Depends(get_db)
 ):
     service = InvoiceService(db, context.organization_id)
-    inv = await service.send_to_hacienda_simulated(invoice_id)
+    inv = await service.queue_invoice_for_transmission(invoice_id)
     return StandardResponse(
         data=InvoiceResponse.model_validate(inv),
-        message="Comprobante procesado por Hacienda Costa Rica v4.3"
+        message="Comprobante encolado en outbox para transmisión y validación con Hacienda Costa Rica v4.4"
     )
+
+
+@router.get("/{invoice_id}", response_model=StandardResponse[InvoiceDetailResponse])
+async def get_invoice_detail(
+    invoice_id: UUID,
+    context: CurrentUserContext = Depends(require_permissions("invoicing:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    invoice = (await db.execute(select(ElectronicInvoice).where(
+        ElectronicInvoice.id == invoice_id,
+        ElectronicInvoice.organization_id == context.organization_id,
+    ))).scalar_one_or_none()
+    if not invoice:
+        raise NotFoundException("Comprobante no encontrado")
+    return StandardResponse(data=InvoiceDetailResponse.model_validate(invoice))

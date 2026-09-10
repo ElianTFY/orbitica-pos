@@ -23,8 +23,10 @@ export default function InventoryPage() {
   const [adjType, setAdjType] = useState<"IN_PURCHASE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE">("ADJUSTMENT_IN");
   const [adjQty, setAdjQty] = useState("1");
   const [adjReason, setAdjReason] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleCreateAdjustment = (e: React.FormEvent) => {
+  const handleCreateAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     const prod = products.find((p) => p.id === selectedProductId);
     if (!prod) return;
@@ -35,17 +37,24 @@ export default function InventoryPage() {
     const isNegative = adjType === "WASTE" || adjType === "ADJUSTMENT_OUT";
     const delta = isNegative ? -Math.abs(qty) : Math.abs(qty);
 
-    recordAdjustment({
-      productId: prod.id,
-      productName: prod.name,
-      movementType: adjType,
-      quantity: delta,
-      reason: adjReason.trim() || undefined,
-    });
-
-    setIsAdjustModalOpen(false);
-    setAdjQty("1");
-    setAdjReason("");
+    setIsSaving(true);
+    setFormError(null);
+    try {
+      await recordAdjustment({
+        productId: prod.id,
+        productName: prod.name,
+        movementType: adjType,
+        quantity: delta,
+        reason: adjReason.trim() || undefined,
+      });
+      setIsAdjustModalOpen(false);
+      setAdjQty("1");
+      setAdjReason("");
+    } catch (error: any) {
+      setFormError(error?.message || "No fue posible registrar el ajuste.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getBadgeVariant = (type: string) => {
@@ -183,6 +192,7 @@ export default function InventoryPage() {
         maxWidth="md"
       >
         <form onSubmit={handleCreateAdjustment} className="space-y-4">
+          {formError && <div role="alert" className="p-3 rounded-xl bg-semantic-danger-bg border border-semantic-danger-border text-xs text-semantic-danger-text">{formError}</div>}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
               Producto a Modificar
@@ -239,8 +249,8 @@ export default function InventoryPage() {
             <Button type="button" variant="secondary" onClick={() => setIsAdjustModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Aplicar Ajuste de Stock
+            <Button type="submit" variant="primary" disabled={isSaving}>
+              {isSaving ? "Aplicando…" : "Aplicar Ajuste de Stock"}
             </Button>
           </div>
         </form>

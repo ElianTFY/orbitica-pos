@@ -33,18 +33,37 @@ export default function CashRegisterPage() {
   // Form states
   const [openAmount, setOpenAmount] = useState("");
   const [actualCash, setActualCash] = useState("");
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleOpenSession = (e: React.FormEvent) => {
+  const handleOpenSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    openCashSession(parseFloat(openAmount) || 0);
-    setIsOpenModalOpen(false);
+    setIsSubmitting(true);
+    setOperationError(null);
+    try {
+      await openCashSession(parseFloat(openAmount) || 0);
+      setIsOpenModalOpen(false);
+      setOpenAmount("");
+    } catch (error: any) {
+      setOperationError(error?.message || "No fue posible abrir la caja.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleCloseSession = (e: React.FormEvent) => {
+  const handleCloseSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    closeCashSession(parseFloat(actualCash) || 0);
-    setIsCloseModalOpen(false);
-    setActualCash("");
+    setIsSubmitting(true);
+    setOperationError(null);
+    try {
+      await closeCashSession(parseFloat(actualCash) || 0);
+      setIsCloseModalOpen(false);
+      setActualCash("");
+    } catch (error: any) {
+      setOperationError(error?.message || "No fue posible cerrar la caja.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const expectedCash = activeCashSession
@@ -164,6 +183,7 @@ export default function CashRegisterPage() {
       {/* Open Cash Modal */}
       <Modal isOpen={isOpenModalOpen} onClose={() => setIsOpenModalOpen(false)} title="Apertura de Turno de Caja" maxWidth="sm">
         <form onSubmit={handleOpenSession} className="space-y-4">
+          {operationError && <div role="alert" className="p-3 rounded-xl bg-semantic-danger-bg border border-semantic-danger-border text-xs text-semantic-danger-text">{operationError}</div>}
           <Input
             label="Fondo Inicial en Efectivo (CRC ₡)"
             type="number"
@@ -182,8 +202,8 @@ export default function CashRegisterPage() {
             <Button type="button" variant="secondary" onClick={() => setIsOpenModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Confirmar Apertura
+            <Button type="submit" variant="primary" disabled={isSubmitting}>
+              {isSubmitting ? "Abriendo…" : "Confirmar Apertura"}
             </Button>
           </div>
         </form>
@@ -192,6 +212,7 @@ export default function CashRegisterPage() {
       {/* Close Cash Modal */}
       <Modal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} title="Cierre de Caja (Arqueo Z)" maxWidth="md">
         <form onSubmit={handleCloseSession} className="space-y-4">
+          {operationError && <div role="alert" className="p-3 rounded-xl bg-semantic-danger-bg border border-semantic-danger-border text-xs text-semantic-danger-text">{operationError}</div>}
           <div className="p-4 bg-surface-secondary border border-border rounded-2xl space-y-2">
             <div className="flex justify-between text-xs text-text-secondary">
               <span>Efectivo Esperado en Gaveta:</span>
@@ -236,8 +257,8 @@ export default function CashRegisterPage() {
             <Button type="button" variant="secondary" onClick={() => setIsCloseModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="danger">
-              Confirmar y Cerrar Caja
+            <Button type="submit" variant="danger" disabled={isSubmitting}>
+              {isSubmitting ? "Cerrando…" : "Confirmar y Cerrar Caja"}
             </Button>
           </div>
         </form>

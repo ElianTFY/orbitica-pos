@@ -71,7 +71,7 @@ export default function OnboardingWizardPage() {
     onboarding,
     updateOnboarding,
     recordSale,
-    purgeTestSales,
+    activeCashSession,
     sales,
   } = useStore();
 
@@ -80,7 +80,11 @@ export default function OnboardingWizardPage() {
   // Step 1: Business Details
   const [tradeName, setTradeName] = useState(settings.trade_name || "");
   const [legalName, setLegalName] = useState(settings.legal_name || "");
-  const [idType, setIdType] = useState<"FISICA" | "JURIDICA" | "DIMEX">(settings.identification_type || "JURIDICA");
+  const [idType, setIdType] = useState<"FISICA" | "JURIDICA" | "DIMEX">(
+    ["FISICA", "JURIDICA", "DIMEX"].includes(settings.identification_type)
+      ? settings.identification_type as "FISICA" | "JURIDICA" | "DIMEX"
+      : "JURIDICA"
+  );
   const [idNumber, setIdNumber] = useState(settings.identification_number || "");
   const [phone, setPhone] = useState(settings.phone || "+506 ");
   const [email, setEmail] = useState(settings.email || user?.email || "");
@@ -141,6 +145,7 @@ export default function OnboardingWizardPage() {
   // Step 8: Test Sale State
   const [testSaleDone, setTestSaleDone] = useState(false);
   const [testSaleResult, setTestSaleResult] = useState<any>(null);
+  const [testSaleError, setTestSaleError] = useState<string | null>(null);
 
   // Save current step on change
   useEffect(() => {
@@ -156,8 +161,8 @@ export default function OnboardingWizardPage() {
         method: "POST",
         body: JSON.stringify({
           environment: atvEnv,
-          username: atvUsername || "cpf-01-0000-0000@stag.comprobanteselectronicos.go.cr",
-          pin: atvPin || "1234",
+          atv_username: atvUsername,
+          atv_password: atvPassword,
         }),
       });
       setAtvStatus("SUCCESS");
@@ -171,8 +176,8 @@ export default function OnboardingWizardPage() {
   };
 
   // Step 1 Save
-  const handleSaveStep1 = () => {
-    updateSettings({
+  const handleSaveStep1 = async () => {
+    await updateSettings({
       trade_name: tradeName || "Mi Negocio",
       legal_name: legalName || tradeName || "Mi Negocio S.A.",
       identification_type: idType,
@@ -187,8 +192,8 @@ export default function OnboardingWizardPage() {
   };
 
   // Step 2 Save
-  const handleSaveStep2 = () => {
-    updateSettings({
+  const handleSaveStep2 = async () => {
+    await updateSettings({
       tax_regime: taxRegime,
       atv_environment: atvEnv,
       atv_username: atvUsername,
@@ -221,30 +226,19 @@ export default function OnboardingWizardPage() {
 
   // Step 5: Add Product
   const handleAddQuickProduct = () => {
-    if (!newProdName.trim()) return;
-    addProduct({
-      name: newProdName.trim(),
-      sku: `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
-      sale_price: Number(newProdPrice) || 0,
-      cost_price: Number(newProdCost) || 0,
-      stock: Number(newProdStock) || 0,
-      tax_rate: Number(newProdTax) || 13,
-      min_stock_alert: 5,
-      category_name: "General",
-    });
-    setProdSaved(true);
-    updateOnboarding({ steps: { ...onboarding.steps, products: true } });
+    // Product creation requires an official CAByS lookup. The complete catalog
+    // form is the single safe place to perform that validation.
+    router.push("/products");
   };
 
   // Step 6: Add Customer
-  const handleAddQuickCustomer = () => {
-    if (!newCustName.trim()) return;
-    addCustomer({
+  const handleAddQuickCustomer = async () => {
+    if (!newCustName.trim() || !newCustId.trim()) return;
+    await addCustomer({
       name: newCustName.trim(),
       identification_type: "FISICA",
-      identification_number: newCustId.trim() || "000000000",
-      email: newCustEmail.trim() || "cliente@ejemplo.cr",
-      phone: "+506 8888-0000",
+      identification_number: newCustId.trim(),
+      email: newCustEmail.trim() || undefined,
       is_active: true,
     });
     setCustSaved(true);
@@ -266,32 +260,35 @@ export default function OnboardingWizardPage() {
   };
 
   // Step 8: Execute Test Sale
-  const handleExecuteTestSale = () => {
-    const demoProd = products.length > 0
-      ? products[0]
-      : {
-          id: "prod_test",
-          organization_id: "demo",
-          name: "Producto de Prueba Orbítica",
-          sale_price: 1500,
-          cost_price: 1000,
-          min_stock_alert: 5,
-          tax_rate: 13,
-          stock: 50,
-        };
-
-    const res = recordSale({
-      items: [{ product: demoProd, quantity: 1 }],
-      paymentMethod: "CASH_CRC",
-      cashReceived: 2000,
-      customerName: "CLIENTE DE PRUEBA (ONBOARDING)",
-      docType: "04",
-      isTest: true,
-    });
-
-    setTestSaleResult(res);
-    setTestSaleDone(true);
-    updateOnboarding({ steps: { ...onboarding.steps, test_sale: true } });
+  const handleExecuteTestSale = async () => {
+    setTestSaleError(null);
+    if (settings.atv_environment !== "STAGING") {
+      setTestSaleError("La prueba guiada solo se permite en el ambiente STAGING de Hacienda.");
+      return;
+    }
+    if (!products.length) {
+      setTestSaleError("Crea primero un producto con CAByS oficial.");
+      return;
+    }
+    if (!activeCashSession) {
+      setTestSaleError("Abre primero una sesión de caja para ejecutar la venta de prueba.");
+      return;
+    }
+    try {
+      const res = await recordSale({
+        items: [{ product: products[0], quantity: 1 }],
+        paymentMethod: "CASH_CRC",
+        cashReceived: products[0].sale_price,
+        customerName: "CLIENTE DE PRUEBA (STAGING)",
+        docType: "04",
+        isTest: true,
+      });
+      setTestSaleResult(res);
+      setTestSaleDone(true);
+      updateOnboarding({ steps: { ...onboarding.steps, test_sale: true } });
+    } catch (error: any) {
+      setTestSaleError(error?.message || "La prueba STAGING no pudo completarse.");
+    }
   };
 
   const handleFinishOnboarding = () => {
@@ -868,7 +865,7 @@ export default function OnboardingWizardPage() {
                     onClick={handleAddQuickProduct}
                     className="w-full text-xs font-bold"
                   >
-                    {prodSaved ? "✓ Producto Creado" : "+ Agregar al Catálogo"}
+                    Abrir catálogo y seleccionar CAByS
                   </Button>
                 </div>
 
@@ -1047,7 +1044,7 @@ export default function OnboardingWizardPage() {
                   Paso 8: Lista de Verificación y Primera Venta de Prueba
                 </h2>
                 <p className="text-xs text-text-muted">
-                  Comprueba el funcionamiento de la caja y emite una venta de prueba que puedes eliminar sin afectar consecutivos oficiales.
+                  Comprueba el funcionamiento con una venta real en STAGING. Quedará como evidencia y nunca se marcará aceptada sin respuesta de Hacienda.
                 </p>
               </div>
 
@@ -1079,12 +1076,13 @@ export default function OnboardingWizardPage() {
                     : "bg-surface-secondary border-border text-text-muted"
                 }`}>
                   {testSaleDone ? <CheckCircle2 className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  <span>6. Venta de prueba simulada</span>
+                  <span>6. Venta de prueba STAGING</span>
                 </div>
               </div>
 
               {/* Test Sale Execution Box */}
               <div className="p-5 bg-surface-secondary border border-border rounded-3xl space-y-4">
+                {testSaleError && <div role="alert" className="rounded-xl border border-semantic-danger-border bg-semantic-danger-bg p-3 text-xs text-semantic-danger-text">{testSaleError}</div>}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div>
                     <span className="text-xs font-black text-text-main block">Simulación de Venta en Punto de Venta</span>
@@ -1112,30 +1110,15 @@ export default function OnboardingWizardPage() {
                       <Badge variant="warning">MODO PRUEBA</Badge>
                     </div>
                     <p className="text-[11px] text-text-muted font-mono">
-                      Clave Hacienda Simulada: {testSaleResult.sale.numeric_key}
+                      Clave generada en STAGING: {testSaleResult.sale.numeric_key}
                     </p>
                     <div className="flex items-center justify-between pt-2 border-t border-border text-xs">
-                      <span className="text-text-muted">Total Simulado:</span>
+                      <span className="text-text-muted">Total de prueba:</span>
                       <span className="font-black text-text-main font-mono">
                         {formatCRC(testSaleResult.sale.total)}
                       </span>
                     </div>
 
-                    <div className="pt-2">
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => {
-                          purgeTestSales();
-                          setTestSaleDone(false);
-                          setTestSaleResult(null);
-                        }}
-                        className="text-xs font-bold gap-1.5"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Limpiar / Purgar Ventas de Prueba
-                      </Button>
-                    </div>
                   </div>
                 )}
               </div>

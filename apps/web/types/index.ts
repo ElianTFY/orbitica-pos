@@ -17,7 +17,7 @@ export interface UserProfile {
   email: string;
   full_name: string;
   phone?: string | null;
-  role: "superadmin" | "owner" | "manager" | "cashier" | "cajero" | "inventory_staff";
+  role: "superadmin" | "platform_support" | "owner" | "manager" | "cashier" | "cajero" | "accountant" | "inventory_staff";
   organization_id?: string | null;
   organization_name?: string | null;
   legal_name?: string | null;
@@ -26,6 +26,7 @@ export interface UserProfile {
   branch_name?: string | null;
   accessible_branches: string[];
   permissions: string[];
+  totp_enabled?: boolean;
 }
 
 export interface Branch {
@@ -51,6 +52,11 @@ export interface Product {
   min_stock_alert: number;
   tax_rate: number;
   category_name?: string;
+  category_id?: string | null;
+  tax_rate_id?: string;
+  cabys_code?: string;
+  unit_of_measure?: string;
+  is_service?: boolean;
   stock: number;
 }
 
@@ -67,7 +73,7 @@ export interface Customer {
   id: string;
   organization_id: string;
   name: string;
-  identification_type: "FISICA" | "JURIDICA" | "DIMEX" | "EXTRANJERO";
+  identification_type: "01" | "02" | "03" | "04" | "05" | "FISICA" | "JURIDICA" | "DIMEX" | "NITE" | "EXTRANJERO";
   identification_number: string;
   email?: string;
   phone?: string;
@@ -98,7 +104,7 @@ export interface PurchaseRecord {
   total_amount: number;
   items_count: number;
   created_at: string;
-  status: "RECEIVED";
+  status: "RECEIVED" | "COMPLETED" | "CANCELLED";
 }
 
 export interface InventoryMovement {
@@ -106,7 +112,7 @@ export interface InventoryMovement {
   organization_id: string;
   created_at: string;
   product_name: string;
-  movement_type: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
+  movement_type: "PURCHASE" | "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE" | "TRANSFER_IN" | "TRANSFER_OUT";
   quantity: number;
   previous_quantity: number;
   new_quantity: number;
@@ -137,7 +143,7 @@ export interface SaleRecord {
   customer_cedula?: string | null;
   created_at: string;
   items_count: number;
-  status: "COMPLETED" | "CANCELLED";
+  status: "COMPLETED" | "CANCELLED" | "REFUNDED";
   /** Real item-level data for reprinting exact receipts */
   items_snapshot?: SaleItemSnapshot[];
   /** Full receipt payload, serialized for instant reprint */
@@ -157,15 +163,22 @@ export interface InvoiceRecord {
   created_at: string;
   customer_name: string;
   total: number;
-  status: "ACCEPTED" | "PENDING" | "REJECTED";
+  sale_id?: string | null;
+  environment?: "STAGING" | "PRODUCTION";
+  status: "DRAFT" | "SIGNED" | "SENT" | "QUEUED" | "PROCESSING" | "ACCEPTED" | "REJECTED" | "ERROR" | "CONTINGENCY" | "CANCELLED";
   hacienda_message?: string;
   xml_signed?: string;
+  hacienda_response_xml?: string;
+  sent_to_hacienda_at?: string;
+  hacienda_processed_at?: string;
+  email_sent_at?: string;
   is_test?: boolean;
 }
 
 export interface CashSession {
   id: string;
   organization_id: string;
+  branch_id?: string;
   opened_at: string;
   closed_at?: string | null;
   initial_amount: number;
@@ -176,6 +189,8 @@ export interface CashSession {
   status: "OPEN" | "CLOSED";
   actual_cash?: number;
   cash_difference?: number;
+  cash_register_id?: string;
+  expected_cash_amount?: number;
 }
 
 export interface AuditLogEntry {
@@ -459,8 +474,8 @@ export interface SupportTicket {
   organization_name: string;
   created_by_name: string;
   created_by_email: string;
-  category: "HACIENDA" | "POS" | "INVOICING" | "INVENTORY" | "PAYMENTS" | "MIGRATION" | "ACCOUNT";
-  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  category: "HACIENDA" | "POS" | "INVOICING" | "INVENTORY" | "PAYMENTS" | "MIGRATION" | "ACCOUNT" | "OTHER";
+  priority: "LOW" | "MEDIUM" | "NORMAL" | "HIGH" | "URGENT";
   status: "OPEN" | "IN_PROGRESS" | "WAITING_CLIENT" | "RESOLVED" | "CLOSED";
   subject: string;
   description: string;
@@ -487,7 +502,8 @@ export interface SupportAccessGrant {
   expires_at: string;
   created_at: string;
   is_revoked: boolean;
-  token: string;
+  /** Raw delegated token is returned once, immediately after granting access. */
+  token?: string;
 }
 
 export interface TenantHealthAlert {

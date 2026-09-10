@@ -72,6 +72,30 @@ export default function ReportsPage() {
   const cardPct = grossSales > 0 ? Math.round((cardSales / grossSales) * 100) : 0;
   const cashPct = grossSales > 0 ? Math.round((cashSales / grossSales) * 100) : 0;
 
+  const handleExportCSV = () => {
+    const headers = ["Numero_Venta", "Consecutivo", "Clave_Hacienda", "Fecha", "Cliente", "Subtotal", "IVA", "Total", "Forma_Pago"];
+    const rows = filteredSales.map((s) => [
+      s.sale_number,
+      s.consecutive_number,
+      s.numeric_key,
+      s.created_at,
+      `"${s.customer_name.replace(/"/g, '""')}"`,
+      s.subtotal.toFixed(2),
+      s.tax.toFixed(2),
+      s.total.toFixed(2),
+      s.payment_method,
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `reporte_ventas_${period}_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <OwnerLayout>
       <div className="space-y-6">
@@ -123,6 +147,11 @@ export default function ReportsPage() {
                 Este Mes
               </button>
             </div>
+
+            <Button variant="secondary" size="sm" onClick={handleExportCSV} className="gap-1.5 font-bold">
+              <Download className="w-3.5 h-3.5" />
+              Exportar CSV
+            </Button>
           </div>
         </div>
 

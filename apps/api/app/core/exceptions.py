@@ -28,6 +28,10 @@ class ConflictException(AppException):
     def __init__(self, message: str = "El recurso ya existe o hay conflicto", code: str = "CONFLICT", details: Optional[Dict[str, Any]] = None):
         super().__init__(status_code=status.HTTP_409_CONFLICT, code=code, message=message, details=details)
 
+class ServiceUnavailableException(AppException):
+    def __init__(self, message: str = "Servicio temporalmente no disponible", code: str = "SERVICE_UNAVAILABLE", details: Optional[Dict[str, Any]] = None):
+        super().__init__(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, code=code, message=message, details=details)
+
 class AccountLockedException(AppException):
     def __init__(self, message: str = "Cuenta bloqueada temporalmente", code: str = "ACCOUNT_LOCKED", details: Optional[Dict[str, Any]] = None):
         super().__init__(status_code=status.HTTP_423_LOCKED, code=code, message=message, details=details)

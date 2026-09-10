@@ -31,6 +31,8 @@ export default function PurchasesPage() {
   const [productName, setProductName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unitCost, setUnitCost] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const openCreateModal = () => {
     setSupplierName(suppliers[0]?.name || "");
@@ -49,26 +51,31 @@ export default function PurchasesPage() {
     setIsModalOpen(true);
   };
 
-  const handleCreatePurchase = (e: React.FormEvent) => {
+  const handleCreatePurchase = async (e: React.FormEvent) => {
     e.preventDefault();
     const prod = products.find((p) => p.id === selectedProductId);
     const pName = prod ? prod.name : productName || "Producto Comprado";
 
-    recordPurchase({
-      supplierName: supplierName.trim() || "Proveedor General",
-      invoiceNumber: invoiceNumber.trim() || `FAC-${Date.now()}`,
-      paymentType,
-      items: [
-        {
+    setIsSaving(true);
+    setFormError(null);
+    try {
+      await recordPurchase({
+        supplierName: supplierName.trim(),
+        invoiceNumber: invoiceNumber.trim() || `FAC-${Date.now()}`,
+        paymentType,
+        items: [{
           productId: prod?.id,
           productName: pName,
           quantity: parseFloat(quantity) || 1,
           unitCost: parseFloat(unitCost) || 0,
-        },
-      ],
-    });
-
-    setIsModalOpen(false);
+        }],
+      });
+      setIsModalOpen(false);
+    } catch (error: any) {
+      setFormError(error?.message || "No fue posible registrar la compra.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const filteredPurchases = purchases.filter(
@@ -177,6 +184,7 @@ export default function PurchasesPage() {
         maxWidth="md"
       >
         <form onSubmit={handleCreatePurchase} className="space-y-4">
+          {formError && <div role="alert" className="p-3 rounded-xl bg-semantic-danger-bg border border-semantic-danger-border text-xs text-semantic-danger-text">{formError}</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
@@ -192,14 +200,7 @@ export default function PurchasesPage() {
                     <option key={s.id} value={s.name}>{s.name}</option>
                   ))}
                 </select>
-              ) : (
-                <Input
-                  placeholder="Ej: Distribuidora La Florida"
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  required
-                />
-              )}
+              ) : <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-500">Primero registra un proveedor en el módulo Proveedores.</p>}
             </div>
 
             <Input
@@ -274,8 +275,8 @@ export default function PurchasesPage() {
             <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" variant="primary">
-              Procesar Entrada de Mercadería
+            <Button type="submit" variant="primary" disabled={isSaving || suppliers.length === 0 || products.length === 0}>
+              {isSaving ? "Procesando…" : "Procesar Entrada de Mercadería"}
             </Button>
           </div>
         </form>

@@ -1,47 +1,211 @@
-from typing import List, Optional
+import os
+import sys
+from typing import List, Literal, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import EmailStr, Field, field_validator, model_validator
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "ORBÍTICA POS API"
-    VERSION: str = "1.0.0"
+    VERSION: str = "2.4.0"
+    BUILD_DATE: str = Field(default="unknown", alias="BUILD_DATE")
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = Field(default="development", alias="ENVIRONMENT")
     
-    JWT_SECRET_KEY: str = Field(default="dev_secret_key_change_in_production_orbitica_pos_2026_super_secure", alias="JWT_SECRET_KEY")
+    # Cryptographic JWT Secret (Accepts JWT_SECRET_KEY or SECRET_KEY)
+    JWT_SECRET_KEY: str = Field(
+        default="dev_secret_key_change_in_production_orbitica_pos_2026_super_secure",
+        alias="JWT_SECRET_KEY"
+    )
+    SECRET_KEY: Optional[str] = Field(default=None, alias="SECRET_KEY")
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # Master Key for encrypting .p12 certificates (Accepts ENCRYPTION_MASTER_KEY or FERNET_KEY)
+    ENCRYPTION_MASTER_KEY: str = Field(
+        default="DEV_MASTER_KEY_32_BYTES_FOR_DEV_ONLY_123456=",
+        alias="ENCRYPTION_MASTER_KEY"
+    )
+    FERNET_KEY: Optional[str] = Field(default=None, alias="FERNET_KEY")
+    
+    # Security Lockout & Rate Limiting
     MAX_LOGIN_ATTEMPTS: int = 5
     LOCKOUT_MINUTES: int = 15
+    STEP_UP_TOKEN_EXPIRE_MINUTES: int = 5
     
+    # CORS Configuration (Accepts BACKEND_CORS_ORIGINS or CORS_ORIGINS)
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:3001",
+        "https://web-mocha-gamma-es6gomw437.vercel.app",
         "https://orbitica-pos.vercel.app"
     ]
+    CORS_ORIGINS: Optional[Union[str, List[str]]] = Field(default=None, alias="CORS_ORIGINS")
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str) and not v.startswith("["):
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return v
+        return []
     
+    # PostgreSQL Database URL
     DATABASE_URL: str = Field(
-        default="sqlite+aiosqlite:///C:/Users/elian/.gemini/antigravity/scratch/orbitica-pos/apps/api/orbitica_pos.db",
+        default="sqlite+aiosqlite:///./orbitica_pos.db",
         alias="DATABASE_URL"
     )
     SYNC_DATABASE_URL: str = Field(
-        default="sqlite:///C:/Users/elian/.gemini/antigravity/scratch/orbitica-pos/apps/api/orbitica_pos.db",
+        default="sqlite:///./orbitica_pos.db",
         alias="SYNC_DATABASE_URL"
     )
+    REDIS_URL: Optional[str] = Field(default=None, alias="REDIS_URL")
+
+    # Persistent uploads: local volume or an S3-compatible store (including R2).
+    STORAGE_TYPE: Literal["LOCAL", "S3"] = "LOCAL"
+    LOCAL_STORAGE_DIR: str = "./storage"
+    S3_BUCKET_NAME: Optional[str] = None
+    S3_ENDPOINT_URL: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+
+    @field_validator("STORAGE_TYPE", mode="before")
+    @classmethod
+    def normalize_storage_type(cls, value: str) -> str:
+        value = value.upper()
+        return "S3" if value == "R2" else value
+
+    @field_validator("DATABASE_URL", "SYNC_DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_postgres_url(cls, value: str, info) -> str:
+        # Hosting providers supply postgres:// or postgresql://. SQLAlchemy's
+        # async engine needs an explicit asyncpg driver. Preserve the complete
+        # credentials/host/query suffix, including percent-encoded passwords.
+        scheme, separator, suffix = value.partition("://")
+        if separator and scheme in {"postgres", "postgresql", "postgresql+asyncpg", "postgresql+psycopg2"}:
+            driver = "postgresql+asyncpg" if info.field_name == "DATABASE_URL" else "postgresql"
+            return f"{driver}://{suffix}"
+        return value
     
+    # Regional Costa Rica Defaults
     DEFAULT_CURRENCY: str = "CRC"
     DEFAULT_TIMEZONE: str = "America/Costa_Rica"
     
+    # Software Provider Info (v4.4 ProveedorSistemas)
+    SOFTWARE_PROVIDER_TAX_ID_TYPE: str = "02"  # 02=Cedula Juridica
+    SOFTWARE_PROVIDER_TAX_ID: str = Field(default="3101000000", alias="SOFTWARE_PROVIDER_TAX_ID")
+    SOFTWARE_PROVIDER_NAME: str = Field(default="ORBITICA STUDIO S.A.", alias="SOFTWARE_PROVIDER_NAME")
+    HACIENDA_PROVEEDOR_ID: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_ID")
+    HACIENDA_PROVEEDOR_NAME: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_NAME")
+
+    # Safety Guardrails: Fiscal Emission Block
+    # Block live production fiscal emission until ATV Sandbox validation is complete and confirmed.
+    HACIENDA_LIVE_EMISSION_ENABLED: bool = Field(default=False, alias="HACIENDA_LIVE_EMISSION_ENABLED")
+    HACIENDA_SANDBOX_VALIDATED: bool = Field(default=False, alias="HACIENDA_SANDBOX_VALIDATED")
+
+    # Public web URL and fiscal email delivery
+    FRONTEND_URL: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    SMTP_HOST: Optional[str] = Field(default=None, alias="SMTP_HOST")
+    SMTP_PORT: int = Field(default=587, alias="SMTP_PORT")
+    SMTP_USER: Optional[str] = Field(default=None, alias="SMTP_USER")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    SMTP_TLS: bool = Field(default=True, alias="SMTP_TLS")
+    EMAIL_PROVIDER: Literal["SMTP", "BREVO"] = "SMTP"
+    BREVO_API_KEY: Optional[str] = None
+    EMAIL_FROM_ADDRESS: Optional[EmailStr] = None
+    EMAIL_FROM_NAME: str = "Orbítica POS"
+
+    @property
+    def email_provider_configured(self) -> bool:
+        if self.EMAIL_PROVIDER == "BREVO":
+            return bool(self.BREVO_API_KEY and self.EMAIL_FROM_ADDRESS)
+        return all([self.SMTP_HOST, self.SMTP_USER, self.SMTP_PASSWORD])
+    
+    # Cookie Configuration
     COOKIE_DOMAIN: Optional[str] = None
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
-    
+
+    @model_validator(mode="after")
+    def sync_aliases(self) -> "Settings":
+        if "SYNC_DATABASE_URL" not in self.model_fields_set and self.DATABASE_URL.startswith("postgresql+asyncpg://"):
+            self.SYNC_DATABASE_URL = self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://", 1)
+        # Unify SECRET_KEY <-> JWT_SECRET_KEY
+        if self.SECRET_KEY and self.JWT_SECRET_KEY == "dev_secret_key_change_in_production_orbitica_pos_2026_super_secure":
+            self.JWT_SECRET_KEY = self.SECRET_KEY
+        # Unify FERNET_KEY <-> ENCRYPTION_MASTER_KEY
+        if self.FERNET_KEY and self.ENCRYPTION_MASTER_KEY == "DEV_MASTER_KEY_32_BYTES_FOR_DEV_ONLY_123456=":
+            self.ENCRYPTION_MASTER_KEY = self.FERNET_KEY
+        # Unify CORS_ORIGINS <-> BACKEND_CORS_ORIGINS
+        if self.CORS_ORIGINS:
+            if isinstance(self.CORS_ORIGINS, list):
+                self.BACKEND_CORS_ORIGINS = self.CORS_ORIGINS
+            elif isinstance(self.CORS_ORIGINS, str) and not self.CORS_ORIGINS.startswith("["):
+                self.BACKEND_CORS_ORIGINS = [i.strip() for i in self.CORS_ORIGINS.split(",") if i.strip()]
+        # Unify HACIENDA_PROVEEDOR_* <-> SOFTWARE_PROVIDER_*
+        if self.HACIENDA_PROVEEDOR_ID:
+            self.SOFTWARE_PROVIDER_TAX_ID = self.HACIENDA_PROVEEDOR_ID
+        if self.HACIENDA_PROVEEDOR_NAME:
+            self.SOFTWARE_PROVIDER_NAME = self.HACIENDA_PROVEEDOR_NAME
+        return self
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    def validate_production_readiness(self) -> None:
+        """
+        Validates critical security and infrastructure requirements before starting in production.
+        FastAPI refuses to boot if insecure defaults are present in production.
+        """
+        if self.ENVIRONMENT.lower() == "production":
+            errors = []
+            
+            # 1. Reject default or weak JWT Secret
+            if "dev_secret_key" in self.JWT_SECRET_KEY or len(self.JWT_SECRET_KEY) < 32:
+                errors.append("JWT_SECRET_KEY / SECRET_KEY must be a secure key with at least 32 characters in production.")
+                
+            # 2. Reject SQLite in production
+            if not self.DATABASE_URL.startswith("postgresql+asyncpg://"):
+                errors.append("DATABASE_URL must be a PostgreSQL connection in production (sqlite is not allowed).")
+            if not self.SYNC_DATABASE_URL.startswith("postgresql://"):
+                errors.append("SYNC_DATABASE_URL must be a PostgreSQL connection in production.")
+
+            if self.STORAGE_TYPE == "S3" and not self.S3_BUCKET_NAME:
+                errors.append("S3_BUCKET_NAME is required for S3/R2 storage.")
+            if self.STORAGE_TYPE == "S3" and self.S3_ENDPOINT_URL and not self.S3_ENDPOINT_URL.startswith("https://"):
+                errors.append("S3_ENDPOINT_URL must use HTTPS in production.")
+                
+            # 3. Master Encryption Key check
+            if "DEV_MASTER_KEY" in self.ENCRYPTION_MASTER_KEY or len(self.ENCRYPTION_MASTER_KEY) < 32:
+                errors.append("ENCRYPTION_MASTER_KEY / FERNET_KEY must be a high-entropy production secret with at least 32 characters.")
+                
+            # 4. CORS validation
+            if not self.BACKEND_CORS_ORIGINS or "*" in self.BACKEND_CORS_ORIGINS:
+                errors.append("BACKEND_CORS_ORIGINS / CORS_ORIGINS cannot be empty or '*' in production.")
+            if any(origin.startswith("http://") or "localhost" in origin or "127.0.0.1" in origin for origin in self.BACKEND_CORS_ORIGINS):
+                errors.append("BACKEND_CORS_ORIGINS must contain only explicit HTTPS production origins.")
+                
+            # 5. Fiscal emission guardrail
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.HACIENDA_SANDBOX_VALIDATED:
+                errors.append("HACIENDA_LIVE_EMISSION_ENABLED cannot be activated in production without prior HACIENDA_SANDBOX_VALIDATED=True.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.email_provider_configured:
+                errors.append("Configure SMTP_HOST/SMTP_USER/SMTP_PASSWORD or BREVO_API_KEY/EMAIL_FROM_ADDRESS before enabling live fiscal emission.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_TAX_ID == "3101000000":
+                errors.append("SOFTWARE_PROVIDER_TAX_ID must be the real registered provider identification before live emission.")
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_NAME == "ORBITICA STUDIO S.A.":
+                errors.append("SOFTWARE_PROVIDER_NAME must match the real registered software provider before live emission.")
+            if not self.FRONTEND_URL.startswith("https://"):
+                errors.append("FRONTEND_URL must be an HTTPS production URL.")
+            if not self.COOKIE_SECURE:
+                errors.append("COOKIE_SECURE must be true in production.")
+                
+            if errors:
+                error_msg = "\n[CRITICAL STARTUP ERROR] Production configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+                raise RuntimeError(error_msg)
 
 settings = Settings()

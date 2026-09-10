@@ -18,7 +18,7 @@ async def test_atomic_pos_sale_and_refund(client: AsyncClient, sample_organizati
 
     prod_resp = await client.post(
         "/api/v1/products",
-        json={"name": "Galleta María Pozuelo", "tax_rate_id": tax_id, "sale_price": 500, "cost_price": 300},
+        json={"name": "Jugo de tomate concentrado", "tax_rate_id": tax_id, "cabys_code": "2132100000100", "unit_of_measure": "Unid", "sale_price": 500, "cost_price": 300},
         headers=headers
     )
     prod_id = prod_resp.json()["data"]["id"]

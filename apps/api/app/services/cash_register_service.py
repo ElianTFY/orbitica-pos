@@ -7,6 +7,7 @@ from sqlalchemy import select, func
 from app.models.cash_register import CashRegister, CashRegisterSession
 from app.models.sale import Sale, SalePayment
 from app.models.user import User
+from app.models.branch import Branch
 from app.schemas.cash_register import CashRegisterCreate, SessionOpenRequest, SessionCloseRequest
 from app.core.exceptions import NotFoundException, BadRequestException, ConflictException
 from app.services.audit_service import AuditService
@@ -17,14 +18,27 @@ class CashRegisterService:
         self.organization_id = organization_id
 
     async def list_registers(self, branch_id: Optional[uuid.UUID] = None) -> List[CashRegister]:
-        stmt = select(CashRegister).where(CashRegister.is_active == True)
+        stmt = select(CashRegister).where(
+            CashRegister.organization_id == self.organization_id,
+            CashRegister.is_active == True
+        )
         if branch_id:
             stmt = stmt.where(CashRegister.branch_id == branch_id)
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
 
     async def create_register(self, data: CashRegisterCreate) -> CashRegister:
+        # Validate branch belongs to organization
+        branch_stmt = select(Branch).where(
+            Branch.id == data.branch_id,
+            Branch.organization_id == self.organization_id
+        )
+        branch_res = await self.db.execute(branch_stmt)
+        if not branch_res.scalar_one_or_none():
+            raise NotFoundException("Sucursal no válida para la organización")
+
         reg = CashRegister(
+            organization_id=self.organization_id,
             branch_id=data.branch_id,
             name=data.name.strip(),
             pos_terminal_number=data.pos_terminal_number
@@ -35,6 +49,16 @@ class CashRegisterService:
         return reg
 
     async def open_session(self, data: SessionOpenRequest, user_id: uuid.UUID) -> CashRegisterSession:
+        # Fetch register and verify organization
+        reg_stmt = select(CashRegister).where(
+            CashRegister.id == data.cash_register_id,
+            CashRegister.organization_id == self.organization_id
+        )
+        reg_res = await self.db.execute(reg_stmt)
+        reg = reg_res.scalar_one_or_none()
+        if not reg:
+            raise NotFoundException("Caja registradora no encontrada")
+
         active_stmt = select(CashRegisterSession).where(
             CashRegisterSession.cash_register_id == data.cash_register_id,
             CashRegisterSession.status == "OPEN"
@@ -44,6 +68,8 @@ class CashRegisterService:
             raise ConflictException("Esta caja registradora ya tiene un turno abierto")
 
         session = CashRegisterSession(
+            organization_id=self.organization_id,
+            branch_id=reg.branch_id,
             cash_register_id=data.cash_register_id,
             opened_by_user_id=user_id,
             initial_cash_amount=data.initial_cash_amount,
@@ -59,6 +85,7 @@ class CashRegisterService:
             resource="CashRegisterSession",
             actor_id=user_id,
             organization_id=self.organization_id,
+            branch_id=reg.branch_id,
             resource_id=str(session.id),
             payload_after={"initial_cash": str(data.initial_cash_amount)}
         )
@@ -68,10 +95,13 @@ class CashRegisterService:
         return session
 
     async def get_active_session(self, user_id: Optional[uuid.UUID] = None) -> Optional[dict]:
-        stmt = select(CashRegisterSession, User.full_name).join(
-            User, CashRegisterSession.opened_by_user_id == User.id
-        ).where(
-            CashRegisterSession.status == "OPEN"
+        stmt = (
+            select(CashRegisterSession, User.full_name)
+            .join(User, CashRegisterSession.opened_by_user_id == User.id)
+            .where(
+                CashRegisterSession.organization_id == self.organization_id,
+                CashRegisterSession.status == "OPEN",
+            )
         )
         if user_id:
             stmt = stmt.where(CashRegisterSession.opened_by_user_id == user_id)
@@ -83,6 +113,7 @@ class CashRegisterService:
 
         session, u_name = row
         sales_stmt = select(Sale.id).where(
+            Sale.organization_id == self.organization_id,
             Sale.cash_session_id == session.id,
             Sale.status == "COMPLETED"
         )
@@ -117,7 +148,10 @@ class CashRegisterService:
         }
 
     async def close_session(self, session_id: uuid.UUID, data: SessionCloseRequest, actor_id: uuid.UUID) -> CashRegisterSession:
-        stmt = select(CashRegisterSession).where(CashRegisterSession.id == session_id)
+        stmt = select(CashRegisterSession).where(
+            CashRegisterSession.id == session_id,
+            CashRegisterSession.organization_id == self.organization_id
+        )
         res = await self.db.execute(stmt)
         session = res.scalar_one_or_none()
 
@@ -128,6 +162,7 @@ class CashRegisterService:
             raise ConflictException(f"La sesión ya se encuentra con estado '{session.status}'")
 
         sales_stmt = select(Sale.id).where(
+            Sale.organization_id == self.organization_id,
             Sale.cash_session_id == session.id,
             Sale.status == "COMPLETED"
         )
@@ -160,6 +195,7 @@ class CashRegisterService:
             resource="CashRegisterSession",
             actor_id=actor_id,
             organization_id=self.organization_id,
+            branch_id=session.branch_id,
             resource_id=str(session.id),
             payload_after={
                 "actual": str(data.actual_cash_amount),

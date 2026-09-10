@@ -52,7 +52,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "OPERACIONES",
     items: [
       { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, perm: "org:read" },
-      { name: "Punto de Venta POS", href: "/pos", icon: ShoppingCart, perm: "pos:read", highlight: true, badge: "F2" },
+      { name: "Punto de Venta POS", href: "/pos", icon: ShoppingCart, perm: "pos:read", highlight: true, badge: "F1-F8" },
       { name: "Ventas & Historial", href: "/sales", icon: Receipt, perm: "pos:read" },
       { name: "Cotizaciones / Proformas", href: "/quotes", icon: FileText, perm: "pos:read" },
       { name: "Caja y Turnos Z", href: "/cash-register", icon: DollarSign, perm: "cash:open" },
@@ -72,9 +72,9 @@ const NAV_GROUPS: NavGroup[] = [
     title: "COMERCIAL & CRM",
     items: [
       { name: "Clientes & Crédito", href: "/customers", icon: Users, perm: "pos:read" },
-      { name: "Fidelidad & Cupones", href: "/loyalty", icon: Tag, perm: "pos:read" },
-      { name: "Citas & Órdenes Servicio", href: "/work-orders", icon: Wrench, perm: "pos:read" },
-      { name: "Despachos & Rutas", href: "/dispatch", icon: Navigation, perm: "pos:read" },
+      { name: "Fidelidad & Cupones", href: "/loyalty", icon: Tag, perm: "pos:read", badge: "Próximamente" },
+      { name: "Citas & Órdenes Servicio", href: "/work-orders", icon: Wrench, perm: "pos:read", badge: "Próximamente" },
+      { name: "Despachos & Rutas", href: "/dispatch", icon: Navigation, perm: "pos:read", badge: "Próximamente" },
     ],
   },
   {
@@ -82,7 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { name: "Facturación Hacienda v4.4", href: "/invoices", icon: FileCheck2, perm: "invoicing:read" },
       { name: "Gastos & Cuentas x Pagar", href: "/expenses", icon: TrendingDown, perm: "reports:read" },
-      { name: "Bancos & Conciliación", href: "/banking", icon: Landmark, perm: "reports:read" },
+      { name: "Bancos & Conciliación", href: "/banking", icon: Landmark, perm: "reports:read", badge: "Próximamente" },
       { name: "Reportes & Resumen D-104", href: "/reports", icon: BarChart3, perm: "reports:read" },
     ],
   },

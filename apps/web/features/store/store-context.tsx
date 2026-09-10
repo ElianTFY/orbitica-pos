@@ -1,7 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/features/auth/auth-context";
+import { api } from "@/lib/api-client";
 import {
   Product,
   Customer,
@@ -30,7 +31,6 @@ import {
   OnboardingProgress,
   ImportBatch,
   SupportTicket,
-  SupportMessage,
   SupportAccessGrant,
   TenantHealthAlert,
 } from "@/types";
@@ -39,7 +39,7 @@ export interface BusinessSettings {
   trade_name: string;
   legal_name: string;
   identification_number: string;
-  identification_type: "FISICA" | "JURIDICA" | "DIMEX";
+  identification_type: "01" | "02" | "03" | "04" | "05" | "FISICA" | "JURIDICA" | "DIMEX" | "NITE" | "EXTRANJERO";
   email: string;
   phone: string;
   address: string;
@@ -48,6 +48,11 @@ export interface BusinessSettings {
   default_currency: "CRC" | "USD";
   atv_environment: "STAGING" | "PRODUCTION";
   atv_username: string;
+  economic_activity_code: string;
+  province_code: string;
+  canton_code: string;
+  district_code: string;
+  neighborhood_code: string;
 }
 
 interface StoreContextType {
@@ -74,37 +79,43 @@ interface StoreContextType {
   suspendedSales: SuspendedSale[];
   foundersPromo: FoundersPromoConfig;
   updateFoundersPromo: (config: Partial<FoundersPromoConfig>) => void;
-  updateSettings: (newSettings: Partial<BusinessSettings>) => void;
+  updateSettings: (newSettings: Partial<BusinessSettings>) => Promise<void>;
+  // Real State Machine Statuses
+  fetchStatus: "idle" | "loading" | "error" | "empty" | "unauthorized" | "offline";
+  errorMessage: string | null;
+  retryFetch: () => Promise<void>;
+  isOffline: boolean;
+  fiscalContingencyNotice: string | null;
   // Control Center Extensions
   subscription: SubscriptionDetails;
   updateSubscription: (details: Partial<SubscriptionDetails>) => void;
   onboarding: OnboardingProgress;
   updateOnboarding: (progress: Partial<OnboardingProgress>) => void;
   importBatches: ImportBatch[];
-  executeImportBatch: (batchMeta: Omit<ImportBatch, "id" | "created_at" | "is_reverted" | "records_created_ids">, items: any[]) => ImportBatch;
-  revertImportBatch: (batchId: string) => boolean;
+  executeImportBatch: (batchMeta: Omit<ImportBatch, "id" | "created_at" | "is_reverted" | "records_created_ids">, items: any[]) => Promise<ImportBatch>;
+  revertImportBatch: (batchId: string) => Promise<boolean>;
   supportTickets: SupportTicket[];
-  createSupportTicket: (ticket: Omit<SupportTicket, "id" | "ticket_number" | "created_at" | "updated_at" | "messages">, initialMessage: string) => SupportTicket;
-  addSupportMessage: (ticketId: string, message: string, isInternal?: boolean) => void;
+  createSupportTicket: (ticket: Omit<SupportTicket, "id" | "ticket_number" | "created_at" | "updated_at" | "messages">, initialMessage: string) => Promise<SupportTicket>;
+  addSupportMessage: (ticketId: string, message: string, isInternal?: boolean) => Promise<void>;
   activeSupportGrant: SupportAccessGrant | null;
-  grantSupportAccess: (reason: string, durationMinutes: number, permission: "READ_ONLY" | "FULL_ADMIN") => SupportAccessGrant;
-  revokeSupportAccess: (grantId?: string) => void;
+  grantSupportAccess: (reason: string, durationMinutes: number, permission: "READ_ONLY" | "FULL_ADMIN") => Promise<SupportAccessGrant>;
+  revokeSupportAccess: (grantId?: string) => Promise<void>;
   healthAlerts: TenantHealthAlert[];
   resolveHealthAlert: (alertId: string) => void;
   checkLimit: (resource: "products" | "users" | "branches" | "cajas") => { allowed: boolean; max: number; current: number; message?: string };
   purgeTestSales: () => number;
   // Products
-  addProduct: (product: Omit<Product, "id" | "organization_id">) => Product;
-  updateProduct: (id: string, product: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
+  addProduct: (product: Omit<Product, "id" | "organization_id">) => Promise<Product>;
+  updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   // Customers
-  addCustomer: (customer: Omit<Customer, "id" | "organization_id">) => Customer;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
-  deleteCustomer: (id: string) => void;
+  addCustomer: (customer: Omit<Customer, "id" | "organization_id">) => Promise<Customer>;
+  updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   // Suppliers
-  addSupplier: (supplier: Omit<Supplier, "id" | "organization_id">) => Supplier;
-  updateSupplier: (id: string, supplier: Partial<Supplier>) => void;
-  deleteSupplier: (id: string) => void;
+  addSupplier: (supplier: Omit<Supplier, "id" | "organization_id">) => Promise<Supplier>;
+  updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
+  deleteSupplier: (id: string) => Promise<void>;
   // Employees
   addEmployee: (employee: Omit<Employee, "id" | "organization_id" | "created_at">) => Employee;
   updateEmployee: (id: string, employee: Partial<Employee>) => void;
@@ -114,9 +125,9 @@ interface StoreContextType {
   updateBranch: (id: string, branch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
   // Quotes
-  addQuote: (quote: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">) => Quote;
+  addQuote: (quote: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">) => Promise<Quote>;
   updateQuote: (id: string, quote: Partial<Quote>) => void;
-  deleteQuote: (id: string) => void;
+  deleteQuote: (id: string) => Promise<void>;
   // Expenses
   addExpense: (expense: Omit<Expense, "id" | "organization_id" | "expense_number" | "created_at">) => Expense;
   updateExpense: (id: string, expense: Partial<Expense>) => void;
@@ -150,48 +161,201 @@ interface StoreContextType {
     invoiceNumber: string;
     paymentType: "CONTADO" | "CREDITO";
     items: Array<{ productId?: string; productName: string; quantity: number; unitCost: number }>;
-  }) => PurchaseRecord;
+  }) => Promise<PurchaseRecord>;
   recordAdjustment: (data: {
     productId: string;
     productName: string;
     movementType: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
     quantity: number;
     reason?: string;
-  }) => InventoryMovement;
+  }) => Promise<InventoryMovement>;
   // Sales & Cash
   recordSale: (saleData: {
-    items: Array<{ product: Product; quantity: number }>;
+    items: Array<{ product: Product; quantity: number; discountPercentage?: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
+    payments?: Array<{ payment_method: string; amount: number; reference_number?: string }>;
     cashReceived?: number;
     sinpeRef?: string;
     customerName?: string;
     customerCedula?: string;
     docType?: "04" | "01";
     isTest?: boolean;
-  }) => { sale: SaleRecord; invoice: InvoiceRecord; receiptData: any };
-  openCashSession: (initialAmount: number) => void;
-  closeCashSession: (actualCash?: number) => void;
+  }) => Promise<{ sale: SaleRecord; invoice: InvoiceRecord; receiptData: any; fiscalWarning?: string }>;
+  openCashSession: (initialAmount: number) => Promise<void>;
+  closeCashSession: (actualCash?: number) => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
+const numberValue = (value: unknown): number => Number(value ?? 0);
+
+const mapApiProduct = (row: any): Product => ({
+  id: String(row.id),
+  organization_id: String(row.organization_id),
+  name: row.name,
+  sku: row.sku ?? null,
+  barcode: row.barcode ?? null,
+  sale_price: numberValue(row.sale_price),
+  cost_price: numberValue(row.cost_price),
+  min_stock_alert: numberValue(row.min_stock_alert),
+  tax_rate: numberValue(row.tax_rate),
+  tax_rate_id: row.tax_rate_id ? String(row.tax_rate_id) : undefined,
+  category_id: row.category_id ? String(row.category_id) : null,
+  category_name: row.category_name ?? "General",
+  cabys_code: row.cabys_code,
+  unit_of_measure: row.unit_of_measure,
+  is_service: Boolean(row.is_service),
+  stock: numberValue(row.current_stock),
+});
+
+const mapApiCustomer = (row: any): Customer => ({
+  id: String(row.id),
+  organization_id: String(row.organization_id),
+  name: row.name,
+  identification_type: row.identification_type,
+  identification_number: row.identification_number ?? "",
+  email: row.email ?? "",
+  phone: row.phone ?? "",
+  address: row.address ?? "",
+  is_active: Boolean(row.is_active),
+  created_at: row.created_at,
+});
+
+const mapApiQuote = (row: any): Quote => ({
+  id: String(row.id), organization_id: String(row.organization_id), quote_number: row.quote_number,
+  customer_name: row.customer_name || "Sin cliente identificado", status: row.status,
+  created_at: row.created_at, valid_until: row.valid_until || "", notes: row.notes,
+  subtotal: numberValue(row.subtotal_amount), discount: numberValue(row.discount_amount),
+  tax_total: numberValue(row.tax_amount), total: numberValue(row.total_amount),
+  items: (row.items || []).map((item: any) => ({
+    product_id: String(item.product_id), name: item.product_name,
+    quantity: numberValue(item.quantity), unit_price: numberValue(item.unit_price),
+    tax_rate: numberValue(item.tax_rate), tax_amount: numberValue(item.tax_amount),
+    subtotal: numberValue(item.line_total) - numberValue(item.tax_amount), total: numberValue(item.line_total),
+  })),
+});
+
+const mapApiInvoice = (row: any): InvoiceRecord => ({
+  id: String(row.id),
+  organization_id: String(row.organization_id),
+  sale_id: row.sale_id ? String(row.sale_id) : null,
+  doc_type: row.doc_type,
+  doc_type_label: row.doc_type === "01" ? "Factura Electrónica (01)" : row.doc_type === "03" ? "Nota de Crédito (03)" : "Tiquete Electrónico (04)",
+  consecutive_number: row.consecutive_number,
+  numeric_key: row.numeric_key,
+  created_at: row.created_at,
+  customer_name: row.receiver_name || "CLIENTE CONTADO",
+  total: numberValue(row.total_amount),
+  status: row.status,
+  environment: row.environment,
+  hacienda_message: row.hacienda_error_message || row.hacienda_status_code || undefined,
+});
+
+const mapApiSale = (row: any, invoice?: InvoiceRecord): SaleRecord => ({
+  id: String(row.id),
+  organization_id: String(row.organization_id),
+  sale_number: row.sale_number,
+  consecutive_number: invoice?.consecutive_number || "",
+  numeric_key: invoice?.numeric_key || "",
+  total: numberValue(row.total_amount),
+  subtotal: numberValue(row.subtotal_amount),
+  tax: numberValue(row.tax_amount),
+  payment_method: row.payments?.[0]?.payment_method || "CASH_CRC",
+  customer_name: row.customer_name || invoice?.customer_name || "CLIENTE CONTADO",
+  created_at: row.created_at,
+  items_count: (row.items || []).reduce((sum: number, item: any) => sum + numberValue(item.quantity), 0),
+  status: row.status,
+  items_snapshot: (row.items || []).map((item: any) => ({
+    name: item.product_name,
+    quantity: numberValue(item.quantity),
+    unit_price: numberValue(item.unit_price),
+    tax_rate: numberValue(item.tax_rate),
+    tax_amount: numberValue(item.tax_amount),
+    total: numberValue(item.line_total),
+  })),
+});
+
+const mapApiCashSession = (row: any): CashSession => ({
+  id: String(row.id),
+  organization_id: "",
+  cash_register_id: String(row.cash_register_id),
+  opened_at: row.opened_at,
+  closed_at: row.closed_at,
+  initial_amount: numberValue(row.initial_cash_amount),
+  cash_sales: Math.max(0, numberValue(row.expected_cash_amount) - numberValue(row.initial_cash_amount)),
+  sinpe_sales: 0,
+  card_sales: 0,
+  total_sales: Math.max(0, numberValue(row.expected_cash_amount) - numberValue(row.initial_cash_amount)),
+  expected_cash_amount: numberValue(row.expected_cash_amount),
+  status: row.status,
+  actual_cash: row.actual_cash_amount == null ? undefined : numberValue(row.actual_cash_amount),
+  cash_difference: row.cash_difference == null ? undefined : numberValue(row.cash_difference),
+});
+
+const mapApiMovement = (row: any): InventoryMovement => ({
+  id: String(row.id),
+  organization_id: String(row.organization_id),
+  created_at: row.created_at,
+  product_name: row.product_name || "Producto",
+  movement_type: row.movement_type,
+  quantity: numberValue(row.quantity),
+  previous_quantity: numberValue(row.previous_quantity),
+  new_quantity: numberValue(row.new_quantity),
+  actor_name: row.actor_name || "Usuario",
+  reason: row.reason || undefined,
+});
+
+const mapApiSupportTicket = (
+  row: any,
+  fallback: { organizationId: string; organizationName: string; userName: string; userEmail: string },
+): SupportTicket => ({
+  id: String(row.id),
+  ticket_number: row.ticket_number,
+  organization_id: String(row.organization_id || fallback.organizationId),
+  organization_name: row.organization_name || fallback.organizationName,
+  created_by_name: row.created_by_name || fallback.userName,
+  created_by_email: row.created_by_email || fallback.userEmail,
+  category: row.category,
+  priority: row.priority,
+  status: row.status,
+  subject: row.subject,
+  description: row.description,
+  telemetry: row.telemetry || undefined,
+  messages: (row.messages || []).map((message: any) => ({
+    id: String(message.id),
+    sender_type: message.sender_type,
+    sender_name: message.sender_name,
+    message: message.message,
+    is_internal_note: Boolean(message.is_internal_note),
+    created_at: message.created_at,
+  })),
+  created_at: row.created_at,
+  updated_at: row.updated_at || row.created_at,
+});
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const orgId = user?.organization_id || user?.email || "default_tenant";
+  // Empty while unauthenticated; protected owner routes only invoke mutations after auth.
+  const orgId = user?.organization_id || "";
 
   const [settings, setSettings] = useState<BusinessSettings>({
-    trade_name: user?.organization_name || "Mi Negocio",
+    trade_name: user?.organization_name || "",
     legal_name: user?.legal_name || user?.organization_name || "",
     identification_number: user?.identification_number || "",
-    identification_type: "JURIDICA",
+    identification_type: "02",
     email: user?.email || "",
     phone: user?.phone || "",
     address: "",
-    branch_name: user?.branch_name || "Sucursal Central (001)",
+    branch_name: user?.branch_name || "Sucursal Principal",
     tax_regime: "TRADICIONAL",
     default_currency: "CRC",
     atv_environment: "STAGING",
     atv_username: "",
+    economic_activity_code: "",
+    province_code: "1",
+    canton_code: "01",
+    district_code: "01",
+    neighborhood_code: "",
   });
 
   // Zero-mock initial empty states
@@ -282,290 +446,428 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  // Load tenant-isolated state
-  useEffect(() => {
-    if (typeof window === "undefined" || !orgId) return;
+  // Real State Machine Statuses
+  const [fetchStatus, setFetchStatus] = useState<"idle" | "loading" | "error" | "empty" | "unauthorized" | "offline">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+  const [fiscalContingencyNotice, setFiscalContingencyNotice] = useState<string | null>(null);
+
+  // Authoritative Backend API Sync
+  const fetchBusinessData = useCallback(async () => {
+    if (!orgId) return;
+    setFetchStatus("loading");
+    setErrorMessage(null);
 
     try {
-      const sSettings = localStorage.getItem(`orbitica_settings_${orgId}`);
-      if (sSettings) setSettings((prev) => ({ ...prev, ...JSON.parse(sSettings) }));
+      const [productsRes, customersRes, invoicesRes, salesRes, purchasesRes, movementsRes, cashRes, supportRes, grantRes, branchesRes, suppliersRes, orgRes, auditRes, onbRes, subRes, quotesRes] =
+        await Promise.allSettled([
+          api.request<any[]>("/products"),
+          api.request<any[]>("/customers"),
+          api.request<any[]>("/invoices"),
+          api.request<any[]>("/sales"),
+          api.request<any[]>("/purchases"),
+          api.request<any[]>("/inventory/movements?limit=100"),
+          api.request<any>("/cash-registers/sessions/active"),
+          api.request<any[]>("/support/tickets"),
+          api.request<any>("/support/delegated-access/active"),
+          api.request<any[]>("/branches"),
+          api.request<any[]>("/suppliers?is_active=true"),
+          api.request<any>("/organizations/me"),
+          api.request<any[]>("/audit?limit=100"),
+          api.request<any>("/organizations/onboarding"),
+          api.request<any>("/subscription/current"),
+          api.request<any[]>("/quotes"),
+        ]);
 
-      const sProducts = localStorage.getItem(`orbitica_products_${orgId}`);
-      setProducts(sProducts ? JSON.parse(sProducts) : []);
+      const critical = [productsRes, invoicesRes, salesRes, movementsRes, cashRes, branchesRes];
+      const criticalFailure = critical.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      if (criticalFailure) throw criticalFailure.reason;
 
-      const sCustomers = localStorage.getItem(`orbitica_customers_${orgId}`);
-      setCustomers(sCustomers ? JSON.parse(sCustomers) : []);
+      let hasData = false;
 
-      const sSuppliers = localStorage.getItem(`orbitica_suppliers_${orgId}`);
-      setSuppliers(sSuppliers ? JSON.parse(sSuppliers) : []);
-
-      const sPurchases = localStorage.getItem(`orbitica_purchases_${orgId}`);
-      setPurchases(sPurchases ? JSON.parse(sPurchases) : []);
-
-      const sMovements = localStorage.getItem(`orbitica_movements_${orgId}`);
-      setMovements(sMovements ? JSON.parse(sMovements) : []);
-
-      const sSales = localStorage.getItem(`orbitica_sales_${orgId}`);
-      setSales(sSales ? JSON.parse(sSales) : []);
-
-      const sInvoices = localStorage.getItem(`orbitica_invoices_${orgId}`);
-      setInvoices(sInvoices ? JSON.parse(sInvoices) : []);
-
-      const sEmployees = localStorage.getItem(`orbitica_employees_${orgId}`);
-      setEmployees(sEmployees ? JSON.parse(sEmployees) : []);
-
-      const sBranches = localStorage.getItem(`orbitica_branches_${orgId}`);
-      if (sBranches) {
-        setBranches(JSON.parse(sBranches));
-      } else {
-        const defaultBranch: Branch = {
-          id: `br_main_${Date.now()}`,
-          organization_id: orgId,
-          code: "001",
-          name: user?.branch_name || "Sucursal Central (001)",
-          address: "",
-          is_main: true,
-          is_active: true,
-          created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
-        };
-        setBranches([defaultBranch]);
-        localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify([defaultBranch]));
+      if (orgRes.status === "fulfilled" && orgRes.value?.data) {
+        const o = orgRes.value.data;
+        setSettings((prev) => ({
+          ...prev,
+          trade_name: o.trade_name || prev.trade_name,
+          legal_name: o.legal_name || prev.legal_name,
+          identification_number: o.identification_number || prev.identification_number,
+          identification_type: o.identification_type || prev.identification_type,
+          email: o.email || prev.email,
+          phone: o.phone || prev.phone,
+          address: o.address_detail || prev.address,
+          default_currency: o.default_currency || prev.default_currency,
+        }));
       }
 
-      const sQuotes = localStorage.getItem(`orbitica_quotes_${orgId}`);
-      setQuotes(sQuotes ? JSON.parse(sQuotes) : []);
-
-      const sExpenses = localStorage.getItem(`orbitica_expenses_${orgId}`);
-      setExpenses(sExpenses ? JSON.parse(sExpenses) : []);
-
-      const sWorkOrders = localStorage.getItem(`orbitica_work_orders_${orgId}`);
-      setWorkOrders(sWorkOrders ? JSON.parse(sWorkOrders) : []);
-
-      const sDispatch = localStorage.getItem(`orbitica_dispatch_${orgId}`);
-      setDispatchOrders(sDispatch ? JSON.parse(sDispatch) : []);
-
-      const sCoupons = localStorage.getItem(`orbitica_coupons_${orgId}`);
-      setCoupons(sCoupons ? JSON.parse(sCoupons) : []);
-
-      const sLoyalty = localStorage.getItem(`orbitica_loyalty_${orgId}`);
-      setLoyaltyMembers(sLoyalty ? JSON.parse(sLoyalty) : []);
-
-      const sBankAccounts = localStorage.getItem(`orbitica_bank_accounts_${orgId}`);
-      if (sBankAccounts) {
-        setBankAccounts(JSON.parse(sBankAccounts));
-      } else {
-        const defaultBank: BankAccount = {
-          id: `bank_main_${Date.now()}`,
-          organization_id: orgId,
-          bank_name: "SINPE Móvil Comercial",
-          account_type: "SINPE_MOVIL",
-          iban: "CR05010200000000000000",
-          currency: "CRC",
-          current_balance: 0,
-          account_holder: user?.legal_name || user?.organization_name || "Comercio",
-          is_active: true,
-        };
-        setBankAccounts([defaultBank]);
-        localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify([defaultBank]));
+      if (onbRes.status === "fulfilled" && onbRes.value?.data) {
+        const onb = onbRes.value.data;
+        setOnboarding((prev) => ({
+          ...prev,
+          current_step: onb.current_step,
+          is_completed: onb.is_completed,
+          steps: {
+            business: onb.business_data_completed,
+            fiscal: onb.fiscal_data_completed,
+            branches: onb.branches_completed,
+            payments: onb.payments_completed,
+            products: onb.products_completed,
+            contacts: onb.contacts_completed,
+            users: onb.users_completed,
+            test_sale: false,
+          },
+          last_saved_at: onb.updated_at || new Date().toISOString(),
+        }));
       }
 
-      const sBankTx = localStorage.getItem(`orbitica_bank_tx_${orgId}`);
-      setBankTransactions(sBankTx ? JSON.parse(sBankTx) : []);
-
-      const sSuspended = localStorage.getItem(`orbitica_suspended_${orgId}`);
-      setSuspendedSales(sSuspended ? JSON.parse(sSuspended) : []);
-
-      const sPromo = localStorage.getItem("orbitica_founders_promo");
-      if (sPromo) setFoundersPromo(JSON.parse(sPromo));
-
-      const sCash = localStorage.getItem(`orbitica_cash_${orgId}`);
-      setActiveCashSession(sCash ? JSON.parse(sCash) : null);
-
-      const sSub = localStorage.getItem(`orbitica_subscription_${orgId}`);
-      if (sSub) setSubscription(JSON.parse(sSub));
-
-      const sOnb = localStorage.getItem(`orbitica_onboarding_${orgId}`);
-      if (sOnb) setOnboarding(JSON.parse(sOnb));
-
-      const sImp = localStorage.getItem(`orbitica_import_batches_${orgId}`);
-      setImportBatches(sImp ? JSON.parse(sImp) : []);
-
-      const sTickets = localStorage.getItem(`orbitica_support_tickets_${orgId}`);
-      setSupportTickets(sTickets ? JSON.parse(sTickets) : []);
-
-      const sGrant = localStorage.getItem(`orbitica_support_grant_${orgId}`);
-      setActiveSupportGrant(sGrant ? JSON.parse(sGrant) : null);
-
-      const sAlerts = localStorage.getItem(`orbitica_health_alerts_${orgId}`);
-      setHealthAlerts(sAlerts ? JSON.parse(sAlerts) : []);
-
-      const sAudit = localStorage.getItem(`orbitica_audit_${orgId}`);
-      if (sAudit) {
-        setAuditLogs(JSON.parse(sAudit));
-      } else {
-        const initialAudit: AuditLogEntry = {
-          id: `aud_${Date.now()}`,
-          organization_id: orgId,
-          created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-          actor_name: user?.full_name || "Propietario",
-          action: "ORGANIZATION_PROVISIONED",
-          resource: `Organization: ${user?.organization_name || "Mi Negocio"}`,
-          ip_address: "127.0.0.1",
-        };
-        setAuditLogs([initialAudit]);
-        localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify([initialAudit]));
+      if (subRes.status === "fulfilled" && subRes.value?.data) {
+        const s = subRes.value.data;
+        setSubscription((prev) => ({
+          ...prev,
+          plan_id: s.plan_name?.toLowerCase().includes("pro") ? "crece" : "inicio",
+          state: s.status === "ACTIVE" ? "active" : "trial",
+          amount: Number(s.price_monthly) || 0,
+          currency: s.currency || "CRC",
+        }));
       }
-    } catch (e) {
-      console.warn("Error loading isolated tenant data:", e);
+
+      if (branchesRes.status === "fulfilled" && branchesRes.value?.data) {
+        setBranches(branchesRes.value.data);
+      }
+
+      if (productsRes.status === "fulfilled" && productsRes.value?.data) {
+        setProducts(productsRes.value.data.map(mapApiProduct));
+        if (productsRes.value.data.length > 0) hasData = true;
+      }
+      if (customersRes.status === "fulfilled" && customersRes.value?.data) {
+        setCustomers(customersRes.value.data.map(mapApiCustomer));
+      }
+      if (invoicesRes.status === "fulfilled" && invoicesRes.value?.data) {
+        setInvoices(invoicesRes.value.data.map(mapApiInvoice));
+      }
+      if (salesRes.status === "fulfilled" && salesRes.value?.data) {
+        const mappedInvoices = invoicesRes.status === "fulfilled" ? invoicesRes.value.data.map(mapApiInvoice) : [];
+        setSales(salesRes.value.data.map((sale: any) => mapApiSale(
+          sale,
+          mappedInvoices.find((invoice) => invoice.sale_id === String(sale.id) && ["01", "04"].includes(invoice.doc_type)),
+        )));
+        if (salesRes.value.data.length > 0) hasData = true;
+      }
+      if (purchasesRes.status === "fulfilled" && purchasesRes.value?.data) {
+        const supplierRows = suppliersRes.status === "fulfilled" ? suppliersRes.value.data : [];
+        setPurchases(purchasesRes.value.data.map((row: any) => ({
+          id: String(row.id),
+          organization_id: String(row.organization_id),
+          supplier_name: supplierRows.find((supplier: any) => String(supplier.id) === String(row.supplier_id))?.name || "Proveedor",
+          invoice_number: row.invoice_number || row.purchase_number,
+          payment_type: row.payment_method === "CREDITO" ? "CREDITO" : "CONTADO",
+          total_amount: numberValue(row.total_amount),
+          items_count: (row.items || []).reduce((sum: number, item: any) => sum + numberValue(item.quantity), 0),
+          created_at: row.created_at,
+          status: row.status === "CANCELLED" ? "CANCELLED" : "COMPLETED",
+        })));
+      }
+      if (movementsRes.status === "fulfilled" && movementsRes.value?.data) {
+        setMovements(movementsRes.value.data.map(mapApiMovement));
+      }
+      if (cashRes.status === "fulfilled") {
+        setActiveCashSession(cashRes.value?.data ? mapApiCashSession(cashRes.value.data) : null);
+      }
+      if (supportRes.status === "fulfilled" && supportRes.value?.data) {
+        const fallback = {
+          organizationId: orgId,
+          organizationName: orgRes.status === "fulfilled" ? orgRes.value?.data?.trade_name || "Mi Negocio" : "Mi Negocio",
+          userName: user?.full_name || "Usuario",
+          userEmail: user?.email || "",
+        };
+        const hydrated = await Promise.all(
+          supportRes.value.data.map(async (summary: any) => {
+            try {
+              const detail = await api.request<any>(`/support/tickets/${summary.id}`);
+              return mapApiSupportTicket(detail.data, fallback);
+            } catch {
+              return mapApiSupportTicket(summary, fallback);
+            }
+          }),
+        );
+        setSupportTickets(hydrated);
+      }
+      if (grantRes.status === "fulfilled") {
+        const grant = grantRes.value?.data;
+        setActiveSupportGrant(grant ? {
+          id: String(grant.grant_id),
+          organization_id: orgId,
+          organization_name: orgRes.status === "fulfilled" ? orgRes.value?.data?.trade_name || "Mi Negocio" : "Mi Negocio",
+          granted_by_user_id: user?.id || "",
+          reason: grant.reason,
+          permission_level: grant.permission_level,
+          expires_at: grant.expires_at,
+          created_at: grant.created_at,
+          is_revoked: Boolean(grant.is_revoked),
+        } : null);
+      }
+      if (branchesRes.status === "fulfilled" && branchesRes.value?.data) {
+        setBranches(branchesRes.value.data);
+      }
+      if (suppliersRes.status === "fulfilled" && suppliersRes.value?.data) {
+        setSuppliers(suppliersRes.value.data.map((row: any) => ({
+          id: String(row.id),
+          organization_id: String(row.organization_id),
+          name: row.name,
+          legal_id: row.identification_number,
+          legal_id_type: row.identification_type,
+          contact_person: row.trade_name || "",
+          phone: row.phone || "",
+          email: row.email || "",
+          address: row.address || "",
+          created_at: row.created_at,
+        })));
+      }
+      if (orgRes.status === "fulfilled" && orgRes.value?.data) {
+        const org = orgRes.value.data;
+        setSettings((previous) => ({
+          ...previous,
+          trade_name: org.trade_name,
+          legal_name: org.legal_name,
+          identification_type: org.identification_type,
+          identification_number: org.identification_number,
+          email: org.email,
+          phone: org.phone || "",
+          address: org.address_detail || "",
+          tax_regime: org.tax_regime,
+          default_currency: org.default_currency,
+          atv_environment: org.atv_environment,
+          economic_activity_code: org.economic_activity_code || "",
+          province_code: org.province_code || "1",
+          canton_code: org.canton_code || "01",
+          district_code: org.district_code || "01",
+          neighborhood_code: org.neighborhood_code || "",
+          branch_name: branchesRes.status === "fulfilled" ? branchesRes.value.data[0]?.name || previous.branch_name : previous.branch_name,
+        }));
+      }
+      if (auditRes.status === "fulfilled" && auditRes.value?.data) {
+        setAuditLogs(auditRes.value.data.map((row: any) => ({
+          id: String(row.id),
+          organization_id: String(row.organization_id || orgId),
+          created_at: row.created_at,
+          actor_name: row.actor_id ? `Usuario ${String(row.actor_id).slice(0, 8)}` : "Sistema",
+          action: row.action,
+          resource: row.resource_id ? `${row.resource}: ${row.resource_id}` : row.resource,
+          ip_address: row.ip_address || "—",
+        })));
+      }
+      if (suppliersRes.status === "fulfilled" && suppliersRes.value?.data) {
+        setSuppliers(suppliersRes.value.data);
+      }
+      if (quotesRes.status === "fulfilled" && quotesRes.value?.data) {
+        setQuotes(quotesRes.value.data.map(mapApiQuote));
+      }
+
+      setIsOffline(false);
+      setFiscalContingencyNotice(null);
+      setFetchStatus(hasData ? "idle" : "empty");
+    } catch (err: any) {
+      if (err?.status === 401) {
+        setFetchStatus("unauthorized");
+        setErrorMessage("Sesión no autorizada o expirada.");
+      } else {
+        setFetchStatus("offline");
+        setIsOffline(true);
+        setFiscalContingencyNotice(
+          "Sin conexión con el servidor central de Orbítica. Por disposición tributaria de la DGT, la emisión fiscal automática requiere validación en línea. En caso de contingencia prolongada, debe utilizar comprobantes físicos preimpresos autorizados."
+        );
+        setErrorMessage("Sin conexión con el backend central.");
+      }
     } finally {
       setIsLoaded(true);
     }
-  }, [orgId]);
+  }, [orgId, user?.email, user?.full_name, user?.id]);
 
-  // Save changes isolated by organization_id
   useEffect(() => {
-    if (!isLoaded || typeof window === "undefined" || !orgId) return;
+    fetchBusinessData();
+  }, [fetchBusinessData]);
+
+  // Persist only non-business UI draft preferences (promotions, draft cart)
+  useEffect(() => {
+    if (typeof window === "undefined" || !orgId) return;
     try {
-      localStorage.setItem(`orbitica_products_${orgId}`, JSON.stringify(products));
-      localStorage.setItem(`orbitica_customers_${orgId}`, JSON.stringify(customers));
-      localStorage.setItem(`orbitica_suppliers_${orgId}`, JSON.stringify(suppliers));
-      localStorage.setItem(`orbitica_purchases_${orgId}`, JSON.stringify(purchases));
-      localStorage.setItem(`orbitica_movements_${orgId}`, JSON.stringify(movements));
-      localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(sales));
-      localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(invoices));
-      localStorage.setItem(`orbitica_employees_${orgId}`, JSON.stringify(employees));
-      localStorage.setItem(`orbitica_branches_${orgId}`, JSON.stringify(branches));
-      localStorage.setItem(`orbitica_quotes_${orgId}`, JSON.stringify(quotes));
-      localStorage.setItem(`orbitica_expenses_${orgId}`, JSON.stringify(expenses));
-      localStorage.setItem(`orbitica_work_orders_${orgId}`, JSON.stringify(workOrders));
-      localStorage.setItem(`orbitica_dispatch_${orgId}`, JSON.stringify(dispatchOrders));
-      localStorage.setItem(`orbitica_coupons_${orgId}`, JSON.stringify(coupons));
-      localStorage.setItem(`orbitica_loyalty_${orgId}`, JSON.stringify(loyaltyMembers));
-      localStorage.setItem(`orbitica_bank_accounts_${orgId}`, JSON.stringify(bankAccounts));
-      localStorage.setItem(`orbitica_bank_tx_${orgId}`, JSON.stringify(bankTransactions));
       localStorage.setItem(`orbitica_suspended_${orgId}`, JSON.stringify(suspendedSales));
-      localStorage.setItem(`orbitica_audit_${orgId}`, JSON.stringify(auditLogs));
-      localStorage.setItem(`orbitica_settings_${orgId}`, JSON.stringify(settings));
-      if (activeCashSession) {
-        localStorage.setItem(`orbitica_cash_${orgId}`, JSON.stringify(activeCashSession));
-      } else {
-        localStorage.removeItem(`orbitica_cash_${orgId}`);
-      }
     } catch (e) {}
-  }, [
-    products,
-    customers,
-    suppliers,
-    purchases,
-    movements,
-    sales,
-    invoices,
-    employees,
-    branches,
-    quotes,
-    expenses,
-    workOrders,
-    dispatchOrders,
-    coupons,
-    loyaltyMembers,
-    bankAccounts,
-    bankTransactions,
-    suspendedSales,
-    auditLogs,
-    settings,
-    activeCashSession,
-    orgId,
-    isLoaded,
-  ]);
+  }, [suspendedSales, orgId]);
 
   const logAudit = (action: string, resource: string) => {
-    const entry: AuditLogEntry = {
-      id: `aud_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      actor_name: user?.full_name || "Usuario",
-      action,
-      resource,
-      ip_address: "127.0.0.1",
-    };
-    setAuditLogs((prev) => [entry, ...prev]);
+    // Authoritative audit events are generated server-side with actor, IP and hash chain.
+    void action;
+    void resource;
   };
 
-  const updateSettings = (newSettings: Partial<BusinessSettings>) => {
+  const updateSettings = async (newSettings: Partial<BusinessSettings>) => {
+    const allowedFields = [
+      "legal_name", "trade_name", "identification_type", "identification_number",
+      "email", "phone", "default_currency", "economic_activity_code",
+      "province_code", "canton_code", "district_code", "neighborhood_code",
+      "address_detail", "tax_regime", "atv_environment",
+    ];
+    const payload: Record<string, unknown> = {};
+    const source = { ...newSettings, address_detail: newSettings.address } as Record<string, unknown>;
+    allowedFields.forEach((field) => {
+      if (source[field] !== undefined) payload[field] = source[field];
+    });
+    await api.request("/organizations/me", { method: "PATCH", body: JSON.stringify(payload) });
     setSettings((prev) => ({ ...prev, ...newSettings }));
-    logAudit("SETTINGS_UPDATED", "Configuración Comercial");
+    await fetchBusinessData();
   };
 
   // Products
-  const addProduct = (prod: Omit<Product, "id" | "organization_id">): Product => {
-    const newProduct: Product = {
-      ...prod,
-      id: `prod_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    logAudit("PRODUCT_CREATED", `Producto: ${newProduct.name}`);
-    return newProduct;
+  const resolveTaxRateId = async (rate: number): Promise<string> => {
+    const response = await api.request<any[]>("/tax-rates");
+    let tax = response.data.find((row) => numberValue(row.rate) === rate);
+    if (!tax) {
+      const created = await api.request<any>("/tax-rates", {
+        method: "POST",
+        body: JSON.stringify({ name: `IVA ${rate}%`, code_cr: "01", rate, is_default: false }),
+      });
+      tax = created.data;
+    }
+    return String(tax.id);
   };
 
-  const updateProduct = (id: string, updated: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updated } : p))
-    );
-    logAudit("PRODUCT_UPDATED", `Producto ID: ${id}`);
+  const resolveCategoryId = async (name?: string): Promise<string | null> => {
+    if (!name?.trim()) return null;
+    const response = await api.request<any[]>("/categories");
+    let category = response.data.find((row) => row.name.toLowerCase() === name.trim().toLowerCase());
+    if (!category) {
+      category = (await api.request<any>("/categories", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() }),
+      })).data;
+    }
+    return String(category.id);
   };
 
-  const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    logAudit("PRODUCT_DELETED", `Producto ID: ${id}`);
+  const addProduct = async (prod: Omit<Product, "id" | "organization_id">): Promise<Product> => {
+    if (!prod.cabys_code) throw new Error("Selecciona un código CAByS oficial antes de guardar.");
+    const taxRateId = await resolveTaxRateId(prod.tax_rate);
+    const categoryId = await resolveCategoryId(prod.category_name);
+    const branchId = branches[0]?.id;
+    const response = await api.request<any>("/products", {
+      method: "POST",
+      body: JSON.stringify({
+        name: prod.name,
+        sku: prod.sku || null,
+        barcode: prod.barcode || null,
+        category_id: categoryId,
+        tax_rate_id: taxRateId,
+        cabys_code: prod.cabys_code,
+        unit_of_measure: prod.unit_of_measure || "Unid",
+        cost_price: prod.cost_price,
+        sale_price: prod.sale_price,
+        min_stock_alert: prod.min_stock_alert,
+        is_service: Boolean(prod.is_service),
+        initial_stock: prod.stock || 0,
+        branch_id: branchId || null,
+      }),
+    });
+    await fetchBusinessData();
+    return { ...mapApiProduct(response.data), stock: prod.stock || 0, tax_rate: prod.tax_rate, category_name: prod.category_name };
+  };
+
+  const updateProduct = async (id: string, updated: Partial<Product>) => {
+    const existing = products.find((product) => product.id === id);
+    if (!existing) throw new Error("Producto no encontrado.");
+    const payload: Record<string, unknown> = {};
+    for (const field of ["name", "sku", "barcode", "cabys_code", "unit_of_measure", "cost_price", "sale_price", "min_stock_alert", "is_service"] as const) {
+      if (updated[field] !== undefined) payload[field] = updated[field];
+    }
+    if (updated.tax_rate !== undefined) payload.tax_rate_id = await resolveTaxRateId(updated.tax_rate);
+    if (updated.category_name !== undefined) payload.category_id = await resolveCategoryId(updated.category_name);
+    await api.request(`/products/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+
+    if (updated.stock !== undefined && updated.stock !== existing.stock) {
+      const branchId = branches[0]?.id;
+      if (!branchId) throw new Error("No existe una sucursal activa para ajustar inventario.");
+      const delta = updated.stock - existing.stock;
+      await api.request("/inventory/adjust", {
+        method: "POST",
+        body: JSON.stringify({
+          branch_id: branchId,
+          product_id: id,
+          quantity: delta,
+          movement_type: delta >= 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT",
+          reason: "Ajuste desde edición de producto",
+        }),
+      });
+    }
+    await fetchBusinessData();
+  };
+
+  const deleteProduct = async (id: string) => {
+    await api.request(`/products/${id}`, { method: "DELETE" });
+    await fetchBusinessData();
   };
 
   // Customers
-  const addCustomer = (cust: Omit<Customer, "id" | "organization_id">): Customer => {
-    const newCustomer: Customer = {
-      ...cust,
-      id: `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
-    };
-    setCustomers((prev) => [newCustomer, ...prev]);
-    logAudit("CUSTOMER_CREATED", `Cliente: ${newCustomer.name}`);
-    return newCustomer;
+  const addCustomer = async (cust: Omit<Customer, "id" | "organization_id">): Promise<Customer> => {
+    const response = await api.request<any>("/customers", {
+      method: "POST",
+      body: JSON.stringify(cust),
+    });
+    await fetchBusinessData();
+    return mapApiCustomer(response.data);
   };
 
-  const updateCustomer = (id: string, updated: Partial<Customer>) => {
-    setCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...updated } : c))
-    );
+  const updateCustomer = async (id: string, updated: Partial<Customer>) => {
+    await api.request(`/customers/${id}`, { method: "PATCH", body: JSON.stringify(updated) });
+    await fetchBusinessData();
   };
 
-  const deleteCustomer = (id: string) => {
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
-    logAudit("CUSTOMER_DELETED", `Cliente ID: ${id}`);
+  const deleteCustomer = async (id: string) => {
+    await api.request(`/customers/${id}`, { method: "DELETE" });
+    await fetchBusinessData();
   };
 
   // Suppliers
-  const addSupplier = (supp: Omit<Supplier, "id" | "organization_id">): Supplier => {
-    const newSupplier: Supplier = {
+  const addSupplier = async (supp: Omit<Supplier, "id" | "organization_id">): Promise<Supplier> => {
+    const response = await api.request<any>("/suppliers", {
+      method: "POST",
+      body: JSON.stringify({
+        name: supp.name,
+        identification_number: supp.legal_id,
+        identification_type: supp.legal_id_type,
+        trade_name: supp.contact_person || null,
+        phone: supp.phone || null,
+        email: supp.email || null,
+        address: supp.address || null,
+      }),
+    });
+    await fetchBusinessData();
+    return {
       ...supp,
-      id: `supp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
+      id: String(response.data.id),
+      organization_id: String(response.data.organization_id),
+      created_at: response.data.created_at,
     };
-    setSuppliers((prev) => [newSupplier, ...prev]);
-    logAudit("SUPPLIER_CREATED", `Proveedor: ${newSupplier.name}`);
-    return newSupplier;
   };
 
-  const updateSupplier = (id: string, updated: Partial<Supplier>) => {
-    setSuppliers((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, ...updated } : s))
-    );
+  const updateSupplier = async (id: string, updated: Partial<Supplier>) => {
+    await api.request(`/suppliers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: updated.name,
+        identification_number: updated.legal_id,
+        identification_type: updated.legal_id_type,
+        trade_name: updated.contact_person,
+        phone: updated.phone,
+        email: updated.email,
+        address: updated.address,
+      }),
+    });
+    await fetchBusinessData();
   };
 
-  const deleteSupplier = (id: string) => {
-    setSuppliers((prev) => prev.filter((s) => s.id !== id));
-    logAudit("SUPPLIER_DELETED", `Proveedor ID: ${id}`);
+  const deleteSupplier = async (id: string) => {
+    await api.request(`/suppliers/${id}`, { method: "PATCH", body: JSON.stringify({ is_active: false }) });
+    await fetchBusinessData();
   };
 
   // Employees
@@ -619,30 +921,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Quotes
-  const addQuote = (q: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">): Quote => {
-    const num = `COT-${String(Date.now()).slice(-6)}`;
-    const newQuote: Quote = {
-      ...q,
-      id: `quote_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      quote_number: num,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-    };
-    setQuotes((prev) => [newQuote, ...prev]);
-    logAudit("QUOTE_CREATED", `Cotización: ${newQuote.quote_number} - ${newQuote.customer_name}`);
-    return newQuote;
+  const addQuote = async (q: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">): Promise<Quote> => {
+    const customer = customers.find((c) => q.customer_identification ? c.identification_number === q.customer_identification : c.name.toLowerCase() === q.customer_name.toLowerCase());
+    if (!customer) throw new Error("Registra al cliente en Clientes antes de crear su cotización.");
+    const response = await api.request<any>("/quotes", { method: "POST", body: {
+      branch_id: activeCashSession?.branch_id || branches[0]?.id,
+      customer_id: customer.id,
+      valid_days: Math.max(1, Math.min(90, Math.ceil((new Date(q.valid_until).getTime() - Date.now()) / 86400000))),
+      notes: q.notes, items: q.items.map((item) => ({product_id: item.product_id, quantity: item.quantity, discount_percentage: 0})),
+    }});
+    const quote = mapApiQuote(response.data);
+    await fetchBusinessData();
+    return quote;
   };
 
-  const updateQuote = (id: string, updated: Partial<Quote>) => {
-    setQuotes((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, ...updated } : q))
-    );
-    logAudit("QUOTE_UPDATED", `Cotización ID: ${id}`);
+  const updateQuote = (_id: string, _updated: Partial<Quote>) => {
+    throw new Error("La edición de cotizaciones aún no está disponible. Crea una cotización nueva.");
   };
 
-  const deleteQuote = (id: string) => {
-    setQuotes((prev) => prev.filter((q) => q.id !== id));
-    logAudit("QUOTE_DELETED", `Cotización ID: ${id}`);
+  const deleteQuote = async (id: string) => {
+    await api.request(`/quotes/${id}`, {method: "DELETE"});
+    await fetchBusinessData();
   };
 
   // Expenses
@@ -903,7 +1202,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Purchases & Inventory
-  const recordPurchase = ({
+  const recordPurchase = async ({
     supplierName,
     invoiceNumber,
     paymentType,
@@ -913,59 +1212,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     invoiceNumber: string;
     paymentType: "CONTADO" | "CREDITO";
     items: Array<{ productId?: string; productName: string; quantity: number; unitCost: number }>;
-  }): PurchaseRecord => {
-    const totalAmount = items.reduce((acc, it) => acc + it.quantity * it.unitCost * 1.13, 0);
+  }): Promise<PurchaseRecord> => {
+    const branchId = branches[0]?.id;
+    const supplier = suppliers.find((row) => row.name === supplierName);
+    if (!branchId) throw new Error("No existe una sucursal activa.");
+    if (!supplier) throw new Error("Selecciona un proveedor registrado antes de guardar la compra.");
+    if (items.some((item) => !item.productId)) throw new Error("Todos los renglones deben corresponder a productos registrados.");
 
-    const purchase: PurchaseRecord = {
-      id: `purch_${Date.now()}`,
-      organization_id: orgId,
-      supplier_name: supplierName,
-      invoice_number: invoiceNumber,
-      payment_type: paymentType,
-      total_amount: totalAmount,
-      items_count: items.reduce((acc, it) => acc + it.quantity, 0),
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-      status: "RECEIVED",
-    };
-
-    setPurchases((prev) => [purchase, ...prev]);
-
-    // Update stock and create inventory movements
-    items.forEach((it) => {
-      let prevStock = 0;
-      if (it.productId) {
-        setProducts((prev) =>
-          prev.map((p) => {
-            if (p.id === it.productId) {
-              prevStock = p.stock ?? 0;
-              const newStock = prevStock + it.quantity;
-              return { ...p, stock: newStock, cost_price: it.unitCost };
-            }
-            return p;
-          })
-        );
-      }
-
-      const mov: InventoryMovement = {
-        id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        organization_id: orgId,
-        created_at: purchase.created_at,
-        product_name: it.productName,
-        movement_type: "IN_PURCHASE",
-        quantity: it.quantity,
-        previous_quantity: prevStock,
-        new_quantity: prevStock + it.quantity,
-        actor_name: user?.full_name || "Propietario",
-        reason: `Compra factura #${invoiceNumber} (${supplierName})`,
-      };
-      setMovements((prev) => [mov, ...prev]);
+    const response = await api.request<any>("/purchases", {
+      method: "POST",
+      body: JSON.stringify({
+        branch_id: branchId,
+        supplier_id: supplier.id,
+        invoice_number: invoiceNumber,
+        currency: settings.default_currency,
+        payment_method: paymentType,
+        items: items.map((item) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+          unit_cost: item.unitCost,
+          tax_rate: products.find((product) => product.id === item.productId)?.tax_rate ?? 13,
+        })),
+      }),
     });
-
-    logAudit("PURCHASE_RECORDED", `Compra Factura: ${invoiceNumber}`);
-    return purchase;
+    await fetchBusinessData();
+    return {
+      id: String(response.data.id),
+      organization_id: String(response.data.organization_id),
+      supplier_name: supplier.name,
+      invoice_number: response.data.invoice_number || response.data.purchase_number,
+      payment_type: paymentType,
+      total_amount: numberValue(response.data.total_amount),
+      items_count: items.reduce((sum, item) => sum + item.quantity, 0),
+      created_at: response.data.created_at,
+      status: "COMPLETED",
+    };
   };
 
-  const recordAdjustment = ({
+  const recordAdjustment = async ({
     productId,
     productName,
     movementType,
@@ -977,41 +1261,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     movementType: "IN_PURCHASE" | "OUT_SALE" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "RETURN_IN" | "WASTE";
     quantity: number;
     reason?: string;
-  }): InventoryMovement => {
-    let currentStock = 0;
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === productId) {
-          currentStock = p.stock ?? 0;
-          const updatedStock = Math.max(0, currentStock + quantity);
-          return { ...p, stock: updatedStock };
-        }
-        return p;
-      })
-    );
-
-    const mov: InventoryMovement = {
-      id: `mov_${Date.now()}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-      product_name: productName,
-      movement_type: movementType,
-      quantity,
-      previous_quantity: currentStock,
-      new_quantity: Math.max(0, currentStock + quantity),
-      actor_name: user?.full_name || "Administrador",
-      reason: reason || "Ajuste manual de stock",
-    };
-
-    setMovements((prev) => [mov, ...prev]);
-    logAudit("INVENTORY_ADJUSTED", `Ajuste en ${productName} (${quantity > 0 ? "+" : ""}${quantity})`);
-    return mov;
+  }): Promise<InventoryMovement> => {
+    const branchId = branches[0]?.id;
+    if (!branchId) throw new Error("No existe una sucursal activa.");
+    const response = await api.request<any>("/inventory/adjust", {
+      method: "POST",
+      body: JSON.stringify({
+        branch_id: branchId,
+        product_id: productId,
+        movement_type: movementType,
+        quantity,
+        reason: reason || "Ajuste manual de inventario",
+      }),
+    });
+    await fetchBusinessData();
+    return mapApiMovement({ ...response.data, product_name: productName, actor_name: user?.full_name });
   };
 
   // Sales
-  const recordSale = ({
+  const pendingSaleAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  const recordSale = async ({
     items,
     paymentMethod,
+    payments,
     cashReceived = 0,
     sinpeRef,
     customerName = "CLIENTE CONTADO",
@@ -1019,8 +1292,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     docType = "04",
     isTest = false,
   }: {
-    items: Array<{ product: Product; quantity: number }>;
+    items: Array<{ product: Product; quantity: number; discountPercentage?: number }>;
     paymentMethod: "CASH_CRC" | "SINPE" | "CARD" | "MIXED";
+    payments?: Array<{ payment_method: string; amount: number; reference_number?: string }>;
     cashReceived?: number;
     sinpeRef?: string;
     customerName?: string;
@@ -1028,250 +1302,153 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     docType?: "04" | "01";
     isTest?: boolean;
   }) => {
-    const seq = sales.length + 1;
-    const saleNum = isTest ? `TEST-${seq.toString().padStart(4, "0")}` : `V-${seq.toString().padStart(6, "0")}`;
-    const consecutive = `00100001${docType}${seq.toString().padStart(10, "0")}`;
+    const branchId = branches[0]?.id;
+    if (!branchId) throw new Error("No existe una sucursal activa para procesar la venta.");
+    if (!activeCashSession?.id) throw new Error("Debes abrir una caja antes de vender.");
 
-    // Standard 50-digit Hacienda numeric key:
-    // Country (3) + Day (2) + Month (2) + Year (2) + Emisor Cedula (12) + Consecutive (20) + Situation (1) + Security Code (8)
-    const now = new Date();
-    const d = String(now.getDate()).padStart(2, "0");
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const y = String(now.getFullYear()).slice(-2);
-    const rawCedula = (settings.identification_number || "0").replace(/\D/g, "");
-    const cedula12 = rawCedula.padStart(12, "0").slice(-12);
-    const securityCode = Math.floor(10000000 + Math.random() * 90000000).toString();
-    const key = `506${d}${m}${y}${cedula12}${consecutive}1${securityCode}`;
+    let customerId: string | null = null;
+    if (docType === "01") {
+      if (!customerCedula || !customerName || customerName === "CLIENTE CONTADO") {
+        throw new Error("La factura electrónica requiere nombre e identificación del cliente.");
+      }
+      let customer = customers.find((row) => row.identification_number === customerCedula);
+      if (!customer) {
+        const digits = customerCedula.replace(/\D/g, "");
+        const identificationType = digits.length === 9 ? "01" : digits.length === 10 ? "02" : digits.length <= 12 ? "03" : "04";
+        customer = mapApiCustomer((await api.request<any>("/customers", {
+          method: "POST",
+          body: JSON.stringify({
+            name: customerName,
+            identification_type: identificationType,
+            identification_number: customerCedula,
+          }),
+        })).data);
+      }
+      customerId = customer.id;
+    }
 
-    const subtotal = items.reduce((acc, it) => acc + it.product.sale_price * it.quantity, 0);
-    const tax = items.reduce(
-      (acc, it) => acc + it.product.sale_price * it.quantity * (it.product.tax_rate / 100),
-      0
-    );
-    const total = subtotal + tax;
-
-    // Deduct stock & create movement (only for non-test or track as test)
-    setProducts((prev) =>
-      prev.map((p) => {
-        const itemSold = items.find((it) => it.product.id === p.id);
-        if (itemSold) {
-          const newStock = Math.max(0, (p.stock ?? 0) - itemSold.quantity);
-          return { ...p, stock: newStock };
-        }
-        return p;
-      })
-    );
-
-    items.forEach((it) => {
-      const mov: InventoryMovement = {
-        id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        organization_id: orgId,
-        created_at: new Date().toISOString().replace("T", " ").substring(0, 16),
-        product_name: it.product.name,
-        movement_type: "OUT_SALE",
-        quantity: -it.quantity,
-        previous_quantity: it.product.stock ?? 0,
-        new_quantity: Math.max(0, (it.product.stock ?? 0) - it.quantity),
-        actor_name: user?.full_name || "Cajero",
-        reason: `${isTest ? "[PRUEBA] " : ""}Venta en POS #${saleNum}`,
-      };
-      setMovements((prev) => [mov, ...prev]);
+    const amountDue = items.reduce((sum, item) => {
+      const gross = Number((item.product.sale_price * item.quantity).toFixed(2));
+      const pct = Number((item.discountPercentage || 0).toFixed(2));
+      return sum + gross - Number((gross * pct / 100).toFixed(2));
+    }, 0);
+    const paymentTotal = paymentMethod === "CASH_CRC" && cashReceived > 0 ? cashReceived : Number(amountDue.toFixed(2));
+    const payload = {
+      branch_id: branchId,
+      cash_session_id: activeCashSession.id,
+      customer_id: customerId,
+      currency: settings.default_currency,
+      notes: isTest ? "VENTA DE PRUEBA EN AMBIENTE STAGING" : undefined,
+      items: items.map((item) => ({
+        product_id: item.product.id, quantity: item.quantity,
+        discount_percentage: Number((item.discountPercentage || 0).toFixed(2)),
+      })),
+      payments: payments?.length ? payments : [{
+        payment_method: paymentMethod, amount: paymentTotal,
+        reference_number: sinpeRef || null,
+      }],
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (pendingSaleAttempt.current?.fingerprint !== fingerprint) {
+      pendingSaleAttempt.current = { fingerprint, key: crypto.randomUUID() };
+    }
+    const saleResponse = await api.request<any>("/sales", {
+      method: "POST", body: fingerprint,
+      headers: { "Idempotency-Key": pendingSaleAttempt.current!.key },
     });
 
-    const receiptData = {
-      sale_number: saleNum,
-      is_test: isTest,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      store: {
-        name: settings.trade_name,
-        legal_name: settings.legal_name,
-        legal_id: settings.identification_number,
-        phone: settings.phone,
-        email: settings.email,
-        address: settings.address,
-        branch_name: settings.branch_name,
-      },
-      customer: {
-        name: customerName,
-        identification: customerCedula || null,
-      },
-      hacienda: {
-        doc_type: docType === "01" ? "Factura Electrónica (01)" : "Tiquete Electrónico (04)",
-        consecutive,
-        numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019 (Esquema v4.4)",
-        qr_url: `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${key}`,
-      },
-      items: items.map((it) => ({
-        name: it.product.name,
-        quantity: it.quantity,
-        unit_price: it.product.sale_price,
-        tax_amount: it.product.sale_price * (it.product.tax_rate / 100) * it.quantity,
-        total: it.product.sale_price * (1 + it.product.tax_rate / 100) * it.quantity,
-      })),
-      totals: {
-        subtotal,
-        discount: 0,
-        tax,
-        total,
-        currency: settings.default_currency,
-      },
-      payments: [
-        {
-          method: paymentMethod,
-          amount: paymentMethod === "CASH_CRC" && cashReceived > 0 ? cashReceived : total,
-          reference: sinpeRef || null,
-        },
-      ],
-      footer_message: isTest
-        ? "⚠️ COMPROBANTE DE PRUEBA — NO VÁLIDO PARA EFECTOS TRIBUTARIOS"
-        : `¡Gracias por su compra en ${settings.trade_name}!`,
-    };
+    const invoiceList = await api.request<any[]>("/invoices?limit=20");
+    const invoiceRow = invoiceList.data.find((row) => String(row.sale_id) === String(saleResponse.data.id) && ["01", "04"].includes(row.doc_type));
+    if (!invoiceRow) throw new Error("La venta se guardó, pero no se creó su comprobante fiscal. Contacta soporte antes de reintentar.");
 
-    const newSale: SaleRecord = {
-      id: `sale_${Date.now()}`,
-      organization_id: orgId,
-      sale_number: saleNum,
-      consecutive_number: consecutive,
-      numeric_key: key,
-      total,
-      subtotal,
-      tax,
-      payment_method: paymentMethod,
-      customer_name: customerName,
-      customer_cedula: customerCedula || null,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      items_count: items.reduce((acc, it) => acc + it.quantity, 0),
-      status: "COMPLETED",
-      is_test: isTest,
-      items_snapshot: items.map((it) => ({
-        name: it.product.name,
-        quantity: it.quantity,
-        unit_price: it.product.sale_price,
-        tax_rate: it.product.tax_rate,
-        tax_amount: it.product.sale_price * (it.product.tax_rate / 100) * it.quantity,
-        total: it.product.sale_price * (1 + it.product.tax_rate / 100) * it.quantity,
-      })),
-      receipt_data: receiptData,
-    };
-
-    const newInvoice: InvoiceRecord = {
-      id: `inv_${Date.now()}`,
-      organization_id: orgId,
-      doc_type: docType,
-      doc_type_label: docType === "01" ? "Factura Electrónica (01)" : "Tiquete Electrónico (04)",
-      consecutive_number: consecutive,
-      numeric_key: key,
-      created_at: newSale.created_at,
-      customer_name: customerName,
-      total,
-      status: "ACCEPTED",
-      is_test: isTest,
-      hacienda_message: isTest
-        ? "Venta de prueba simulada exitosamente (Ambiente Sandbox)"
-        : "Comprobante electrónico aceptado exitosamente por Ministerio de Hacienda CR v4.4",
-      xml_signed: `<?xml version="1.0" encoding="utf-8"?>\n<${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"} xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/${docType === "01" ? "facturaElectronica" : "tiqueteElectronico"}">\n  <Clave>${key}</Clave>\n  <NumeroConsecutivo>${consecutive}</NumeroConsecutivo>\n  <FechaEmision>${new Date().toISOString()}</FechaEmision>\n  <Emisor>\n    <Nombre>${settings.legal_name}</Nombre>\n    <Identificacion><Tipo>02</Tipo><Numero>${settings.identification_number}</Numero></Identificacion>\n  </Emisor>\n  <ResumenFactura>\n    <CodigoTipoMoneda><CodigoMoneda>${settings.default_currency}</CodigoMoneda><TipoCambio>1.00</TipoCambio></CodigoTipoMoneda>\n    <TotalComprobante>${total.toFixed(2)}</TotalComprobante>\n  </ResumenFactura>\n</${docType === "01" ? "FacturaElectronica" : "TiqueteElectronico"}>`,
-    };
-
-    setSales((prev) => [newSale, ...prev]);
-    setInvoices((prev) => [newInvoice, ...prev]);
-
-    if (activeCashSession && !isTest) {
-      const updatedCash: CashSession = {
-        ...activeCashSession,
-        total_sales: activeCashSession.total_sales + total,
-        cash_sales: paymentMethod === "CASH_CRC" ? activeCashSession.cash_sales + total : activeCashSession.cash_sales,
-        sinpe_sales: paymentMethod === "SINPE" ? activeCashSession.sinpe_sales + total : activeCashSession.sinpe_sales,
-        card_sales: paymentMethod === "CARD" ? activeCashSession.card_sales + total : activeCashSession.card_sales,
-      };
-      setActiveCashSession(updatedCash);
+    let fiscalWarning: string | undefined;
+    let queuedInvoice = invoiceRow;
+    try {
+      queuedInvoice = (await api.request<any>(`/invoices/${invoiceRow.id}/send-hacienda`, { method: "POST" })).data;
+    } catch (error: any) {
+      fiscalWarning = `La venta ${saleResponse.data.sale_number} quedó guardada, pero su comprobante sigue pendiente: ${error?.message || "no se pudo encolar"}. No repitas la venta.`;
     }
 
-    logAudit("SALE_COMPLETED", `${isTest ? "[PRUEBA] " : ""}Venta #${saleNum} (${paymentMethod})`);
-
-    return { sale: newSale, invoice: newInvoice, receiptData: newSale.receipt_data };
+    const receiptResponse = await api.request<any>(`/sales/${saleResponse.data.id}/receipt`);
+    const invoice = mapApiInvoice(queuedInvoice);
+    const sale = mapApiSale(saleResponse.data, invoice);
+    sale.receipt_data = receiptResponse.data;
+    await fetchBusinessData();
+    pendingSaleAttempt.current = null;
+    return { sale, invoice, receiptData: receiptResponse.data, fiscalWarning };
   };
 
-  const openCashSession = (initialAmount: number) => {
-    const session: CashSession = {
-      id: `cash_${Date.now()}`,
-      organization_id: orgId,
-      opened_at: new Date().toISOString(),
-      initial_amount: initialAmount,
-      cash_sales: 0,
-      sinpe_sales: 0,
-      card_sales: 0,
-      total_sales: 0,
-      status: "OPEN",
-    };
-    setActiveCashSession(session);
-    logAudit("CASH_SESSION_OPENED", `Apertura de Caja: ₡${initialAmount}`);
-  };
-
-  const closeCashSession = (actualCash?: number) => {
-    if (activeCashSession) {
-      const expectedCash = activeCashSession.initial_amount + activeCashSession.cash_sales;
-      const difference = actualCash !== undefined ? actualCash - expectedCash : 0;
-      const closed: CashSession = {
-        ...activeCashSession,
-        closed_at: new Date().toISOString(),
-        status: "CLOSED",
-        actual_cash: actualCash,
-        cash_difference: difference,
-      };
-      // Archive the session in history (never lose data)
-      try {
-        const historyKey = `orbitica_cash_history_${orgId}`;
-        const existing = JSON.parse(localStorage.getItem(historyKey) || "[]");
-        localStorage.setItem(historyKey, JSON.stringify([closed, ...existing]));
-      } catch {}
-      // Clear active session → next openCashSession will start fresh
-      setActiveCashSession(null);
-      const diff = difference !== 0 ? ` | Diferencia: ₡${difference.toFixed(2)}` : " | Cuadre exacto";
-      logAudit("CASH_SESSION_CLOSED", `Cierre de Caja: Ventas ₡${closed.total_sales.toFixed(2)}${diff}`);
+  const openCashSession = async (initialAmount: number) => {
+    const branchId = branches[0]?.id;
+    if (!branchId) throw new Error("No existe una sucursal activa.");
+    const registersResponse = await api.request<any[]>(`/cash-registers?branch_id=${branchId}`);
+    let register = registersResponse.data[0];
+    if (!register) {
+      register = (await api.request<any>("/cash-registers", {
+        method: "POST",
+        body: JSON.stringify({ branch_id: branchId, name: "Caja POS 01", pos_terminal_number: "00001" }),
+      })).data;
     }
+    await api.request("/cash-registers/sessions/open", {
+      method: "POST",
+      body: JSON.stringify({ cash_register_id: register.id, initial_cash_amount: initialAmount }),
+    });
+    await fetchBusinessData();
+  };
+
+  const closeCashSession = async (actualCash?: number) => {
+    if (!activeCashSession) throw new Error("No hay una sesión de caja abierta.");
+    const expected = activeCashSession.expected_cash_amount ?? activeCashSession.initial_amount + activeCashSession.cash_sales;
+    await api.request(`/cash-registers/sessions/${activeCashSession.id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ actual_cash_amount: actualCash ?? expected }),
+    });
+    await fetchBusinessData();
   };
 
   const updateSubscription = (details: Partial<SubscriptionDetails>) => {
-    setSubscription((prev) => {
-      const next = { ...prev, ...details };
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_subscription_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setSubscription((prev) => ({ ...prev, ...details }));
     logAudit("SUBSCRIPTION_UPDATED", `Suscripción actualizada a plan: ${details.plan_id || subscription.plan_id} (${details.state || subscription.state})`);
   };
 
   const updateOnboarding = (progress: Partial<OnboardingProgress>) => {
-    setOnboarding((prev) => {
-      const next = {
-        ...prev,
-        ...progress,
-        steps: { ...prev.steps, ...(progress.steps || {}) },
-        last_saved_at: new Date().toISOString(),
-      };
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_onboarding_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setOnboarding((prev) => ({
+      ...prev,
+      ...progress,
+      steps: { ...prev.steps, ...(progress.steps || {}) },
+      last_saved_at: new Date().toISOString(),
+    }));
+
+    if (orgId && orgId !== "default_tenant") {
+      api
+        .request("/organizations/onboarding", {
+          method: "PUT",
+          body: JSON.stringify({
+            current_step: progress.current_step,
+            is_completed: progress.is_completed,
+            business_data_completed: progress.steps?.business,
+            fiscal_data_completed: progress.steps?.fiscal,
+            branches_completed: progress.steps?.branches,
+            payments_completed: progress.steps?.payments,
+            products_completed: progress.steps?.products,
+            contacts_completed: progress.steps?.contacts,
+            users_completed: progress.steps?.users,
+          }),
+        })
+        .catch(() => {});
+    }
     logAudit("ONBOARDING_SAVED", `Progreso de onboarding guardado: Paso ${progress.current_step || onboarding.current_step}`);
   };
 
-  const executeImportBatch = (
+  const executeImportBatch = async (
     batchMeta: Omit<ImportBatch, "id" | "created_at" | "is_reverted" | "records_created_ids">,
     items: any[]
-  ): ImportBatch => {
+  ): Promise<ImportBatch> => {
     const createdIds: string[] = [];
 
     if (batchMeta.entity_type === "products") {
-      items.forEach((item) => {
-        const prod = addProduct({
+      for (const item of items) {
+        const prod = await addProduct({
           name: item.name || "Producto Importado",
           sku: item.sku || `SKU-${Date.now().toString().slice(-4)}`,
           barcode: item.barcode || "",
@@ -1279,14 +1456,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           cost_price: Number(item.cost_price) || 0,
           min_stock_alert: Number(item.min_stock_alert) || 5,
           tax_rate: item.tax_rate !== undefined ? Number(item.tax_rate) : 13,
+          cabys_code: item.cabys_code,
+          unit_of_measure: item.unit_of_measure || "Unid",
           category_name: item.category_name || "General",
           stock: Number(item.stock) || 0,
         });
         createdIds.push(prod.id);
-      });
+      }
     } else if (batchMeta.entity_type === "customers") {
-      items.forEach((item) => {
-        const cust = addCustomer({
+      for (const item of items) {
+        const cust = await addCustomer({
           name: item.name || "Cliente Importado",
           identification_type: item.identification_type || "FISICA",
           identification_number: item.identification_number || "000000000",
@@ -1296,10 +1475,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           is_active: true,
         });
         createdIds.push(cust.id);
-      });
+      }
     } else if (batchMeta.entity_type === "suppliers") {
-      items.forEach((item) => {
-        const supp = addSupplier({
+      for (const item of items) {
+        const supp = await addSupplier({
           name: item.name || "Proveedor Importado",
           legal_id: item.legal_id || "000000000",
           legal_id_type: item.legal_id_type || "JURIDICA",
@@ -1309,7 +1488,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           address: item.address || "",
         });
         createdIds.push(supp.id);
-      });
+      }
     }
 
     const batch: ImportBatch = {
@@ -1340,16 +1519,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return batch;
   };
 
-  const revertImportBatch = (batchId: string): boolean => {
+  const revertImportBatch = async (batchId: string): Promise<boolean> => {
     const batch = importBatches.find((b) => b.id === batchId && !b.is_reverted);
     if (!batch) return false;
 
     if (batch.entity_type === "products") {
-      setProducts((prev) => prev.filter((p) => !batch.records_created_ids.includes(p.id)));
+      await Promise.all(batch.records_created_ids.map((id) => deleteProduct(id)));
     } else if (batch.entity_type === "customers") {
-      setCustomers((prev) => prev.filter((c) => !batch.records_created_ids.includes(c.id)));
+      await Promise.all(batch.records_created_ids.map((id) => deleteCustomer(id)));
     } else if (batch.entity_type === "suppliers") {
-      setSuppliers((prev) => prev.filter((s) => !batch.records_created_ids.includes(s.id)));
+      await Promise.all(batch.records_created_ids.map((id) => deleteSupplier(id)));
     }
 
     setImportBatches((prev) => {
@@ -1366,110 +1545,81 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return true;
   };
 
-  const createSupportTicket = (
+  const createSupportTicket = async (
     ticketData: Omit<SupportTicket, "id" | "ticket_number" | "created_at" | "updated_at" | "messages">,
-    initialMessage: string
-  ): SupportTicket => {
-    const newTicket: SupportTicket = {
-      ...ticketData,
-      id: `tick_${Date.now()}`,
-      ticket_number: `TICK-${Math.floor(1000 + Math.random() * 9000)}`,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      messages: [
-        {
-          id: `msg_${Date.now()}`,
-          sender_type: "CLIENT",
-          sender_name: ticketData.created_by_name || user?.full_name || "Usuario",
-          message: initialMessage,
-          created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-        },
-      ],
-    };
-
-    setSupportTickets((prev) => {
-      const next = [newTicket, ...prev];
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_support_tickets_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
+    _initialMessage: string,
+  ): Promise<SupportTicket> => {
+    const created = await api.request<any>("/support/tickets", {
+      method: "POST",
+      body: JSON.stringify({
+        subject: ticketData.subject,
+        description: ticketData.description,
+        category: ticketData.category,
+        priority: ticketData.priority,
+        telemetry: ticketData.telemetry || null,
+      }),
     });
-
-    logAudit("SUPPORT_TICKET_CREATED", `Ticket creado #${newTicket.ticket_number}: ${newTicket.subject}`);
-    return newTicket;
+    const detail = await api.request<any>(`/support/tickets/${created.data.id}`);
+    const mapped = mapApiSupportTicket(detail.data, {
+      organizationId: orgId,
+      organizationName: ticketData.organization_name,
+      userName: ticketData.created_by_name,
+      userEmail: ticketData.created_by_email,
+    });
+    setSupportTickets((previous) => [mapped, ...previous.filter((ticket) => ticket.id !== mapped.id)]);
+    return mapped;
   };
 
-  const addSupportMessage = (ticketId: string, message: string, isInternal: boolean = false) => {
-    setSupportTickets((prev) => {
-      const next = prev.map((t) => {
-        if (t.id === ticketId) {
-          const newMsg: SupportMessage = {
-            id: `msg_${Date.now()}`,
-            sender_type: isInternal ? "SUPPORT_AGENT" : "CLIENT",
-            sender_name: isInternal ? "Especialista de Soporte Orbítica" : (user?.full_name || "Cliente"),
-            message,
-            is_internal_note: isInternal,
-            created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-          };
-          return {
-            ...t,
-            status: (isInternal ? "WAITING_CLIENT" : "IN_PROGRESS") as SupportTicket["status"],
-            updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-            messages: [...t.messages, newMsg],
-          };
-        }
-        return t;
-      });
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_support_tickets_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
+  const addSupportMessage = async (ticketId: string, message: string, isInternal: boolean = false) => {
+    await api.request(`/support/tickets/${ticketId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message, is_internal_note: isInternal }),
     });
+    const detail = await api.request<any>(`/support/tickets/${ticketId}`);
+    const mapped = mapApiSupportTicket(detail.data, {
+      organizationId: orgId,
+      organizationName: settings.trade_name,
+      userName: user?.full_name || "Usuario",
+      userEmail: user?.email || "",
+    });
+    setSupportTickets((previous) => previous.map((ticket) => ticket.id === ticketId ? mapped : ticket));
   };
 
-  const grantSupportAccess = (
+  const grantSupportAccess = async (
     reason: string,
     durationMinutes: number,
-    permission: "READ_ONLY" | "FULL_ADMIN"
-  ): SupportAccessGrant => {
-    const expires = new Date();
-    expires.setMinutes(expires.getMinutes() + durationMinutes);
-
+    permission: "READ_ONLY" | "FULL_ADMIN",
+  ): Promise<SupportAccessGrant> => {
+    const response = await api.request<any>("/support/delegated-access", {
+      method: "POST",
+      body: JSON.stringify({
+        reason,
+        duration_minutes: durationMinutes,
+        permission_level: permission,
+      }),
+    });
     const grant: SupportAccessGrant = {
-      id: `grant_${Date.now()}`,
+      id: String(response.data.grant_id),
       organization_id: orgId,
       organization_name: settings.trade_name,
-      granted_by_user_id: user?.id || "owner",
-      reason: reason || "Asistencia técnica autorizada",
-      permission_level: permission,
-      expires_at: expires.toISOString(),
+      granted_by_user_id: user?.id || "",
+      reason,
+      permission_level: response.data.permission_level,
+      expires_at: response.data.expires_at,
       created_at: new Date().toISOString(),
       is_revoked: false,
-      token: `sup_tok_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      token: response.data.delegated_token,
     };
 
     setActiveSupportGrant(grant);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(`orbitica_support_grant_${orgId}`, JSON.stringify(grant));
-      } catch {}
-    }
-    logAudit("SUPPORT_ACCESS_GRANTED", `Acceso de soporte concedido por ${durationMinutes} min (${permission})`);
     return grant;
   };
 
-  const revokeSupportAccess = () => {
-    setActiveSupportGrant((prev) => (prev ? { ...prev, is_revoked: true } : null));
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem(`orbitica_support_grant_${orgId}`);
-      } catch {}
-    }
-    logAudit("SUPPORT_ACCESS_REVOKED", "Acceso delegado de soporte revocado inmediatamente");
+  const revokeSupportAccess = async (grantId?: string) => {
+    const targetId = grantId || activeSupportGrant?.id;
+    if (!targetId) return;
+    await api.request(`/support/delegated-access/${targetId}`, { method: "DELETE" });
+    setActiveSupportGrant(null);
   };
 
   const resolveHealthAlert = (alertId: string) => {
@@ -1533,24 +1683,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const purgeTestSales = () => {
     const testCount = sales.filter((s) => s.is_test).length;
-    setSales((prev) => {
-      const next = prev.filter((s) => !s.is_test);
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_sales_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
-    setInvoices((prev) => {
-      const next = prev.filter((i) => !i.is_test);
-      if (typeof window !== "undefined" && orgId) {
-        try {
-          localStorage.setItem(`orbitica_invoices_${orgId}`, JSON.stringify(next));
-        } catch {}
-      }
-      return next;
-    });
+    setSales((prev) => prev.filter((s) => !s.is_test));
+    setInvoices((prev) => prev.filter((i) => !i.is_test));
     logAudit("TEST_SALES_PURGED", `Se purgaron ${testCount} ventas de prueba del sistema`);
     return testCount;
   };
@@ -1582,6 +1716,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         foundersPromo,
         updateFoundersPromo,
         updateSettings,
+        fetchStatus,
+        errorMessage,
+        retryFetch: fetchBusinessData,
+        isOffline,
+        fiscalContingencyNotice,
         subscription,
         updateSubscription,
         onboarding,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   LifeBuoy,
   MessageSquare,
@@ -35,7 +35,7 @@ const FAQS = [
   },
   {
     q: "¿Qué sucede si se cae el internet mientras estoy vendiendo en el POS?",
-    a: "Orbítica POS cuenta con modo Offline automático en los planes Crece y Escala. Puedes seguir emitiendo tiquetes de venta y el sistema los almacenará localmente en IndexedDB para firmarlos y enviarlos a Hacienda en cuanto se restablezca la conexión.",
+    a: "Para garantizar la atomicidad del inventario y la asignación estricta de consecutivos fiscales sin colisiones, la emisión electrónica requiere conexión activa con el servidor. En caso de corte prolongado, debe aplicarse el régimen de contingencia fiscal mediante comprobantes físicos preimpresos según la normativa de la DGT.",
   },
   {
     q: "¿Cómo aplico la promoción de Lanzamiento Precio Fundadores (-20%)?",
@@ -74,17 +74,26 @@ export default function SupportCenterPage() {
   // Delegated Access Grant State
   const [grantReason, setGrantReason] = useState("");
   const [grantDuration, setGrantDuration] = useState<number>(30); // minutes
-  const [grantLevel, setGrantLevel] = useState<"READ_ONLY" | "FULL_ADMIN">("READ_ONLY");
 
   // Search FAQ
   const [faqSearch, setFaqSearch] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const activeTicket = supportTickets.find((t) => t.id === selectedTicketId);
 
+  useEffect(() => {
+    if (!selectedTicketId && supportTickets.length > 0) {
+      setSelectedTicketId(supportTickets[0].id);
+    }
+  }, [selectedTicketId, supportTickets]);
+
   // Handle New Ticket Submit
-  const handleCreateTicketSubmit = (e: React.FormEvent) => {
+  const handleCreateTicketSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketSubject.trim() || !ticketDescription.trim()) return;
+    setIsSubmitting(true);
+    setActionError(null);
 
     // Collect Safe Telemetry (No passwords/PINs)
     const telemetry = {
@@ -95,42 +104,63 @@ export default function SupportCenterPage() {
       current_route: typeof window !== "undefined" ? window.location.pathname : "/support",
     };
 
-    const newTicket = createSupportTicket(
-      {
-        organization_id: user?.organization_id || "org_current",
-        organization_name: user?.organization_name || "Mi Negocio",
-        created_by_name: user?.full_name || "Propietario",
-        created_by_email: user?.email || "admin@negocio.cr",
-        category: ticketCategory,
-        priority: ticketPriority,
-        status: "OPEN",
-        subject: ticketSubject.trim(),
-        description: ticketDescription.trim(),
-        telemetry,
-      },
-      ticketDescription.trim()
-    );
-
-    setIsCreatingTicket(false);
-    setSelectedTicketId(newTicket.id);
-    setTicketSubject("");
-    setTicketDescription("");
+    try {
+      const newTicket = await createSupportTicket(
+        {
+          organization_id: user?.organization_id || "",
+          organization_name: user?.organization_name || "Mi Negocio",
+          created_by_name: user?.full_name || "Propietario",
+          created_by_email: user?.email || "",
+          category: ticketCategory,
+          priority: ticketPriority,
+          status: "OPEN",
+          subject: ticketSubject.trim(),
+          description: ticketDescription.trim(),
+          telemetry,
+        },
+        ticketDescription.trim(),
+      );
+      setIsCreatingTicket(false);
+      setSelectedTicketId(newTicket.id);
+      setTicketSubject("");
+      setTicketDescription("");
+    } catch (error: any) {
+      setActionError(error?.message || "No se pudo crear la solicitud de soporte.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle Send Message to Active Ticket
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicketId || !newMessageText.trim()) return;
-    addSupportMessage(selectedTicketId, newMessageText.trim(), false);
-    setNewMessageText("");
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      await addSupportMessage(selectedTicketId, newMessageText.trim(), false);
+      setNewMessageText("");
+    } catch (error: any) {
+      setActionError(error?.message || "No se pudo enviar el mensaje.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle Grant Support Access
-  const handleGrantAccessSubmit = (e: React.FormEvent) => {
+  const handleGrantAccessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!grantReason.trim()) return;
-    grantSupportAccess(grantReason.trim(), grantDuration, grantLevel);
-    setGrantReason("");
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      await grantSupportAccess(grantReason.trim(), grantDuration, "READ_ONLY");
+      setGrantReason("");
+    } catch (error: any) {
+      setActionError(error?.message || "No se pudo conceder el acceso delegado.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredFaqs = FAQS.filter(
@@ -146,7 +176,7 @@ export default function SupportCenterPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Badge variant="blue">CENTRO DE AYUDA & SOPORTE TÉCNICO</Badge>
-            <span className="text-xs text-text-muted">Costa Rica 24/7</span>
+            <span className="text-xs text-text-muted">Atención mediante tickets</span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-text-main">
             Soporte Especializado Orbítica
@@ -190,6 +220,12 @@ export default function SupportCenterPage() {
           </button>
         </div>
       </div>
+
+      {actionError && (
+        <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-500 font-medium">
+          {actionError}
+        </div>
+      )}
 
       {/* TAB 1: TICKETS */}
       {activeTab === "tickets" && (
@@ -362,9 +398,9 @@ export default function SupportCenterPage() {
                     <Button variant="secondary" onClick={() => setIsCreatingTicket(false)} className="text-xs">
                       Cancelar
                     </Button>
-                    <Button type="submit" variant="primary" className="text-xs font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-500">
+                    <Button type="submit" disabled={isSubmitting} variant="primary" className="text-xs font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-500">
                       <Send className="w-4 h-4" />
-                      Enviar Solicitud
+                      {isSubmitting ? "Enviando..." : "Enviar Solicitud"}
                     </Button>
                   </div>
                 </form>
@@ -434,9 +470,9 @@ export default function SupportCenterPage() {
                     placeholder="Escribe una respuesta o consulta adicional..."
                     className="text-xs flex-1"
                   />
-                  <Button type="submit" variant="primary" size="sm" className="font-bold text-xs gap-1.5">
+                  <Button type="submit" disabled={isSubmitting} variant="primary" size="sm" className="font-bold text-xs gap-1.5">
                     <Send className="w-3.5 h-3.5" />
-                    Responder
+                    {isSubmitting ? "Enviando..." : "Responder"}
                   </Button>
                 </form>
               </Card>
@@ -486,11 +522,38 @@ export default function SupportCenterPage() {
                   <strong>Motivo:</strong> {activeSupportGrant.reason}
                 </p>
 
+                {activeSupportGrant.token && (
+                  <div className="p-3 rounded-xl bg-surface border border-emerald-500/30 space-y-2">
+                    <p className="text-[10px] font-bold text-text-main">Token temporal (se muestra una sola vez)</p>
+                    <code className="block text-[10px] break-all text-text-secondary">{activeSupportGrant.token}</code>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => navigator.clipboard.writeText(activeSupportGrant.token || "")}
+                      className="text-[10px]"
+                    >
+                      Copiar token para el agente
+                    </Button>
+                  </div>
+                )}
+
                 <div className="pt-2 border-t border-emerald-500/20 flex justify-end">
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => revokeSupportAccess()}
+                    onClick={async () => {
+                      setIsSubmitting(true);
+                      setActionError(null);
+                      try {
+                        await revokeSupportAccess(activeSupportGrant.id);
+                      } catch (error: any) {
+                        setActionError(error?.message || "No se pudo revocar el acceso.");
+                      } finally {
+                        setIsSubmitting(false);
+                      }
+                    }}
+                    disabled={isSubmitting}
                     className="text-xs font-bold gap-1.5"
                   >
                     <Lock className="w-3.5 h-3.5" />
@@ -534,14 +597,9 @@ export default function SupportCenterPage() {
                     <label className="block text-xs font-bold text-text-secondary mb-1">
                       Nivel de Permiso *
                     </label>
-                    <select
-                      value={grantLevel}
-                      onChange={(e) => setGrantLevel(e.target.value as any)}
-                      className="w-full bg-surface border border-border rounded-xl px-3 py-2 text-xs text-text-main"
-                    >
-                      <option value="READ_ONLY">Solo Lectura (Ver configuración e informes)</option>
-                      <option value="FULL_ADMIN">Administrador (Puede modificar parámetros)</option>
-                    </select>
+                    <div className="w-full bg-surface-secondary border border-border rounded-xl px-3 py-2 text-xs text-text-main">
+                      Solo lectura (ver configuración e informes)
+                    </div>
                   </div>
                 </div>
 
@@ -558,11 +616,12 @@ export default function SupportCenterPage() {
 
                 <Button
                   type="submit"
+                  disabled={isSubmitting}
                   variant="primary"
                   className="w-full font-bold text-xs gap-2 bg-emerald-600 hover:bg-emerald-500 py-2.5"
                 >
                   <Unlock className="w-4 h-4" />
-                  Conceder Acceso Temporal a Soporte
+                  {isSubmitting ? "Procesando..." : "Conceder Acceso Temporal a Soporte"}
                 </Button>
               </form>
             )}

@@ -1,12 +1,18 @@
-﻿FROM python:3.13-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies for cryptography
+# Install system dependencies for cryptography, lxml, and xmlsec1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libssl-dev \
     libffi-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    xmlsec1 \
+    libxmlsec1-dev \
+    libxmlsec1-openssl \
+    pkg-config \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,0 +1,148 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# Infraestructura NUEVA del POS. Revisar y aceptar el coste antes de aplicar.
+# No reutiliza ni modifica servicios/bases de otros proyectos.
+# La emisión real a Hacienda permanece deshabilitada durante el piloto.
+
+previews:
+  generation: "off"
+
+envVarGroups:
+  - name: orbitica-pos-runtime
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.13"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: ENVIRONMENT
+        value: production
+      - key: FRONTEND_URL
+        value: https://web-mocha-gamma-es6gomw437.vercel.app
+      - key: BACKEND_CORS_ORIGINS
+        value: '["https://web-mocha-gamma-es6gomw437.vercel.app"]'
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: HACIENDA_LIVE_EMISSION_ENABLED
+        value: "false"
+      - key: HACIENDA_SANDBOX_VALIDATED
+        value: "false"
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_TLS
+        value: "true"
+
+databases:
+  - name: orbitica-pos-db
+    databaseName: orbitica_pos
+    user: orbitica_pos
+    region: ohio
+    plan: 0.1c-256mb
+    postgresMajorVersion: "16"
+    diskSizeGB: 1
+    ipAllowList: []
+
+services:
+  - type: web
+    name: orbitica-pos-api
+    runtime: python
+    region: ohio
+    plan: 0.5c-512mb
+    repo: https://github.com/ElianTFY/orbitica-pos
+    branch: codex/final-production-fixes
+    autoDeployTrigger: "off"
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health/ready
+    maxShutdownDelaySeconds: 120
+    disk:
+      name: orbitica-pos-uploads
+      mountPath: /var/data/orbitica-uploads
+      sizeGB: 1
+    envVars:
+      - fromGroup: orbitica-pos-runtime
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orbitica-pos-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_MASTER_KEY
+        generateValue: true
+      - key: STORAGE_TYPE
+        value: LOCAL
+      - key: LOCAL_STORAGE_DIR
+        value: /var/data/orbitica-uploads
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SOFTWARE_PROVIDER_TAX_ID_TYPE
+        sync: false
+      - key: SOFTWARE_PROVIDER_TAX_ID
+        sync: false
+      - key: SOFTWARE_PROVIDER_NAME
+        sync: false
+
+  - type: worker
+    name: orbitica-pos-hacienda-worker
+    runtime: python
+    region: ohio
+    plan: 0.5c-512mb
+    repo: https://github.com/ElianTFY/orbitica-pos
+    branch: codex/final-production-fixes
+    autoDeployTrigger: "off"
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.workers.hacienda_outbox_worker
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - fromGroup: orbitica-pos-runtime
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orbitica-pos-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: JWT_SECRET_KEY
+      - key: ENCRYPTION_MASTER_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: ENCRYPTION_MASTER_KEY
+      - key: SMTP_HOST
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SMTP_HOST
+      - key: SMTP_USER
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SMTP_USER
+      - key: SMTP_PASSWORD
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SMTP_PASSWORD
+      - key: SOFTWARE_PROVIDER_TAX_ID_TYPE
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SOFTWARE_PROVIDER_TAX_ID_TYPE
+      - key: SOFTWARE_PROVIDER_TAX_ID
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SOFTWARE_PROVIDER_TAX_ID
+      - key: SOFTWARE_PROVIDER_NAME
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: SOFTWARE_PROVIDER_NAME
