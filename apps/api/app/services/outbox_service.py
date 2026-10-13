@@ -34,7 +34,7 @@ class OutboxService:
             doc_type=doc_type,
             xml_uncompressed=xml_uncompressed,
             xml_signed=xml_signed,
-            status="PENDING",
+            status="PENDING" if xml_signed else "PENDING_SIGNATURE",
             retry_count=0,
             next_retry_at=datetime.now(timezone.utc)
         )

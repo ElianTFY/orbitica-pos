@@ -13,8 +13,8 @@ from app.models.outbox import HaciendaOutbox
 from app.models.organization import Organization
 from app.models.branch import Branch, UserBranchAccess
 from app.models.user import User
-from app.core.constants import UserRole
-from app.models.cash_register import CashRegister, CashRegisterSession
+from app.core.constants import UserRole, ROLE_PERMISSIONS
+from app.models.cash_register import CashRegister, CashRegisterSession, CashMovement
 from app.schemas.sale import SaleCreate, RefundRequest
 from app.core.exceptions import NotFoundException, BadRequestException, ConflictException, ForbiddenException
 from app.services.consecutive_service import ConsecutiveService
@@ -22,6 +22,8 @@ from app.services.audit_service import AuditService
 from app.services.hacienda_xml_generator_v44 import map_tax_rate_code
 from app.services.electronic_invoicing_service import ElectronicInvoicingService
 from app.services.outbox_service import OutboxService
+from app.services.fiscal_snapshot import capture_fiscal_snapshot
+from app.services.cash_register_service import CashRegisterService
 
 def round_money(val: Decimal) -> Decimal:
     return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -41,7 +43,8 @@ class SaleService:
 
         branch_stmt = select(Branch).where(
             Branch.id == data.branch_id,
-            Branch.organization_id == self.organization_id
+            Branch.organization_id == self.organization_id,
+            Branch.is_active == True
         )
         branch_res = await self.db.execute(branch_stmt)
         branch = branch_res.scalar_one_or_none()
@@ -49,7 +52,7 @@ class SaleService:
             raise NotFoundException("Sucursal no válida para la organización")
 
         actor = (await self.db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-        if not actor:
+        if not actor or not actor.is_active or (actor.organization_id != self.organization_id and actor.role != UserRole.SUPERADMIN):
             raise ForbiddenException("Operador no encontrado")
         if actor.role not in {UserRole.OWNER, UserRole.SUPERADMIN}:
             permitted = (await self.db.execute(select(UserBranchAccess.branch_id).where(
@@ -57,6 +60,12 @@ class SaleService:
             ))).scalar_one_or_none()
             if not permitted:
                 raise ForbiddenException("El operador no tiene acceso a esta sucursal")
+
+        permissions = set(ROLE_PERMISSIONS.get(actor.role, []))
+        if any(item.discount_percentage > 0 for item in data.items) and not ({"*", "pos:discount_high"} & permissions):
+            from app.core.config import settings
+            if "pos:discount_low" not in permissions or any(item.discount_percentage > settings.POS_LOW_DISCOUNT_LIMIT for item in data.items):
+                raise ForbiddenException("El descuento excede el límite autorizado para este operador")
 
         # 2. Validate Cash Session if provided
         terminal_number = "00001"
@@ -66,12 +75,15 @@ class SaleService:
                 CashRegisterSession.organization_id == self.organization_id,
                 CashRegisterSession.branch_id == data.branch_id,
                 CashRegisterSession.status == "OPEN"
-            )
+            ).with_for_update()
             sess_res = await self.db.execute(sess_stmt)
             cash_sess = sess_res.scalar_one_or_none()
             if not cash_sess:
                 raise BadRequestException("La sesión de caja especificada no está abierta o no pertenece a esta sucursal")
             
+            if cash_sess.opened_by_user_id != user_id:
+                raise ForbiddenException("Debe vender con su propio turno de caja")
+
             reg_stmt = select(CashRegister).where(CashRegister.id == cash_sess.cash_register_id)
             reg_res = await self.db.execute(reg_stmt)
             reg = reg_res.scalar_one_or_none()
@@ -128,7 +140,7 @@ class SaleService:
         sale_items = []
         ledger_movements = []
 
-        for item_in in data.items:
+        for item_in in sorted(data.items, key=lambda item: str(item.product_id)):
             # Query product with TaxRate
             p_stmt = (
                 select(Product, TaxRate.rate)
@@ -290,9 +302,17 @@ class SaleService:
             receiver_tax_id=cust.identification_number if cust else None,
             receiver_name=cust.name if cust else None,
             receiver_email=cust.email if cust else None,
-            status="DRAFT"
+            fiscal_snapshot=capture_fiscal_snapshot(org, cust, branch),
+            status="QUEUED"
         )
         self.db.add(inv)
+        await self.db.flush()
+        # The fiscal event is part of the sale/idempotency transaction. Signing
+        # and network delivery can fail without losing this durable obligation.
+        await OutboxService.enqueue_invoice(
+            self.db, self.organization_id, data.branch_id, inv.id, inv.numeric_key,
+            inv.consecutive_number, inv.doc_type, "", "",
+        )
 
         await AuditService.log_action(
             db=self.db,
@@ -317,6 +337,29 @@ class SaleService:
         return res.scalar_one()
 
     async def refund_sale(self, sale_id: uuid.UUID, data: RefundRequest, actor_id: uuid.UUID, *, commit: bool = True) -> Sale:
+        original = (await self.db.execute(select(Sale).where(
+            Sale.id == sale_id, Sale.organization_id == self.organization_id,
+        ))).scalar_one_or_none()
+        if not original:
+            raise NotFoundException("Venta no encontrada")
+        refund_drawer = None
+        cash_refund = (await self.db.execute(select(SalePayment).where(
+            SalePayment.sale_id == sale_id, SalePayment.payment_method.in_(["CASH_CRC", "CASH"]),
+        ))).scalars().all()
+        refund_amount = sum((p.amount - p.change_returned for p in cash_refund), Decimal("0.00"))
+        if original.cash_session_id and refund_amount > 0:
+            drawer_id = data.cash_session_id or (await self.db.execute(select(CashRegisterSession.id).where(
+                CashRegisterSession.organization_id == self.organization_id,
+                CashRegisterSession.branch_id == original.branch_id,
+                CashRegisterSession.opened_by_user_id == actor_id,
+                CashRegisterSession.status == "OPEN",
+            ))).scalar_one_or_none()
+            if not drawer_id:
+                raise ConflictException("Abra su caja para registrar la salida del reembolso en efectivo")
+            refund_drawer = await CashRegisterService(self.db, self.organization_id)._locked_session(drawer_id, actor_id)
+            if refund_drawer.branch_id != original.branch_id:
+                raise BadRequestException("El reembolso requiere una caja de la sucursal de la venta")
+        await CashRegisterService(self.db, self.organization_id).authorize_branch(actor_id, original.branch_id)
         stmt = select(Sale).options(
             selectinload(Sale.items),
             selectinload(Sale.payments)
@@ -345,7 +388,6 @@ class SaleService:
             )
             .order_by(ElectronicInvoice.created_at.asc())
             .limit(1)
-            .with_for_update()
         )).scalar_one_or_none()
 
         original_outbox = None
@@ -356,10 +398,18 @@ class SaleService:
                 .with_for_update()
             )).scalar_one_or_none()
 
+            original_invoice = (await self.db.execute(select(ElectronicInvoice).where(
+                ElectronicInvoice.id == original_invoice.id,
+            ).with_for_update().execution_options(populate_existing=True))).scalar_one()
             uncertain_delivery = (
                 original_outbox
-                and original_outbox.status in {"PROCESSING", "SENT"}
-            ) or original_invoice.status in {"PROCESSING", "SENT"}
+                and (original_outbox.status in {"PROCESSING", "SENT"} or (
+                    original_outbox.transmission_attempted_at is not None
+                    and original_invoice.status not in {"ACCEPTED", "REJECTED"}
+                ))
+            ) or original_invoice.status in {"PROCESSING", "SENT"} or (
+                original_invoice.sent_to_hacienda_at is not None and original_invoice.status not in {"ACCEPTED", "REJECTED"}
+            )
             if uncertain_delivery:
                 raise ConflictException(
                     "La factura está en proceso en Hacienda. Consulte el estado antes de devolverla para evitar inconsistencias fiscales."
@@ -370,7 +420,7 @@ class SaleService:
         items_res = await self.db.execute(items_stmt)
         items = list(items_res.scalars().all())
 
-        for item in items:
+        for item in sorted(items, key=lambda item: str(item.product_id)):
             if item.is_service:
                 continue
             stk_stmt = (
@@ -469,6 +519,7 @@ class SaleService:
                     receiver_tax_id=original_invoice.receiver_tax_id,
                     receiver_name=original_invoice.receiver_name,
                     receiver_email=original_invoice.receiver_email,
+                    fiscal_snapshot=original_invoice.fiscal_snapshot,
                     reference_doc_type=original_invoice.doc_type,
                     reference_numeric_key=original_invoice.numeric_key,
                     reference_date=original_invoice.created_at,
@@ -479,9 +530,6 @@ class SaleService:
                 self.db.add(credit_note)
                 await self.db.flush()
 
-                credit_note = await ElectronicInvoicingService(self.db).prepare_and_sign_invoice(
-                    credit_note.id, self.organization_id
-                )
                 await OutboxService.enqueue_invoice(
                     db=self.db,
                     organization_id=self.organization_id,
@@ -501,6 +549,13 @@ class SaleService:
                     original_outbox.last_error = f"Cancelado antes de transmisión por devolución: {data.reason}"
                 original_invoice.status = "CANCELLED"
 
+        if refund_drawer:
+            expected = (await CashRegisterService(self.db, self.organization_id).totals(refund_drawer))["expected_cash_amount"]
+            if expected < refund_amount:
+                raise BadRequestException("La caja no tiene suficiente efectivo esperado para el reembolso")
+            self.db.add(CashMovement(organization_id=self.organization_id, branch_id=sale.branch_id,
+                cash_session_id=refund_drawer.id, user_id=actor_id, reference_sale_id=sale.id,
+                movement_type="OUTFLOW", amount=refund_amount, reason=f"Devolución {sale.sale_number}", notes=data.reason))
         sale.status = "REFUNDED"
         await AuditService.log_action(
             db=self.db,

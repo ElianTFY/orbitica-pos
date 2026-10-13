@@ -112,10 +112,21 @@ async def test_sale_sign_queue_and_accepted_refund_credit_note(
     original = (await db_session.execute(
         select(ElectronicInvoice).where(ElectronicInvoice.sale_id == sale_id)
     )).scalar_one()
+    # Later account edits must not change an already committed fiscal party.
+    original_name = sample_organization.legal_name
+    sample_organization.legal_name = "Nombre editado después de vender"
+    await db_session.commit()
     queued = await InvoiceService(db_session, sample_organization.id).queue_invoice_for_transmission(original.id)
     assert queued.status == "QUEUED"
     assert queued.xml_signed and "<ds:Signature" in queued.xml_signed
     HaciendaXMLGeneratorV44.validate_xml_schema(queued.xml_signed, "04")
+    assert original_name in queued.xml_generated
+    assert "Nombre editado después de vender" not in queued.xml_generated
+    downloaded = await client.get(f"/api/v1/sales/{sale_id}/xml", headers=headers)
+    assert downloaded.status_code == 200 and downloaded.text == queued.xml_signed
+    receipt = (await client.get(f"/api/v1/sales/{sale_id}/receipt", headers=headers)).json()["data"]
+    assert receipt["hacienda"]["numeric_key"] == queued.numeric_key
+    assert receipt["store"]["legal_name"] == original_name
 
     root = etree.fromstring(queued.xml_generated.encode())
     namespace = {"te": DOC_NAMESPACES["04"]}
@@ -147,6 +158,9 @@ async def test_sale_sign_queue_and_accepted_refund_credit_note(
     )).scalar_one()
     assert credit_note.status == "QUEUED"
     assert credit_note.reference_numeric_key == queued.numeric_key
+    pending = (await db_session.execute(select(HaciendaOutbox).where(HaciendaOutbox.invoice_id == credit_note.id))).scalar_one()
+    assert pending.status == "PENDING_SIGNATURE"
+    credit_note = await InvoiceService(db_session, sample_organization.id).queue_invoice_for_transmission(credit_note.id)
     assert credit_note.xml_signed and "<ds:Signature" in credit_note.xml_signed
     HaciendaXMLGeneratorV44.validate_xml_schema(credit_note.xml_signed, "03")
     assert (await db_session.execute(

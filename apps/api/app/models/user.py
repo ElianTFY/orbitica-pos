@@ -51,6 +51,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     email_verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     email_verification_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    @property
+    def branch_ids(self):
+        return [access.branch_id for access in self.branch_accesses]
+
     organization: Mapped["Organization | None"] = relationship("Organization", back_populates="users")
     memberships: Mapped[list["OrganizationMembership"]] = relationship("OrganizationMembership", back_populates="user", cascade="all, delete-orphan")
     two_factor_challenges: Mapped[list["TwoFactorChallenge"]] = relationship("TwoFactorChallenge", back_populates="user", cascade="all, delete-orphan")

@@ -183,6 +183,8 @@ export interface CashSession {
   closed_at?: string | null;
   initial_amount: number;
   cash_sales: number;
+  cash_inflows?: number;
+  cash_outflows?: number;
   sinpe_sales: number;
   card_sales: number;
   total_sales: number;
@@ -209,9 +211,11 @@ export interface Employee {
   full_name: string;
   email: string;
   phone?: string;
-  role: "CASHIER" | "MANAGER" | "INVENTORY" | "ADMIN";
+  role: "CASHIER" | "MANAGER" | "INVENTORY" | "ADMIN" | "ACCOUNTANT";
   branch_name: string;
   pin?: string;
+  password?: string;
+  branch_ids?: string[];
   is_active: boolean;
   created_at: string;
 }

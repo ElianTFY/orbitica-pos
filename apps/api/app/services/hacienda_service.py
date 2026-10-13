@@ -66,7 +66,8 @@ class HaciendaService:
         sale: Sale,
         org: Organization,
         branch: Optional[Branch] = None,
-        customer: Optional[Customer] = None
+        customer: Optional[Customer] = None,
+        invoice=None
     ) -> Dict[str, Any]:
         items_payload = []
         for it in sale.items:
@@ -90,24 +91,12 @@ class HaciendaService:
                 "reference": p.reference_number
             })
 
-        is_factura = customer is not None and customer.identification_number is not None
-        doc_type = "01" if is_factura else "04"
-        branch_code = branch.code if branch else "001"
-        seq_match = re.search(r"\d+", sale.sale_number or "1")
-        seq_num = int(seq_match.group()) if seq_match else 1
-        
-        consecutive = ConsecutiveService.build_consecutivo_20(
-            branch_code=branch_code,
-            terminal_number="00001",
-            doc_type=doc_type,
-            consecutive_int=seq_num
-        )
-        numeric_key, _ = ConsecutiveService.build_clave_50(
-            emitter_tax_id=org.identification_number,
-            consecutivo_20=consecutive,
-            doc_date=sale.created_at or datetime.now(timezone.utc),
-            situation="1"
-        )
+        if invoice is None:
+            raise ValueError("El recibo requiere el comprobante persistido de la venta")
+        is_factura = invoice.doc_type == "01"
+        branch_code = branch.code if branch else invoice.consecutive_number[:3]
+        consecutive = invoice.consecutive_number
+        numeric_key = invoice.numeric_key
 
         display_name = org.trade_name or org.legal_name
 
@@ -137,8 +126,10 @@ class HaciendaService:
                 "doc_type": "01 Factura Electrónica" if is_factura else "04 Tiquete Electrónico",
                 "consecutive": consecutive,
                 "numeric_key": numeric_key,
-                "resolution": "Autorizada mediante resolución de Comprobantes Electrónicos DGT",
-                "qr_url": f"https://tribunet.hacienda.go.cr/docs/{numeric_key}"
+                "status": invoice.status,
+                "environment": invoice.environment,
+                "resolution": "Aceptado por Hacienda" if invoice.status == "ACCEPTED" else "Venta guardada. Comprobante pendiente de aceptación fiscal." if invoice.status not in {"REJECTED", "CANCELLED"} else f"Comprobante {invoice.status}",
+                "qr_url": ""
             },
             "items": items_payload,
             "totals": {

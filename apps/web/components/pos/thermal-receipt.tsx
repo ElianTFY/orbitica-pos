@@ -59,7 +59,7 @@ export function ThermalReceipt({ data, onClose }: ThermalReceiptProps) {
     window.print();
   };
 
-  const qrUrl = data.hacienda.qr_url || `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${data.hacienda.numeric_key}`;
+  const qrUrl = data.hacienda.qr_url || data.hacienda.numeric_key;
 
   return (
     <div className="space-y-4">

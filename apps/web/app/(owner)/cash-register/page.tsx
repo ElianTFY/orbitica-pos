@@ -21,12 +21,17 @@ import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { formatCRC } from "@/lib/utils";
 import { useStore } from "@/features/store/store-context";
+import { api } from "@/lib/api-client";
 import { useAuth } from "@/features/auth/auth-context";
 
 export default function CashRegisterPage() {
-  const { activeCashSession, openCashSession, closeCashSession, settings } = useStore();
+  const { activeCashSession, openCashSession, closeCashSession, settings, retryFetch } = useStore();
   const { user } = useAuth();
 
+  const [movementType, setMovementType] = useState<"INFLOW" | "OUTFLOW">("INFLOW");
+  const [movementAmount, setMovementAmount] = useState("");
+  const [movementReason, setMovementReason] = useState("");
+  const [movementOpen, setMovementOpen] = useState(false);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
@@ -67,7 +72,7 @@ export default function CashRegisterPage() {
   };
 
   const expectedCash = activeCashSession
-    ? activeCashSession.initial_amount + activeCashSession.cash_sales
+    ? activeCashSession.expected_cash_amount ?? activeCashSession.initial_amount + activeCashSession.cash_sales
     : 0;
 
   const actualNum = parseFloat(actualCash) || 0;
@@ -93,6 +98,7 @@ export default function CashRegisterPage() {
                     Ir a Vender (POS)
                   </Button>
                 </a>
+                {user?.permissions.some(p => ["*", "cash:adjust"].includes(p)) && <Button variant="secondary" onClick={() => setMovementOpen(true)}>Ingreso / Retiro</Button>}
                 <Button variant="danger" onClick={() => setIsCloseModalOpen(true)}>
                   <Lock className="w-4 h-4 mr-1.5" />
                   Cerrar Caja (Arqueo Z)
@@ -124,7 +130,7 @@ export default function CashRegisterPage() {
                 <span className="text-2xl font-black text-primary font-mono mt-2 block">
                   {formatCRC(activeCashSession.sinpe_sales)}
                 </span>
-                <span className="text-[11px] text-text-muted">Transferencias directas</span>
+                <span className="text-[11px] text-text-muted">Registro manual; verificar en el banco</span>
               </Card>
 
               <Card className="border-l-4 border-l-purple-500">
@@ -132,7 +138,7 @@ export default function CashRegisterPage() {
                 <span className="text-2xl font-black text-purple-500 font-mono mt-2 block">
                   {formatCRC(activeCashSession.card_sales)}
                 </span>
-                <span className="text-[11px] text-text-muted">Cobros por datáfono</span>
+                <span className="text-[11px] text-text-muted">Registro manual del datáfono</span>
               </Card>
 
               <Card className="border-l-4 border-l-emerald-500">
@@ -140,7 +146,7 @@ export default function CashRegisterPage() {
                 <span className="text-2xl font-black text-emerald-500 font-mono mt-2 block">
                   {formatCRC(expectedCash)}
                 </span>
-                <span className="text-[11px] text-text-muted">Fondo + Ventas en efectivo</span>
+                <span className="text-[11px] text-text-muted">Fondo + cobros netos + ingresos − retiros</span>
               </Card>
             </div>
 
@@ -180,6 +186,30 @@ export default function CashRegisterPage() {
         )}
       </div>
 
+      <Modal isOpen={movementOpen} onClose={() => setMovementOpen(false)} title="Movimiento de efectivo" maxWidth="sm">
+        <form className="space-y-4" onSubmit={async event => {
+          event.preventDefault();
+          if (!activeCashSession || isSubmitting) return;
+          setIsSubmitting(true); setOperationError(null);
+          try {
+            await api.request(`/cash-registers/sessions/${activeCashSession.id}/movements`, { method: "POST", body: {
+              movement_type: movementType, amount: movementAmount, reason: movementReason,
+            } });
+            await retryFetch(); setMovementOpen(false); setMovementAmount(""); setMovementReason("");
+          } catch (error: any) { setOperationError(error?.message || "No se pudo registrar el movimiento."); }
+          finally { setIsSubmitting(false); }
+        }}>
+          {operationError && <p role="alert">{operationError}</p>}
+          <label htmlFor="cash-movement-type">Tipo de movimiento</label>
+          <select id="cash-movement-type" value={movementType} onChange={e => setMovementType(e.target.value as "INFLOW" | "OUTFLOW")} className="w-full bg-surface-input p-2 rounded-xl">
+            <option value="INFLOW">Ingreso</option><option value="OUTFLOW">Retiro</option>
+          </select>
+          <Input label="Monto CRC" type="number" min="0.01" step="0.01" value={movementAmount} onChange={e => setMovementAmount(e.target.value)} required />
+          <Input label="Motivo" minLength={3} maxLength={255} value={movementReason} onChange={e => setMovementReason(e.target.value)} required />
+          <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Guardando…" : "Registrar movimiento"}</Button>
+        </form>
+      </Modal>
+
       {/* Open Cash Modal */}
       <Modal isOpen={isOpenModalOpen} onClose={() => setIsOpenModalOpen(false)} title="Apertura de Turno de Caja" maxWidth="sm">
         <form onSubmit={handleOpenSession} className="space-y-4">
@@ -187,6 +217,8 @@ export default function CashRegisterPage() {
           <Input
             label="Fondo Inicial en Efectivo (CRC ₡)"
             type="number"
+            min="0"
+            step="0.01"
             placeholder="50000"
             value={openAmount}
             onChange={(e) => setOpenAmount(e.target.value)}
@@ -231,6 +263,8 @@ export default function CashRegisterPage() {
           <Input
             label="Efectivo Físico Contado en Gaveta (CRC ₡)"
             type="number"
+            min="0"
+            step="0.01"
             placeholder={expectedCash.toString()}
             value={actualCash}
             onChange={(e) => setActualCash(e.target.value)}

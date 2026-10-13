@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, develop, "fix/**", "codex/**"]
   pull_request:
-    branches: [main, develop, "fix/**"]
+    branches: [main, develop, "fix/**", "codex/**"]
 
 permissions:
   contents: read
@@ -111,6 +111,20 @@ jobs:
           print('PASS: Render Free startup, migrations and authentication boundary')
           PY
       - run: pytest -m "postgres_integration" -q
+      - name: Restore a backup into a separate disposable database
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$PG_SERVICE_ID" pg_dump -U orbitica_ci -Fc orbitica_ci > "$RUNNER_TEMP/orbitica_ci.dump"
+          docker exec "$PG_SERVICE_ID" createdb -U orbitica_ci orbitica_restore
+          docker exec -i "$PG_SERVICE_ID" pg_restore --exit-on-error -U orbitica_ci -d orbitica_restore < "$RUNNER_TEMP/orbitica_ci.dump"
+          for table in sales electronic_invoices hacienda_outbox cash_register_sessions; do
+            original=$(docker exec "$PG_SERVICE_ID" psql -U orbitica_ci -d orbitica_ci -Atc "SELECT count(*) FROM $table")
+            restored=$(docker exec "$PG_SERVICE_ID" psql -U orbitica_ci -d orbitica_restore -Atc "SELECT count(*) FROM $table")
+            test "$original" = "$restored"
+          done
+          echo "PASS: separate database restore; sales, invoices, outbox and drawer counts match"
+
 
   frontend:
     runs-on: ubuntu-latest

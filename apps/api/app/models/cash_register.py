@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, Numeric, Text, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import String, Boolean, Numeric, Text, ForeignKey, DateTime, UniqueConstraint, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, UUIDMixin, GUID
 
@@ -73,6 +73,13 @@ class CashRegisterSession(Base, UUIDMixin):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="OPEN", nullable=False)
 
+    __table_args__ = (
+        Index("uq_open_cash_register", "cash_register_id", unique=True,
+              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
+        Index("uq_open_cash_operator", "organization_id", "opened_by_user_id", unique=True,
+              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
+    )
+
 class CashMovement(Base, UUIDMixin):
     __tablename__ = "cash_movements"
 
@@ -99,6 +106,7 @@ class CashMovement(Base, UUIDMixin):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False
     )
+    reference_sale_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("sales.id", ondelete="RESTRICT"), nullable=True, unique=True)
     movement_type: Mapped[str] = mapped_column(String(20), nullable=False)  # INFLOW, OUTFLOW
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)

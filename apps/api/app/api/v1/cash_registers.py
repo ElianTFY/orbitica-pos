@@ -8,6 +8,7 @@ from app.schemas.cash_register import (
     CashRegisterResponse,
     SessionOpenRequest,
     SessionCloseRequest,
+    CashMovementCreate, CashMovementResponse,
     CashSessionResponse
 )
 from app.schemas.common import StandardResponse
@@ -75,3 +76,13 @@ async def close_session(
         data=CashSessionResponse.model_validate(session),
         message="Turno de caja cerrado y arqueado correctamente"
     )
+
+@router.post("/sessions/{session_id}/movements", response_model=StandardResponse[CashMovementResponse], status_code=201)
+async def add_cash_movement(
+    session_id: UUID,
+    payload: CashMovementCreate,
+    context: CurrentUserContext = Depends(require_permissions("cash:adjust")),
+    db: AsyncSession = Depends(get_db),
+):
+    movement = await CashRegisterService(db, context.organization_id).add_movement(session_id, payload, context.user_id)
+    return StandardResponse(data=CashMovementResponse.model_validate(movement), message="Movimiento de caja registrado")

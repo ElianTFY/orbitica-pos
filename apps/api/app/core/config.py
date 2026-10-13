@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import EmailStr, Field, field_validator, model_validator
 
 class Settings(BaseSettings):
+    POS_LOW_DISCOUNT_LIMIT: int = 10
     PROJECT_NAME: str = "ORBÍTICA POS API"
     VERSION: str = "2.4.0"
     BUILD_DATE: str = Field(default="unknown", alias="BUILD_DATE")
