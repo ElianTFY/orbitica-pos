@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
@@ -13,12 +13,14 @@ from app.schemas.common import StandardResponse
 from app.services.organization_service import OrganizationService
 from app.security.deps import CurrentUserContext, require_permissions, get_current_user_context
 from app.core.exceptions import ConflictException
+from app.core.config import settings
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
 @router.post("/register", response_model=StandardResponse[OrganizationResponse], status_code=status.HTTP_201_CREATED)
 async def register_organization(
     payload: OrganizationCreate,
+    response: Response,
     db: AsyncSession = Depends(get_db)
 ):
     service = OrganizationService(db)
@@ -26,6 +28,12 @@ async def register_organization(
     data = OrganizationResponse.model_validate(org)
     if hasattr(org, "access_token"):
         data.access_token = org.access_token
+    response.set_cookie(
+        key="refresh_token", value=org.registration_refresh_token,
+        httponly=True, secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE, domain=settings.COOKIE_DOMAIN,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/",
+    )
 
     return StandardResponse(
         data=data,

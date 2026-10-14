@@ -19,7 +19,9 @@ CR_TIMEZONE = timezone(timedelta(hours=-6))
 GOLDEN_DIR = os.path.join(os.path.dirname(__file__), "golden_files", "v4.4")
 
 @pytest.fixture
-def fiscal_context():
+def fiscal_context(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "SOFTWARE_PROVIDER_TAX_ID", "3101999888")
     org_id = uuid.uuid4()
     org = Organization(
         id=org_id,
@@ -234,6 +236,20 @@ def test_nota_debito_02_schema_validation_and_reference(fiscal_context):
     assert "<InformacionReferencia>" in xml_str
     assert f"<Numero>{ref_key}</Numero>" in xml_str
     HaciendaXMLGeneratorV44.validate_xml_schema(xml_str, "02")
+
+
+@pytest.mark.parametrize("missing", ["economic_activity_code", "province_code", "address_detail", "provider"])
+def test_xml_never_substitutes_missing_fiscal_data(fiscal_context, monkeypatch, missing):
+    from app.core.config import settings
+    from app.core.exceptions import BadRequestException
+    org, branch, customer, sale = fiscal_context
+    if missing == "provider":
+        monkeypatch.setattr(settings, "SOFTWARE_PROVIDER_TAX_ID", "")
+    else:
+        setattr(org, missing, "")
+    with pytest.raises(BadRequestException):
+        HaciendaXMLGeneratorV44.generate_xml(doc_type="04", numeric_key="1" * 50,
+            consecutive_number="00100001040000000001", sale=sale, org=org, branch=branch)
 
 
 def test_mensaje_receptor_05_schema_validation():

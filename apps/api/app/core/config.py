@@ -96,8 +96,8 @@ class Settings(BaseSettings):
     
     # Software Provider Info (v4.4 ProveedorSistemas)
     SOFTWARE_PROVIDER_TAX_ID_TYPE: str = "02"  # 02=Cedula Juridica
-    SOFTWARE_PROVIDER_TAX_ID: str = Field(default="3101000000", alias="SOFTWARE_PROVIDER_TAX_ID")
-    SOFTWARE_PROVIDER_NAME: str = Field(default="ORBITICA STUDIO S.A.", alias="SOFTWARE_PROVIDER_NAME")
+    SOFTWARE_PROVIDER_TAX_ID: str = Field(default="", alias="SOFTWARE_PROVIDER_TAX_ID")
+    SOFTWARE_PROVIDER_NAME: str = Field(default="", alias="SOFTWARE_PROVIDER_NAME")
     HACIENDA_PROVEEDOR_ID: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_ID")
     HACIENDA_PROVEEDOR_NAME: Optional[str] = Field(default=None, alias="HACIENDA_PROVEEDOR_NAME")
 
@@ -196,9 +196,9 @@ class Settings(BaseSettings):
                 errors.append("HACIENDA_LIVE_EMISSION_ENABLED cannot be activated in production without prior HACIENDA_SANDBOX_VALIDATED=True.")
             if self.HACIENDA_LIVE_EMISSION_ENABLED and not self.email_provider_configured:
                 errors.append("Configure SMTP_HOST/SMTP_USER/SMTP_PASSWORD or BREVO_API_KEY/EMAIL_FROM_ADDRESS before enabling live fiscal emission.")
-            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_TAX_ID == "3101000000":
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and (not self.SOFTWARE_PROVIDER_TAX_ID or self.SOFTWARE_PROVIDER_TAX_ID == "3101000000"):
                 errors.append("SOFTWARE_PROVIDER_TAX_ID must be the real registered provider identification before live emission.")
-            if self.HACIENDA_LIVE_EMISSION_ENABLED and self.SOFTWARE_PROVIDER_NAME == "ORBITICA STUDIO S.A.":
+            if self.HACIENDA_LIVE_EMISSION_ENABLED and (not self.SOFTWARE_PROVIDER_NAME or self.SOFTWARE_PROVIDER_NAME == "ORBITICA STUDIO S.A."):
                 errors.append("SOFTWARE_PROVIDER_NAME must match the real registered software provider before live emission.")
             if not self.FRONTEND_URL.startswith("https://"):
                 errors.append("FRONTEND_URL must be an HTTPS production URL.")

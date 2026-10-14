@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Dict, Any, Optional
 from app.models.sale import Sale
@@ -74,7 +75,7 @@ class HaciendaService:
             items_payload.append({
                 "name": it.product_name,
                 "sku": it.product_sku,
-                "cabys_code": getattr(it, "cabys_code", "6339900000000"),
+                "cabys_code": it.cabys_code,
                 "quantity": float(it.quantity),
                 "unit_price": float(it.unit_price),
                 "tax_rate_percent": float(it.tax_rate),
@@ -99,11 +100,25 @@ class HaciendaService:
         numeric_key = invoice.numeric_key
 
         display_name = org.trade_name or org.legal_name
+        created_at = sale.created_at
+        if created_at and created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        local_created_at = created_at.astimezone(ZoneInfo("America/Costa_Rica")) if created_at else None
+        fiscal_status = {
+            "ACCEPTED": "Aceptado por Hacienda",
+            "REJECTED": "Rechazado por Hacienda",
+            "CANCELLED": "Comprobante cancelado antes de transmitirse",
+            "ERROR": "Comprobante con error; requiere revisión",
+        }.get(invoice.status, "Venta guardada. Comprobante pendiente de aceptación fiscal.")
+        if invoice.environment == "STAGING":
+            fiscal_status += " · Ambiente de pruebas, sin validez tributaria."
 
         return {
             "sale_id": str(sale.id),
             "sale_number": sale.sale_number,
-            "created_at": sale.created_at.strftime("%Y-%m-%d %H:%M:%S") if sale.created_at else "",
+            "created_at": local_created_at.strftime("%Y-%m-%d %H:%M:%S") if local_created_at else "",
+            "created_at_iso": local_created_at.isoformat() if local_created_at else "",
+            "timezone": "America/Costa_Rica",
             "store": {
                 "name": display_name,
                 "legal_name": org.legal_name,
@@ -111,7 +126,7 @@ class HaciendaService:
                 "legal_id_type": org.identification_type,
                 "phone": org.phone or (branch.phone if branch else ""),
                 "email": org.email,
-                "address": branch.address if branch else (org.address_detail or "Costa Rica"),
+                "address": (branch.address if branch else None) or org.address_detail or "",
                 "branch_name": branch.name if branch else "Casa Matriz",
                 "branch_code": branch_code
             },
@@ -128,7 +143,7 @@ class HaciendaService:
                 "numeric_key": numeric_key,
                 "status": invoice.status,
                 "environment": invoice.environment,
-                "resolution": "Aceptado por Hacienda" if invoice.status == "ACCEPTED" else "Venta guardada. Comprobante pendiente de aceptación fiscal." if invoice.status not in {"REJECTED", "CANCELLED"} else f"Comprobante {invoice.status}",
+                "resolution": fiscal_status,
                 "qr_url": ""
             },
             "items": items_payload,

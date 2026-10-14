@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 from decimal import Decimal, ROUND_HALF_UP
@@ -10,6 +11,7 @@ from app.models.customer import Customer
 from app.core.config import settings
 from app.core.exceptions import BadRequestException
 from app.core.cabys_catalog import map_fiscal_v44_tax_tariff
+from app.services.fiscal_profile import validate_emitter_profile, identification_type
 
 CR_TIMEZONE = timezone(timedelta(hours=-6))
 
@@ -137,6 +139,10 @@ class HaciendaXMLGeneratorV44:
             raise BadRequestException("La factura requiere un receptor identificado")
         if doc_type in {"02", "03"} and (not reference_info or not all(reference_info.get(k) for k in ("doc_type", "number", "date", "reason"))):
             raise BadRequestException("La nota requiere los datos del comprobante original")
+        validate_emitter_profile(org)
+        prov_id = settings.SOFTWARE_PROVIDER_TAX_ID
+        if not re.fullmatch(r"\d{9,12}", prov_id) or prov_id == "3101000000":
+            raise BadRequestException("Configura la identificación real del proveedor de sistemas antes de generar XML")
         ns = DOC_NAMESPACES[doc_type]
         root_tag = ROOT_TAGS[doc_type]
 
@@ -152,11 +158,10 @@ class HaciendaXMLGeneratorV44:
         etree.SubElement(root, f"{{{ns}}}Clave").text = numeric_key
 
         # 2. ProveedorSistemas (Mandatory in v4.4)
-        prov_id = getattr(settings, "SOFTWARE_PROVIDER_TAX_ID", None) or "3101999888"
-        etree.SubElement(root, f"{{{ns}}}ProveedorSistemas").text = "".join(c for c in prov_id if c.isdigit())[:20]
+        etree.SubElement(root, f"{{{ns}}}ProveedorSistemas").text = prov_id
 
         # 3. CodigoActividadEmisor (6 digits)
-        act_code = str(org.economic_activity_code or "620101").zfill(6)[:6]
+        act_code = org.economic_activity_code
         etree.SubElement(root, f"{{{ns}}}CodigoActividadEmisor").text = act_code
 
         # 4. CodigoActividadReceptor (Optional, only for Factura 01 and Notas 02/03)
@@ -178,20 +183,19 @@ class HaciendaXMLGeneratorV44:
         etree.SubElement(emisor, f"{{{ns}}}Nombre").text = org.legal_name[:100]
 
         emisor_id = etree.SubElement(emisor, f"{{{ns}}}Identificacion")
-        etree.SubElement(emisor_id, f"{{{ns}}}Tipo").text = str(org.identification_type or "01").zfill(2)[:2]
-        clean_emisor_num = "".join(c for c in org.identification_number if c.isdigit())[:12]
-        etree.SubElement(emisor_id, f"{{{ns}}}Numero").text = clean_emisor_num
+        etree.SubElement(emisor_id, f"{{{ns}}}Tipo").text = identification_type(org.identification_type)
+        etree.SubElement(emisor_id, f"{{{ns}}}Numero").text = org.identification_number
 
         if org.trade_name:
             etree.SubElement(emisor, f"{{{ns}}}NombreComercial").text = org.trade_name[:80]
 
         ubicacion = etree.SubElement(emisor, f"{{{ns}}}Ubicacion")
-        etree.SubElement(ubicacion, f"{{{ns}}}Provincia").text = str(org.province_code or "1")[:1]
-        etree.SubElement(ubicacion, f"{{{ns}}}Canton").text = str(org.canton_code or "01").zfill(2)[:2]
-        etree.SubElement(ubicacion, f"{{{ns}}}Distrito").text = str(org.district_code or "01").zfill(2)[:2]
+        etree.SubElement(ubicacion, f"{{{ns}}}Provincia").text = org.province_code
+        etree.SubElement(ubicacion, f"{{{ns}}}Canton").text = org.canton_code
+        etree.SubElement(ubicacion, f"{{{ns}}}Distrito").text = org.district_code
         if org.neighborhood_code and len(str(org.neighborhood_code).strip()) >= 5:
             etree.SubElement(ubicacion, f"{{{ns}}}Barrio").text = str(org.neighborhood_code).strip()[:50]
-        etree.SubElement(ubicacion, f"{{{ns}}}OtrasSenas").text = (org.address_detail or "San Jose, Costa Rica")[:250]
+        etree.SubElement(ubicacion, f"{{{ns}}}OtrasSenas").text = org.address_detail[:250]
 
         if org.phone:
             tel = etree.SubElement(emisor, f"{{{ns}}}Telefono")

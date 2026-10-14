@@ -292,12 +292,14 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
 
+        session_family = uuid.uuid4()
         access_token = create_access_token(
             subject=str(user.id),
             claims={
                 "org_id": str(user.organization_id) if user.organization_id else None,
                 "role": user.role,
-                "email": user.email
+                "email": user.email,
+                "session_family": str(session_family)
             }
         )
 
@@ -307,7 +309,7 @@ class AuthService:
 
         session = UserSession(
             user_id=user.id,
-            family_id=uuid.uuid4(),
+            family_id=session_family,
             refresh_token_hash=refresh_hash,
             user_agent=user_agent,
             ip_address=ip_address,
@@ -383,12 +385,14 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
 
+        session_family = uuid.uuid4()
         access_token = create_access_token(
             subject=str(user.id),
             claims={
                 "org_id": str(user.organization_id) if user.organization_id else None,
                 "role": user.role,
-                "email": user.email
+                "email": user.email,
+                "session_family": str(session_family)
             }
         )
 
@@ -398,7 +402,7 @@ class AuthService:
 
         session = UserSession(
             user_id=user.id,
-            family_id=uuid.uuid4(),
+            family_id=session_family,
             refresh_token_hash=refresh_hash,
             user_agent=user_agent,
             ip_address=ip_address,
@@ -507,12 +511,14 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
 
+        session_family = uuid.uuid4()
         access_token = create_access_token(
             subject=str(user.id),
             claims={
                 "org_id": str(user.organization_id) if user.organization_id else None,
                 "role": user.role,
-                "email": user.email
+                "email": user.email,
+                "session_family": str(session_family)
             }
         )
 
@@ -522,7 +528,7 @@ class AuthService:
 
         session = UserSession(
             user_id=user.id,
-            family_id=uuid.uuid4(),
+            family_id=session_family,
             refresh_token_hash=refresh_hash,
             user_agent=user_agent,
             ip_address=ip_address,
@@ -596,7 +602,8 @@ class AuthService:
             claims={
                 "org_id": str(user.organization_id) if user.organization_id else None,
                 "role": user.role,
-                "email": user.email
+                "email": user.email,
+                "session_family": str(session.family_id)
             }
         )
         new_raw_refresh = generate_refresh_token()
@@ -616,11 +623,14 @@ class AuthService:
 
     async def revoke_session(self, raw_refresh_token: str) -> None:
         token_hash = hash_token(raw_refresh_token)
-        stmt = select(UserSession).where(UserSession.refresh_token_hash == token_hash)
+        stmt = select(UserSession).where(UserSession.refresh_token_hash == token_hash).with_for_update()
         result = await self.db.execute(stmt)
         session = result.scalar_one_or_none()
         if session:
-            session.revoked_at = datetime.now(timezone.utc)
+            await self.db.execute(update(UserSession).where(
+                UserSession.user_id == session.user_id,
+                UserSession.family_id == session.family_id,
+            ).values(revoked_at=datetime.now(timezone.utc)))
             await self.db.commit()
 
     async def enroll_totp(self, user_id: uuid.UUID) -> Dict[str, str]:
@@ -672,7 +682,7 @@ class AuthService:
         user.recovery_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         await self.db.commit()
 
-        recovery_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={raw_token}"
+        recovery_url = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password#token={raw_token}"
         await self._send_auth_email(
             to_email=user.email,
             subject="Recuperación de Contraseña — Orbítica POS",

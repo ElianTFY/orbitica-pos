@@ -11,7 +11,7 @@ from app.models.subscription import Subscription
 from app.models.onboarding import OrganizationOnboarding
 from app.models.auth_challenge import EmailVerificationChallenge, TwoFactorChallenge
 from app.security.password import hash_password
-from app.security.tokens import hash_token
+from app.security.tokens import hash_token, create_registration_token
 from app.adapters.email_adapter import get_email_adapter, ConsoleEmailAdapter
 
 @pytest.mark.asyncio
@@ -82,12 +82,45 @@ async def test_email_verification_flow_never_exposes_code(
     assert verify_data["verified"] is True
     assert "registration_token" in verify_data
 
+    registration = await client.post("/api/v1/organizations/register", json={
+        "owner_email": test_email,
+        "owner_full_name": "Titular verificado",
+        "owner_password": "VerifiedPassword123!",
+        "registration_token": verify_data["registration_token"],
+    })
+    assert registration.status_code == 201
+    for field in ('economic_activity_code', 'province_code', 'canton_code', 'district_code'):
+        assert registration.json()['data'][field] == ''
+    assert registration.json()['data']['neighborhood_code'] is None
+    assert "httponly" in registration.headers["set-cookie"].lower()
+    assert "refresh_token" not in registration.json()["data"]
+    assert "registration_refresh_token" not in registration.json()["data"]
+    refreshed = await client.post("/api/v1/auth/refresh")
+    assert refreshed.status_code == 200
+
     # 4. Attempting to reuse the code MUST fail (consumed)
     reuse_resp = await client.post(
         "/api/v1/auth/register/verify",
         json={"email": test_email, "code": real_code}
     )
     assert reuse_resp.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("token_case", ["missing", "invalid", "other_email", "expired"])
+async def test_registration_requires_verified_email(client, db_session, token_case):
+    email = "unverified@example.com"
+    payload = {"owner_email": email, "owner_full_name": "No verificado", "owner_password": "Password123!"}
+    if token_case == "invalid":
+        payload["registration_token"] = "invalid"
+    elif token_case == "other_email":
+        payload["registration_token"] = create_registration_token("other@example.com")
+    elif token_case == "expired":
+        payload["registration_token"] = create_registration_token(email, expires_minutes=-1)
+    response = await client.post("/api/v1/organizations/register", json=payload)
+    assert response.status_code == 400
+    assert (await db_session.execute(select(User).where(User.normalized_email == email))).scalar_one_or_none() is None
+    assert (await db_session.execute(select(Organization))).scalars().all() == []
 
 @pytest.mark.asyncio
 async def test_duplicate_email_registration_returns_409(
@@ -146,6 +179,8 @@ async def test_atomic_registration_in_database(
         "default_currency": "CRC"
     }
 
+    # Fixture setup; the complete challenge/email flow is tested above.
+    payload["registration_token"] = create_registration_token(email)
     reg_resp = await client.post("/api/v1/organizations/register", json=payload)
     assert reg_resp.status_code == 201
     org_data = reg_resp.json()["data"]
@@ -301,6 +336,7 @@ async def test_existing_owner_creates_second_isolated_organization(
         "country_code": "CR",
         "default_currency": "CRC"
     }
+    reg_payload["registration_token"] = create_registration_token(email)
     reg_resp = await client.post("/api/v1/organizations/register", json=reg_payload)
     assert reg_resp.status_code == 201
     org1_id = reg_resp.json()["data"]["id"]

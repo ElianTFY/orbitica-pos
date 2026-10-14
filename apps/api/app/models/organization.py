@@ -18,11 +18,11 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
     # Costa Rica Fiscal Info v4.4
-    economic_activity_code: Mapped[str] = mapped_column(String(10), default="521101", nullable=False)
-    province_code: Mapped[str] = mapped_column(String(2), default="1", nullable=False)
-    canton_code: Mapped[str] = mapped_column(String(2), default="01", nullable=False)
-    district_code: Mapped[str] = mapped_column(String(2), default="01", nullable=False)
-    neighborhood_code: Mapped[str | None] = mapped_column(String(2), default="01", nullable=True)
+    economic_activity_code: Mapped[str] = mapped_column(String(10), default="", nullable=False)
+    province_code: Mapped[str] = mapped_column(String(2), default="", nullable=False)
+    canton_code: Mapped[str] = mapped_column(String(2), default="", nullable=False)
+    district_code: Mapped[str] = mapped_column(String(2), default="", nullable=False)
+    neighborhood_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     address_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     tax_regime: Mapped[str] = mapped_column(String(30), default="TRADICIONAL", nullable=False)
     atv_environment: Mapped[str] = mapped_column(String(20), default="STAGING", nullable=False)

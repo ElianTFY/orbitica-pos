@@ -82,6 +82,7 @@ interface StoreContextType {
   updateSettings: (newSettings: Partial<BusinessSettings>) => Promise<void>;
   // Real State Machine Statuses
   fetchStatus: "idle" | "loading" | "error" | "empty" | "unauthorized" | "offline";
+  isInitialLoading: boolean;
   errorMessage: string | null;
   retryFetch: () => Promise<void>;
   isOffline: boolean;
@@ -349,6 +350,15 @@ const mapApiEmployee = (row: any, branchRows: Branch[]): Employee => ({
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  // Discard all tenant/user state on sign-out or account change, including any
+  // late responses from the previous provider instance.
+  return <BusinessStoreProvider key={`${user?.id || "anonymous"}:${user?.organization_id || "none"}`}>
+    {children}
+  </BusinessStoreProvider>;
+}
+
+function BusinessStoreProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   // Empty while unauthenticated; protected owner routes only invoke mutations after auth.
   const orgId = user?.organization_id || "";
 
@@ -366,9 +376,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     atv_environment: "STAGING",
     atv_username: "",
     economic_activity_code: "",
-    province_code: "1",
-    canton_code: "01",
-    district_code: "01",
+    province_code: "",
+    canton_code: "",
+    district_code: "",
     neighborhood_code: "",
   });
 
@@ -444,6 +454,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [activeSupportGrant, setActiveSupportGrant] = useState<SupportAccessGrant | null>(null);
   const [healthAlerts, setHealthAlerts] = useState<TenantHealthAlert[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const fetchGeneration = useRef(0);
 
   // Sync settings when user context changes
   useEffect(() => {
@@ -471,6 +482,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Authoritative Backend API Sync
   const fetchBusinessData = useCallback(async () => {
     if (!orgId) return;
+    const generation = ++fetchGeneration.current;
     setFetchStatus("loading");
     setErrorMessage(null);
 
@@ -509,6 +521,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           request<any[]>("/users", "user:read", []),
         ]);
 
+      if (generation !== fetchGeneration.current) return;
       if (usersRes.status === "fulfilled" && branchesRes.status === "fulfilled") {
         setEmployees(usersRes.value.data.map(row => mapApiEmployee(row, branchesRes.value.data)));
       }
@@ -671,9 +684,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           default_currency: org.default_currency,
           atv_environment: org.atv_environment,
           economic_activity_code: org.economic_activity_code || "",
-          province_code: org.province_code || "1",
-          canton_code: org.canton_code || "01",
-          district_code: org.district_code || "01",
+          province_code: org.province_code || "",
+          canton_code: org.canton_code || "",
+          district_code: org.district_code || "",
           neighborhood_code: org.neighborhood_code || "",
           branch_name: branchesRes.status === "fulfilled" ? branchesRes.value.data[0]?.name || previous.branch_name : previous.branch_name,
         }));
@@ -698,6 +711,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFiscalContingencyNotice(null);
       setFetchStatus(hasData ? "idle" : "empty");
     } catch (err: any) {
+      if (generation !== fetchGeneration.current) return;
       if (err?.status === 401) {
         setFetchStatus("unauthorized");
         setErrorMessage("Sesión no autorizada o expirada.");
@@ -713,7 +727,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setErrorMessage("Sin conexión con el backend central.");
       }
     } finally {
-      setIsLoaded(true);
+      if (generation === fetchGeneration.current) setIsLoaded(true);
     }
   }, [orgId, user?.email, user?.full_name, user?.id, permissionsKey]);
 
@@ -1751,6 +1765,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateFoundersPromo,
         updateSettings,
         fetchStatus,
+        isInitialLoading: !isLoaded,
         errorMessage,
         retryFetch: fetchBusinessData,
         isOffline,

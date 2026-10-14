@@ -213,7 +213,11 @@ class HaciendaOutboxWorker:
             emitter = (inv.fiscal_snapshot or {}).get("emitter") or {
                 "identification_type": org.identification_type, "identification_number": org.identification_number,
             }
-            em_tipo = emitter["identification_type"]
+            em_tipo = {"FISICA": "01", "JURIDICA": "02", "DIMEX": "03", "NITE": "04"}.get(
+                emitter["identification_type"], emitter["identification_type"],
+            )
+            if em_tipo not in {"01", "02", "03", "04"}:
+                raise ValueError("Tipo de identificación del emisor no válido")
             em_num = "".join(c for c in emitter["identification_number"] if c.isdigit())
 
             # Persist the uncertainty boundary BEFORE network I/O. A refund

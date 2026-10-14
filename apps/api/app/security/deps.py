@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
-from app.models.user import User
+from app.models.user import User, UserSession
 from app.models.organization import Organization
 from app.models.branch import Branch, UserBranchAccess
 from app.security.tokens import decode_access_token
@@ -76,6 +76,21 @@ async def get_current_user_context(
     
     if not user:
         raise UnauthorizedException("Usuario no encontrado o inactivo")
+
+    # Access tokens remain revocable after rotation by following the refresh
+    # family. Older unbound tokens require a new login after this upgrade.
+    try:
+        session_family = UUID(payload.get("session_family", ""))
+    except (ValueError, TypeError, AttributeError):
+        raise UnauthorizedException("Sesión no vinculada. Inicia sesión de nuevo.")
+    active_session = (await db.execute(select(UserSession.id).where(
+        UserSession.user_id == user.id,
+        UserSession.family_id == session_family,
+        UserSession.revoked_at.is_(None),
+        UserSession.expires_at > datetime.now(timezone.utc),
+    ).limit(1))).scalar_one_or_none()
+    if active_session is None:
+        raise UnauthorizedException("Sesión revocada o expirada")
         
     if user.locked_until:
         now = datetime.now(timezone.utc)
@@ -157,30 +172,32 @@ async def get_current_user_context(
         )
         await db.commit()
 
-    branch_stmt = select(UserBranchAccess.branch_id).where(UserBranchAccess.user_id == user.id)
-    branch_result = await db.execute(branch_stmt)
-    branch_ids = list(branch_result.scalars().all())
-    
-    # Strict tenant isolation for X-Branch-ID:
-    selected_branch_id = None
-    req_branch_header = request.headers.get("X-Branch-ID")
     effective_org_id = organization.id if organization else None
-    if req_branch_header and effective_org_id:
+    branch_ids = []
+    if effective_org_id:
+        branch_stmt = select(Branch.id).where(
+            Branch.organization_id == effective_org_id, Branch.is_active == True,
+        ).order_by(Branch.code.asc())
+        if user.role not in [UserRole.OWNER, UserRole.SUPERADMIN, UserRole.PLATFORM_SUPPORT]:
+            branch_stmt = branch_stmt.where(Branch.id.in_(select(UserBranchAccess.branch_id).where(
+                UserBranchAccess.user_id == user.id,
+            )))
+        branch_ids = list((await db.execute(branch_stmt)).scalars())
+
+    # A missing selection uses the first accessible branch, as the POS does.
+    # Explicit headers/query parameters must never silently fall back to it.
+    selected_branch_id = branch_ids[0] if branch_ids else None
+    for requested in (request.headers.get("X-Branch-ID"), request.query_params.get("branch_id")):
+        if not requested:
+            continue
         try:
-            req_b_uuid = UUID(req_branch_header)
-            b_check_stmt = select(Branch).where(
-                Branch.id == req_b_uuid,
-                Branch.organization_id == effective_org_id,
-                Branch.is_active == True
-            )
-            b_check_res = await db.execute(b_check_stmt)
-            valid_branch = b_check_res.scalar_one_or_none()
-            if valid_branch:
-                if user.role in [UserRole.SUPERADMIN, UserRole.OWNER] or req_b_uuid in branch_ids:
-                    selected_branch_id = req_b_uuid
+            target_branch_id = UUID(requested)
         except ValueError:
-            pass
-            
+            raise ForbiddenException("Identificador de sucursal inválido")
+        if target_branch_id not in branch_ids:
+            raise ForbiddenException("Sucursal no autorizada para este usuario")
+        selected_branch_id = target_branch_id
+
     return CurrentUserContext(
         user=user,
         organization=organization,

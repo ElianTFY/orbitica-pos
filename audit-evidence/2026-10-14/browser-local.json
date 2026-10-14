@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "date": "2026-10-14T22:49:33.458Z",
+  "database": "SQLite",
+  "mail": "test_memory_only",
+  "hacienda": "not_contacted",
+  "steps": [
+    "Registro desde navegador con correo de prueba y sesión tras recargar",
+    "Producto, CAByS e inventario inicial persistidos desde formulario",
+    "Empleado cajero guardado y visible tras recargar",
+    "Sucursal nueva persistida y accesible por el propietario",
+    "Venta en efectivo con vuelto, recibo original y comprobante pendiente explícito",
+    "Reporte y CSV del servidor: costo completo, utilidad sin IVA y efectivo neto del vuelto",
+    "Devolución y cierre de caja con diferencia cero sin cambiar la identidad fiscal",
+    "Catálogo sin desbordamiento horizontal en tablet y móvil",
+    "Inicio de sesión de cajero y catálogo POS con permisos limitados",
+    "Recuperación por enlace, nueva contraseña y revocación de la sesión anterior"
+  ],
+  "browserErrors": []
+}

@@ -76,11 +76,39 @@ async def test_p12_metadata_and_encryption_custody(db_session: AsyncSession, sam
     assert decrypted["password"] == "SecretPassword123!"
     assert decrypted["p12_bytes"] == p12_bytes
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_case", ["expired", "future", "wrong_pin", "missing_key"])
+async def test_invalid_certificate_is_rejected_before_storage(client, db_session, sample_organization, invalid_case):
+    from tests.test_xades_epes_signer import generate_custom_p12
+    from app.models.fiscal_credential import FiscalCredential
+    now = datetime.now(timezone.utc)
+    start = now + timedelta(days=1) if invalid_case == "future" else now - timedelta(days=2)
+    end = now - timedelta(days=1) if invalid_case == "expired" else now + timedelta(days=2)
+    p12 = generate_custom_p12(pin="1234", not_valid_before=start, not_valid_after=end)
+    if invalid_case == "missing_key":
+        _, cert, _ = pkcs12.load_key_and_certificates(p12, b"1234")
+        p12 = pkcs12.serialize_key_and_certificates(b"certificate_without_private_key", None, cert, None,
+                                                   BestAvailableEncryption(b"1234"))
+    login = await client.post('/api/v1/auth/login', json={'email': 'owner@elsol.cr', 'password': 'OwnerPassword123!'})
+    headers = {'Authorization': f"Bearer {login.json()['data']['access_token']}"}
+    result = await client.post('/api/v1/hacienda/credentials', headers=headers, json={
+        'environment': 'STAGING', 'p12_base64': base64.b64encode(p12).decode(),
+        'pin': '9999' if invalid_case == 'wrong_pin' else '1234',
+        'atv_username': 'test-only@example.com', 'atv_password': 'test-only-never-sent',
+    })
+    assert result.status_code == 400, result.text
+    assert (await db_session.execute(select(FiscalCredential))).scalars().all() == []
+
+
 @pytest.mark.asyncio
 async def test_xml_generation_with_xsd_validation_and_cabys_enforcement(
     db_session: AsyncSession,
-    sample_organization: Organization
+    sample_organization: Organization,
+    monkeypatch,
 ):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "SOFTWARE_PROVIDER_TAX_ID", "3101999888")
     b_stmt = select(Branch).where(Branch.organization_id == sample_organization.id)
     b_res = await db_session.execute(b_stmt)
     branch = b_res.scalars().first()

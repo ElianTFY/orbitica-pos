@@ -23,6 +23,7 @@ from app.services.hacienda_xml_generator_v44 import map_tax_rate_code
 from app.services.electronic_invoicing_service import ElectronicInvoicingService
 from app.services.outbox_service import OutboxService
 from app.services.fiscal_snapshot import capture_fiscal_snapshot
+from app.services.fiscal_profile import validate_emitter_profile
 from app.services.cash_register_service import CashRegisterService
 
 def round_money(val: Decimal) -> Decimal:
@@ -107,6 +108,7 @@ class SaleService:
                 doc_type = "01"
 
         # 4. Generate Consecutive Atomically using SELECT ... FOR UPDATE
+        validate_emitter_profile(org)
         consec_service = ConsecutiveService(self.db)
         consecutive_int = await consec_service.get_next_consecutive_atomic(
             organization_id=self.organization_id,

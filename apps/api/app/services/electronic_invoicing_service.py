@@ -18,6 +18,7 @@ from app.services.audit_service import AuditService
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.core.config import settings
 from app.services.fiscal_snapshot import fiscal_parties, capture_fiscal_snapshot
+from app.services.fiscal_profile import validate_emitter_profile
 
 class ElectronicInvoicingService:
     def __init__(self, db: AsyncSession):
@@ -77,10 +78,7 @@ class ElectronicInvoicingService:
         provider_id = "".join(c for c in settings.SOFTWARE_PROVIDER_TAX_ID if c.isdigit())
         if not provider_id or provider_id == "3101000000":
             raise BadRequestException("Debe configurar la identificación real del proveedor de sistemas antes de firmar comprobantes")
-        if not (org.economic_activity_code and len(org.economic_activity_code) == 6 and org.economic_activity_code.isdigit()):
-            raise BadRequestException("La actividad económica del emisor debe contener 6 dígitos")
-        if not all([org.province_code, org.canton_code, org.district_code, org.address_detail]):
-            raise BadRequestException("La ubicación fiscal del emisor está incompleta")
+        validate_emitter_profile(org)
 
         # 1. Fetch encrypted credentials
         creds = await FiscalSecurityService.get_decrypted_credentials(

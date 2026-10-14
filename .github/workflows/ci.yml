@@ -124,6 +124,34 @@ jobs:
             test "$original" = "$restored"
           done
           echo "PASS: separate database restore; sales, invoices, outbox and drawer counts match"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build the browser test application
+        working-directory: apps/web
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Verify the POS from a browser against PostgreSQL
+        working-directory: apps/web
+        env:
+          PG_SERVICE_ID: ${{ job.services.postgres.id }}
+          E2E_ALLOW_DISPOSABLE_DB: "1"
+          E2E_DATABASE_URL: postgresql+asyncpg://orbitica_ci:orbitica_ci_password@localhost:5432/orbitica_browser
+        run: |
+          docker exec "$PG_SERVICE_ID" createdb -U orbitica_ci orbitica_browser
+          node scripts/verify-pos-browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-browser-evidence
+          path: apps/web/test-results/browser
+          if-no-files-found: ignore
 
 
   frontend:

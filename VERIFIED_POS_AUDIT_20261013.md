@@ -1,5 +1,7 @@
 # ORBÍTICA POS — correcciones verificables
 
+> Actualizado y sustituido por [la revisión del 14 de octubre](VERIFIED_POS_AUDIT_20261014.md). Conservar este documento únicamente como historial.
+
 Fecha: 13 de octubre de 2026. Rama: `fix/verified-pos-hacienda-20261011`, basada en `codex/final-production-fixes` (`84288cc`). **No habilitado para producción fiscal.** Este informe sustituye afirmaciones generales de “100 %” por evidencias y pendientes concretos.
 
 ## Problemas corregidos

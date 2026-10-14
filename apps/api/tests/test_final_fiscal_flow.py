@@ -127,6 +127,10 @@ async def test_sale_sign_queue_and_accepted_refund_credit_note(
     receipt = (await client.get(f"/api/v1/sales/{sale_id}/receipt", headers=headers)).json()["data"]
     assert receipt["hacienda"]["numeric_key"] == queued.numeric_key
     assert receipt["store"]["legal_name"] == original_name
+    assert receipt["created_at_iso"].endswith("-06:00")
+    assert receipt["timezone"] == "America/Costa_Rica"
+    assert "sin validez tributaria" in receipt["hacienda"]["resolution"]
+    assert "pendiente de aceptación" in receipt["hacienda"]["resolution"]
 
     root = etree.fromstring(queued.xml_generated.encode())
     namespace = {"te": DOC_NAMESPACES["04"]}

@@ -38,6 +38,25 @@ async def setup_checkout(client):
 
 
 @pytest.mark.asyncio
+async def test_incomplete_fiscal_profile_cannot_capture_a_sale(client, db_session, sample_organization):
+    from app.models.sale import Sale
+    from app.models.catalog import BranchProductStock
+    headers, branch, product, session, _ = await setup_checkout(client)
+    sample_organization.economic_activity_code = ''
+    await db_session.commit()
+    response = await client.post('/api/v1/sales', headers=headers, json={
+        'branch_id': branch, 'cash_session_id': session, 'items': [{'product_id': product, 'quantity': 1}],
+        'payments': [{'payment_method': 'CASH_CRC', 'amount': 2000}],
+    })
+    assert response.status_code == 400
+    assert 'datos fiscales' in response.json()['error']['message']
+    assert (await db_session.execute(select(func.count()).select_from(Sale))).scalar_one() == 0
+    assert (await db_session.execute(select(func.count()).select_from(HaciendaOutbox))).scalar_one() == 0
+    assert (await db_session.execute(select(BranchProductStock.quantity).where(
+        BranchProductStock.product_id == product))).scalar_one() == 4
+
+
+@pytest.mark.asyncio
 async def test_cash_change_adjustments_refund_and_closure(client, db_session, sample_organization):
     headers, branch, product, session, register = await setup_checkout(client)
     payload = {'branch_id': branch, 'cash_session_id': session, 'items': [{'product_id': product, 'quantity': 1}],

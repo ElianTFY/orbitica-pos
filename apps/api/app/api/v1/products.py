@@ -8,6 +8,7 @@ from app.schemas.common import StandardResponse
 from app.services.catalog_service import CatalogService
 from app.services.cabys_service import CabysService
 from app.security.deps import CurrentUserContext, require_permissions
+from app.core.exceptions import ForbiddenException
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -70,6 +71,8 @@ async def create_product(
     context: CurrentUserContext = Depends(require_permissions("catalog:create")),
     db: AsyncSession = Depends(get_db)
 ):
+    if payload.branch_id and payload.branch_id not in context.accessible_branch_ids:
+        raise ForbiddenException("Sucursal no autorizada para registrar inventario")
     service = CatalogService(db, context.organization_id)
     product = await service.create_product(payload, actor_id=context.user_id)
     return StandardResponse(
