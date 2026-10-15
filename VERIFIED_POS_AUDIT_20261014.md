@@ -34,7 +34,7 @@ Rutas de backend relativas a `apps/api`; rutas de frontend relativas a `apps/web
 - Frontend: typecheck y build correctos, 39 páginas generadas. Salidas guardadas en el mismo directorio. Auditoría npm de dependencias productivas: 0 vulnerabilidades.
 - Navegador local: **10 pasos aprobados**, API real y SQLite desechable; empresa vacía, producto/CAByS/stock, empleado, sucursal, caja/venta/recibo, reporte/CSV, devolución/cierre, catálogo tablet/móvil, cajero y recuperación. `browser-local.json` identifica fecha y alcance. El correo se captura en memoria de pruebas; Hacienda no se contacta.
 - CI anterior sobre `f5f7a51`: PostgreSQL 16, 6 pruebas de integración/concurrencia, migración nueva, sin drift y restauración a otra base aprobados. ARM construyó y arrancó API/web/worker/PostgreSQL y comprobó proxy y proceso worker. Run `38432145016`. Su frontend falló por dependencias; se corrigieron posteriormente.
-- CI del nuevo código incluye el mismo recorrido de navegador sobre **PostgreSQL separado** y conserva `pos-browser-evidence`. Consultar los checks del PR para el SHA y resultado de esta revisión; no extrapolar el run anterior a cambios posteriores.
+- CI del código `459420677f6d3edf76493a5f9f0598717557ac7b`: [run 38650652202](https://github.com/ElianTFY/orbitica-pos/actions/runs/38650652202) aprobado en sus 4 jobs. Backend: 139 pruebas; PostgreSQL 16: 6 pruebas, migraciones sin drift, respaldo/restauración y 10 pasos de navegador contra una base separada; frontend: typecheck/build y auditoría productiva sin vulnerabilidades; ARM: API/web/worker/PostgreSQL y proxy. [Artefacto de navegador](https://github.com/ElianTFY/orbitica-pos/actions/runs/38650652202/artifacts/11934687468), SHA256 `df8d7c09ad10a6a1f4684902ffdd1f13bc75674e3105c1ae204f0d635643baec`. Los cambios posteriores de este informe y del Blueprint gratuito no modifican ese código de aplicación; consultar los checks para cada SHA posterior.
 - XSD/firma: certificados autofirmados exclusivos de pruebas, validación XSD y verificación criptográfica. Esto no acredita confianza del certificado, aceptación externa ni conformidad de todos los campos condicionales.
 - Fallos intermedios resueltos: validación fiscal reveló fixtures incompletos (se completaron explícitamente, conservando las aserciones de aislamiento); una invocación desde la raíz falló por la ruta relativa de Alembic (ejecución correcta desde `apps/api`). No se desactivaron permisos ni se introdujeron bypass de autenticación.
 
@@ -77,14 +77,20 @@ Rutas de backend relativas a `apps/api`; rutas de frontend relativas a `apps/web
 
 ## Acceso de prueba y bloqueadores externos
 
-Vercel corrigió Root Directory y generó Preview listo del commit `f5f7a51`: `https://web-4w53uobr7-eliantfys-projects.vercel.app`. **No es todavía un POS utilizable:** falta `FASTAPI_BACKEND_URL`; la comprobación de `/health/ready` devolvió 404 `DNS_HOSTNAME_RESOLVED_PRIVATE`. La URL antigua no demuestra qué API/worker está desplegado. No se entrega un enlace solo por mostrar el login.
+Vercel corrigió Root Directory y generó Preview listo del commit `4594206`: `https://web-3f0i6ouue-eliantfys-projects.vercel.app`. **No es todavía un POS utilizable:** `/login` responde 200, pero falta `FASTAPI_BACKEND_URL`; `/health/ready` devolvió 404 `DNS_HOSTNAME_RESOLVED_PRIVATE`. La URL antigua no demuestra qué API/worker está desplegado. No se entrega un enlace solo por mostrar el login.
 
-Render devuelve los workspaces `liaa` y `Orbítica POS Pruebas`. Su herramienta exige selección confirmada por el usuario antes de listar servicios; todavía no hay elección. No se creó infraestructura ni se contrataron servicios. `render.free.yaml` no acredita worker permanente ni almacenamiento durable.
+El workspace correcto quedó identificado por sus servicios y repositorio: **Orbítica POS Pruebas** (`tea-dagp5uon74is739f9bsg`). Contiene `orbitica-pos-test-api` y `orbitica-pos-test-web`, ambos todavía en `84288cc` de `codex/final-production-fixes`; no hay worker separado. `liaa` corresponde a otros proyectos.
+
+La base anterior `orbitica-pos-test-db` venció el 9 de octubre y está suspendida. El 14 de octubre el propietario confirmó que solo contenía pruebas sin información importante. No se contrató su recuperación ni se borró manualmente.
+
+Se creó **`orbitica-pos-test-db-20261014`** (`dpg-db80lf1srm7s73893um0-a`), PostgreSQL 16, Ohio, **plan free**, sin autoscaling, réplicas ni HA, con acceso externo restringido (`ipAllowList: []`). Vence el **13 de noviembre de 2026 a las 17:05, hora de Costa Rica**. No se contrataron servicios de pago. Falta conectar la API y ejecutar las migraciones; crear la base no acredita un despliegue utilizable.
+
+`render.free.yaml` ahora apunta a esa base y a `fix/verified-pos-hacienda-20261011`, manteniendo la emisión productiva desactivada. El Blueprint preparado no se ha aplicado. La conexión de Render permite crear la base y actualizar variables, pero no expone sus credenciales de conexión ni permite cambiar la rama de los servicios existentes; tampoco hay CLI autenticada disponible. Se necesita completar esos ajustes en el panel de Render. El entorno gratuito no incluye worker permanente ni almacenamiento durable de archivos; sirve para pruebas del POS y no demuestra aceptación fiscal.
 
 | Responsable | Bloqueador / acción concreta |
 |---|---|
-| Propietario | Confirmar workspace de Render: `liaa` o `Orbítica POS Pruebas` |
-| Técnico | Inspeccionar los servicios seleccionados, conectar API/worker/PostgreSQL/Vercel y comprobar SHA, HTTPS, correo y almacenamiento antes de entregar URL funcional |
+| Técnico + acceso al panel | Conectar la nueva base a la API, cambiar API/web a la rama revisada y desplegar; verificar migraciones, SHA, HTTPS, registro y persistencia antes de entregar URL funcional |
+| Técnico | Conectar Vercel a la API cuando esta esté saludable. Para el piloto fiscal: resolver worker, correo y archivos durables; cualquier infraestructura de pago requiere autorización separada |
 | Empresa piloto | Completar perfil fiscal real y credenciales **de sandbox** mediante configuración segura; no enviarlas a un PR ni pegarlas en chat |
 | Técnico + operador | FE, TE y NC referenciada reales en sandbox; conservar privadamente fecha, SHA, clave, estado y respuesta original. No inventar evidencia ni usar una respuesta simulada |
 | Técnico | Completar módulos y comprobaciones todavía pendientes en la tabla anterior |
