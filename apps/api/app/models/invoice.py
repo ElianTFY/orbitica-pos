@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from datetime import datetime, timezone
-from sqlalchemy import String, Numeric, Text, ForeignKey, DateTime
+from sqlalchemy import String, Numeric, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin, GUID
 
@@ -54,6 +54,10 @@ class ElectronicInvoice(Base, UUIDMixin, TimestampMixin):
     reference_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reference_code: Mapped[str | None] = mapped_column(String(2), nullable=True)  # 01=Anula, 02=Corrige texto, 03=Corrige monto
     reference_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Captured once when the operation is committed, before any asynchronous work.
+    fiscal_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    email_next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # XML Storage
     xml_generated: Mapped[str | None] = mapped_column(Text, nullable=True)

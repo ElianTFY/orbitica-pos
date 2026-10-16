@@ -33,10 +33,11 @@ export default function BranchesPage() {
   const [branchAddress, setBranchAddress] = useState("");
   const [branchPhone, setBranchPhone] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const resetForm = () => {
-    const nextCodeNumber = branches.length + 1;
+    const nextCodeNumber = Math.max(0, ...branches.map(b => Number(b.code))) + 1;
     const paddedCode = String(nextCodeNumber).padStart(3, "0");
     setBranchName("");
     setBranchCode(paddedCode);
@@ -61,7 +62,7 @@ export default function BranchesPage() {
     setFormError(null);
   };
 
-  const handleSaveBranch = (e: React.FormEvent) => {
+  const handleSaveBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -75,8 +76,10 @@ export default function BranchesPage() {
       return;
     }
 
+    setIsSaving(true);
+    try {
     if (editingBranch) {
-      updateBranch(editingBranch.id, {
+      await updateBranch(editingBranch.id, {
         name: branchName.trim(),
         code: branchCode.trim(),
         address: branchAddress.trim(),
@@ -85,7 +88,7 @@ export default function BranchesPage() {
       });
       setEditingBranch(null);
     } else {
-      addBranch({
+      await addBranch({
         name: branchName.trim(),
         code: branchCode.trim(),
         address: branchAddress.trim(),
@@ -96,18 +99,24 @@ export default function BranchesPage() {
       setIsCreateModalOpen(false);
     }
     resetForm();
+    } catch (error: any) { setFormError(error?.message || "No se pudo guardar."); }
+    finally { setIsSaving(false); }
   };
 
-  const handleConfirmDelete = () => {
-    if (branchToDelete) {
-      deleteBranch(branchToDelete.id);
+  const handleConfirmDelete = async () => {
+    if (!branchToDelete || isSaving) return;
+    setIsSaving(true);
+    try {
+      await deleteBranch(branchToDelete.id);
       setBranchToDelete(null);
-    }
+    } catch (error: any) { setFormError(error?.message || "No se pudo desactivar."); }
+    finally { setIsSaving(false); }
   };
 
   return (
     <OwnerLayout>
       <div className="space-y-6">
+        {formError && <p role="alert" className="text-semantic-danger-text">{formError}</p>}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-text-main tracking-tight">Sucursales y Locales Comerciales</h1>
@@ -230,6 +239,8 @@ export default function BranchesPage() {
                   placeholder="002"
                   maxLength={3}
                   value={branchCode}
+                  disabled={Boolean(editingBranch)}
+                  pattern="[0-9]{3}"
                   onChange={(e) => setBranchCode(e.target.value)}
                   required
                 />
@@ -276,7 +287,7 @@ export default function BranchesPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" variant="primary">
+                <Button type="submit" variant="primary" disabled={isSaving}>
                   {editingBranch ? "Guardar Cambios" : "Crear Sucursal"}
                 </Button>
               </div>
@@ -304,7 +315,7 @@ export default function BranchesPage() {
                   Cancelar
                 </Button>
                 <Button variant="danger" onClick={handleConfirmDelete}>
-                  Eliminar Sucursal
+                  Desactivar Sucursal
                 </Button>
               </div>
             </div>

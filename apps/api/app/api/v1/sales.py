@@ -14,11 +14,13 @@ from app.services.idempotency_service import IdempotencyService
 from app.services.hacienda_service import HaciendaService
 from app.services.hacienda_xml_generator_v44 import generate_hacienda_xml_v44
 from app.models.sale import Sale
+from app.models.invoice import ElectronicInvoice
+from app.services.fiscal_snapshot import fiscal_parties
 from app.models.organization import Organization
 from app.models.branch import Branch
 from app.models.customer import Customer
 from app.security.deps import CurrentUserContext, require_permissions
-from app.core.exceptions import NotFoundException
+from app.core.exceptions import NotFoundException, ConflictException
 
 router = APIRouter(prefix="/sales", tags=["POS Sales"])
 
@@ -50,8 +52,15 @@ async def create_sale(
         user_id=context.user_id,
         commit=False,
     )
+    invoice = (await db.execute(select(ElectronicInvoice).where(
+        ElectronicInvoice.sale_id == sale.id, ElectronicInvoice.doc_type.in_(["01", "04"]),
+    ))).scalar_one()
+    sale_data = SaleResponse.model_validate(sale).model_copy(update={
+        "invoice_id": invoice.id, "fiscal_status": invoice.status,
+        "numeric_key": invoice.numeric_key, "consecutive_number": invoice.consecutive_number,
+    })
     resp_obj = StandardResponse(
-        data=SaleResponse.model_validate(sale),
+        data=sale_data,
         message="Venta procesada exitosamente"
     )
 
@@ -115,11 +124,17 @@ async def get_thermal_receipt(
         cust_res = await db.execute(select(Customer).where(Customer.id == sale.customer_id))
         cust = cust_res.scalar_one_or_none()
 
+    invoice = (await db.execute(select(ElectronicInvoice).where(
+        ElectronicInvoice.sale_id == sale.id, ElectronicInvoice.doc_type.in_(["01", "04"]),
+    ).order_by(ElectronicInvoice.created_at.asc()).limit(1))).scalar_one_or_none()
+    if invoice and invoice.fiscal_snapshot:
+        org, cust, branch = fiscal_parties(invoice.fiscal_snapshot)
     receipt_data = HaciendaService.generate_thermal_receipt_payload(
         sale=sale,
         org=org,
         branch=branch,
-        customer=cust
+        customer=cust,
+        invoice=invoice
     )
     return StandardResponse(data=receipt_data)
 
@@ -129,35 +144,17 @@ async def get_hacienda_xml(
     context: CurrentUserContext = Depends(require_permissions("pos:read")),
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Sale).options(
-        selectinload(Sale.items),
-        selectinload(Sale.payments)
-    ).where(Sale.id == sale_id, Sale.organization_id == context.organization_id)
-    res = await db.execute(stmt)
-    sale = res.scalar_one_or_none()
-    if not sale:
-        raise NotFoundException("Venta no encontrada")
-
-    org_res = await db.execute(select(Organization).where(Organization.id == context.organization_id))
-    org = org_res.scalar_one_or_none()
-
-    branch_res = await db.execute(select(Branch).where(Branch.id == sale.branch_id))
-    branch = branch_res.scalar_one_or_none()
-
-    cust = None
-    if sale.customer_id:
-        cust_res = await db.execute(select(Customer).where(Customer.id == sale.customer_id))
-        cust = cust_res.scalar_one_or_none()
-
-    doc_type = "01" if cust and cust.identification_number else "04"
-    xml_content = generate_hacienda_xml_v44(
-        sale=sale,
-        org=org,
-        branch=branch,
-        customer=cust,
-        doc_type=doc_type
-    )
-    return Response(content=xml_content, media_type="application/xml")
+    invoice = (await db.execute(select(ElectronicInvoice).where(
+        ElectronicInvoice.sale_id == sale_id,
+        ElectronicInvoice.organization_id == context.organization_id,
+        ElectronicInvoice.doc_type.in_(["01", "04"]),
+    ).order_by(ElectronicInvoice.created_at.asc()).limit(1))).scalar_one_or_none()
+    if not invoice:
+        raise NotFoundException("Comprobante de venta no encontrado")
+    if not invoice.xml_signed:
+        raise ConflictException("El XML firmado todavía está pendiente de generación")
+    return Response(content=invoice.xml_signed, media_type="application/xml",
+                    headers={"Content-Disposition": f'attachment; filename="{invoice.numeric_key}.xml"'})
 
 @router.post("/{sale_id}/refund", response_model=StandardResponse[SaleResponse])
 async def refund_sale(

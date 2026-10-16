@@ -102,6 +102,12 @@ class CabysService:
         clean_query = query.strip()
         if len(clean_query) < 3:
             raise BadRequestException("La búsqueda CAByS requiere al menos 3 caracteres")
+        # Exact-code searches share the same validated cache as product save.
+        # Description searches still use the official remote catalog.
+        if len(clean_query) == 13 and clean_query.isdigit():
+            entry = await cls.get_by_code(clean_query)
+            return [{"codigo": entry["codigo"], "descripcion": entry.get("descripcion", ""),
+                     "impuesto": entry.get("impuesto", 0)}]
         params = {"codigo": clean_query} if clean_query.isdigit() else {"descripcion": clean_query}
         payload = await cls._request(params)
         rows = payload.get("cabys", []) if isinstance(payload, dict) else payload

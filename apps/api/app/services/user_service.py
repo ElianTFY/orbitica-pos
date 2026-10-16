@@ -1,13 +1,14 @@
 import uuid
 from typing import List, Optional, Union
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from app.models.user import User
 from app.models.branch import Branch, UserBranchAccess
 from app.schemas.user import UserCreate, UserUpdate
 from app.security.password import hash_password
 from app.core.constants import UserRole, ASSIGNABLE_ROLES
-from app.core.exceptions import NotFoundException, ConflictException, ForbiddenException
+from app.core.exceptions import NotFoundException, ConflictException, ForbiddenException, BadRequestException
 from app.services.audit_service import AuditService
 
 def to_user_role(role_val: Union[UserRole, str]) -> UserRole:
@@ -24,9 +25,8 @@ class UserService:
         self.organization_id = organization_id
 
     async def list_users(self) -> List[User]:
-        stmt = select(User).where(
-            User.organization_id == self.organization_id,
-            User.is_active == True
+        stmt = select(User).options(selectinload(User.branch_accesses)).where(
+            User.organization_id == self.organization_id
         ).order_by(User.full_name.asc())
         res = await self.db.execute(stmt)
         return list(res.scalars().all())
@@ -47,7 +47,7 @@ class UserService:
                 f"El rol '{c_role.value}' no tiene autorización para asignar o crear usuarios con rol '{t_role.value}'."
             )
 
-        stmt = select(User).where(User.email == data.email.strip().lower())
+        stmt = select(User).options(selectinload(User.branch_accesses)).where(User.email == data.email.strip().lower())
         res = await self.db.execute(stmt)
         if res.scalar_one_or_none():
             raise ConflictException("El correo ya está en uso")
@@ -63,12 +63,14 @@ class UserService:
         self.db.add(user)
         await self.db.flush()
 
-        for b_id in data.branch_ids:
+        for b_id in set(data.branch_ids):
             b_stmt = select(Branch).where(Branch.id == b_id, Branch.organization_id == self.organization_id)
             b_res = await self.db.execute(b_stmt)
             if b_res.scalar_one_or_none():
                 access = UserBranchAccess(user_id=user.id, branch_id=b_id, is_default=False)
                 self.db.add(access)
+            else:
+                raise BadRequestException("Una sucursal asignada no pertenece a esta empresa")
 
         await AuditService.log_action(
             db=self.db,
@@ -82,6 +84,7 @@ class UserService:
 
         await self.db.commit()
         await self.db.refresh(user)
+        await self.db.refresh(user, ["branch_accesses"])
         return user
 
     async def update_user(
@@ -93,6 +96,11 @@ class UserService:
     ) -> User:
         user = await self.get_user(user_id)
         a_role = to_user_role(actor_role)
+
+        if actor_id != user_id and to_user_role(user.role) not in ASSIGNABLE_ROLES.get(a_role, set()):
+            raise ForbiddenException("No puede modificar un usuario de jerarquía superior o equivalente")
+        if actor_id == user_id and data.branch_ids is not None:
+            raise ForbiddenException("No puede cambiar sus propios accesos de sucursal")
 
         # Prohibit self-role modification
         if data.role is not None:
@@ -116,6 +124,17 @@ class UserService:
                 raise ForbiddenException("No puedes deshabilitar tu propio usuario")
             user.is_active = data.is_active
 
+        if data.branch_ids is not None:
+            requested = set(data.branch_ids)
+            valid = set((await self.db.execute(select(Branch.id).where(
+                Branch.id.in_(requested), Branch.organization_id == self.organization_id, Branch.is_active == True,
+            ))).scalars().all())
+            if valid != requested:
+                raise BadRequestException("Una sucursal asignada no pertenece a esta empresa")
+            await self.db.execute(delete(UserBranchAccess).where(UserBranchAccess.user_id == user_id))
+            self.db.add_all([UserBranchAccess(user_id=user_id, branch_id=branch_id, is_default=False)
+                             for branch_id in requested])
+
         await AuditService.log_action(
             db=self.db,
             action="USER_UPDATED",
@@ -128,10 +147,11 @@ class UserService:
 
         await self.db.commit()
         await self.db.refresh(user)
+        await self.db.refresh(user, ["branch_accesses"])
         return user
 
     async def get_user(self, user_id: uuid.UUID) -> User:
-        stmt = select(User).where(
+        stmt = select(User).options(selectinload(User.branch_accesses)).where(
             User.id == user_id,
             User.organization_id == self.organization_id
         )

@@ -47,3 +47,6 @@ htmlcov/
 *.bundle
 *.patch
 storage/
+
+# Local browser evidence (may include synthetic test identities)
+apps/web/test-results/

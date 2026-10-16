@@ -32,6 +32,7 @@ class HaciendaOutbox(Base, UUIDMixin, TimestampMixin):
     xml_uncompressed: Mapped[str] = mapped_column(Text, nullable=False)
     xml_signed: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False, index=True)  # PENDING -> PROCESSING -> SENT -> ACCEPTED / REJECTED (or CONTINGENCY)
+    transmission_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

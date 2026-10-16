@@ -1,0 +1,16 @@
+API deploy dep-db8lqufavr4c7388m610
+Commit 58218bb3c292921cf122363c4a1b80afd203a95d
+Instance srv-dagp8v0n74is739fnum0-hzgt2
+Source: Render application logs, 2026-10-15 UTC
+
+2026-10-15T23:11:30.92220145Z ==> Running 'cd apps/api && bash scripts/start_render_free.sh'
+2026-10-15T23:11:48.160367103Z INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+2026-10-15T23:11:48.160396604Z INFO  [alembic.runtime.migration] Will assume transactional DDL.
+2026-10-15T23:11:48.330589604Z INFO  [alembic.runtime.migration] Running upgrade  -> 0001_initial_schema, initial_production_schema
+2026-10-15T23:11:49.781518343Z INFO  [alembic.runtime.migration] Running upgrade 0001_initial_schema -> 0002_audit_append_only, audit append-only triggers
+2026-10-15T23:11:49.79934208Z INFO  [alembic.runtime.migration] Running upgrade 0002_audit_append_only -> 0003_auth_challenges_memberships_onboarding, auth challenges memberships onboarding subscription
+2026-10-15T23:11:50.025737116Z INFO  [alembic.runtime.migration] Running upgrade 0003_auth_challenges_memberships_onboarding -> 0004_quotes_system, quotes system
+2026-10-15T23:11:50.132940553Z INFO  [alembic.runtime.migration] Running upgrade 0004_quotes_system -> 0005_final_production_fixes, critical fiscal delivery and outbox constraints
+2026-10-15T23:11:50.281132296Z INFO  [alembic.runtime.migration] Running upgrade 0005_final_production_fixes -> 0006_cash_fiscal_integrity, Cash drawer integrity and immutable fiscal inputs.
+2026-10-15T23:11:50.325622281Z INFO  [alembic.runtime.migration] Running upgrade 0006_cash_fiscal_integrity -> 0007_explicit_fiscal_profile, Remove fabricated fiscal defaults without rewriting existing issuer history.
+

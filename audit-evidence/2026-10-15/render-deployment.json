@@ -1,0 +1,62 @@
+{
+  "checked_at": "2026-10-16T04:09:41.053Z",
+  "source": "Render connector",
+  "application_sha": "58218bb3c292921cf122363c4a1b80afd203a95d",
+  "workspace_id": "tea-dagp5uon74is739f9bsg",
+  "database_id": "dpg-db80lf1srm7s73893um0-a",
+  "services": [
+    {
+      "id": "srv-dagp8v0n74is739fnum0",
+      "name": "orbitica-pos-test-api",
+      "branch": "fix/verified-pos-hacienda-20261011",
+      "autoDeployTrigger": "off",
+      "plan": "free",
+      "url": "https://orbitica-pos-test-api.onrender.com",
+      "healthCheckPath": "/health/ready",
+      "deploy": {
+        "commit": {
+          "createdAt": "2026-10-15T05:21:11Z",
+          "id": "58218bb3c292921cf122363c4a1b80afd203a95d",
+          "message": "Preparar base gratuita nueva y actualizar evidencia de despliegue"
+        },
+        "createdAt": "2026-10-15T23:10:49.649616Z",
+        "finishedAt": "2026-10-15T23:12:10.433572Z",
+        "id": "dep-db8lqufavr4c7388m610",
+        "startedAt": "2026-10-15T23:10:49.623938Z",
+        "status": "live",
+        "trigger": "api",
+        "updatedAt": "2026-10-15T23:12:44.776586Z"
+      }
+    },
+    {
+      "id": "srv-dagp8mtbedkc739mfk3g",
+      "name": "orbitica-pos-test-web",
+      "branch": "fix/verified-pos-hacienda-20261011",
+      "autoDeployTrigger": "off",
+      "plan": "free",
+      "url": "https://orbitica-pos-test-web.onrender.com",
+      "healthCheckPath": "/login",
+      "deploy": {
+        "commit": {
+          "createdAt": "2026-10-15T05:21:11Z",
+          "id": "58218bb3c292921cf122363c4a1b80afd203a95d",
+          "message": "Preparar base gratuita nueva y actualizar evidencia de despliegue"
+        },
+        "createdAt": "2026-10-15T05:33:38.737655Z",
+        "finishedAt": "2026-10-15T05:35:05.472027Z",
+        "id": "dep-db86bcjncjis73eqb400",
+        "startedAt": "2026-10-15T05:33:38.710794Z",
+        "status": "live",
+        "trigger": "api",
+        "updatedAt": "2026-10-15T23:06:56.4245Z"
+      }
+    }
+  ],
+  "limits": [
+    "No deployed fiscal worker",
+    "No live email delivery or authenticated flow verified on this deployment",
+    "Hacienda production emission disabled",
+    "No real Hacienda sandbox acceptance verified"
+  ]
+}
+

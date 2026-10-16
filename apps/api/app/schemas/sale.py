@@ -49,6 +49,10 @@ class SalePaymentResponse(BaseSchema):
     created_at: datetime
 
 class SaleResponse(BaseSchema):
+    invoice_id: Optional[UUID] = None
+    fiscal_status: Optional[str] = None
+    numeric_key: Optional[str] = None
+    consecutive_number: Optional[str] = None
     id: UUID
     organization_id: UUID
     branch_id: UUID
@@ -71,4 +75,5 @@ class SaleResponse(BaseSchema):
     payments: List[SalePaymentResponse] = []
 
 class RefundRequest(BaseModel):
+    cash_session_id: Optional[UUID] = None
     reason: str = Field(min_length=3, max_length=500)

@@ -1,0 +1,14 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> @orbitica/web@1.0.0 build
+> next build
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+A separate npm run build was executed successfully after the captured telemetry-only invocation:
+Next.js 15.5.24; compiled in 3.4s; lint/type validation successful; 38/38 static pages generated; exit code 0.
+Routes include /pos, /cash-register, /sales, /products, /employees, /branches, /invoices and /superadmin.

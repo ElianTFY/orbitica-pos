@@ -15,6 +15,8 @@ from app.models.fiscal_credential import FiscalCredential
 from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.hacienda_client import HaciendaAPIClient
 from app.services.email_service import FiscalEmailService
+from app.services.electronic_invoicing_service import ElectronicInvoicingService
+from app.services.fiscal_readiness import require_live_readiness
 from app.core.config import settings
 from app.core.logging import setup_logging
 
@@ -47,7 +49,7 @@ class HaciendaOutboxWorker:
         stmt = (
             select(HaciendaOutbox)
             .where(
-                HaciendaOutbox.status.in_(["PENDING", "QUEUED", "PROCESSING", "SENT", "ERROR"]),
+                HaciendaOutbox.status.in_(["PENDING_SIGNATURE", "PENDING", "QUEUED", "PROCESSING", "SENT", "ERROR"]),
                 or_(
                     HaciendaOutbox.next_retry_at.is_(None),
                     HaciendaOutbox.next_retry_at <= now
@@ -60,11 +62,27 @@ class HaciendaOutboxWorker:
         res = await db.execute(stmt)
         records = list(res.scalars().all())
 
+        # Claim this batch durably. Each record is subsequently locked and
+        # committed separately, so a crash does not undo another delivery.
+        record_ids = [record.id for record in records]
+        invoice_ids = {record.invoice_id for record in records}
+        claim_until = now + timedelta(seconds=300 + self.batch_size * 60)
         for record in records:
+            record.next_retry_at = claim_until
+        await db.commit()
+
+        for record_id in record_ids:
+            record = (await db.execute(select(HaciendaOutbox).where(
+                HaciendaOutbox.id == record_id,
+            ).with_for_update().execution_options(populate_existing=True))).scalar_one()
             try:
                 await self._process_record(db, record)
             except Exception as ex:
-                logger.error(f"Error procesando outbox ID {record.id}: {ex}")
+                logger.error("Error procesando outbox ID %s: %s", record_id, type(ex).__name__)
+                await db.rollback()
+                record = (await db.execute(select(HaciendaOutbox).where(
+                    HaciendaOutbox.id == record_id,
+                ).with_for_update().execution_options(populate_existing=True))).scalar_one()
                 record.retry_count += 1
                 record.last_error = str(ex)
 
@@ -85,10 +103,10 @@ class HaciendaOutboxWorker:
                 elif record.retry_count >= self.max_retries:
                     # Activate Fiscal Contingency when Hacienda is unreachable
                     record.status = "CONTINGENCY"
-                    record.last_error = f"Contingencia fiscal activada: Hacienda no disponible tras {self.max_retries} reintentos ({str(ex)})"
+                    record.last_error = f"Procesamiento fiscal detenido tras {self.max_retries} reintentos ({str(ex)})"
                     logger.warning(
                         f"Outbox ID {record.id} superó {self.max_retries} reintentos. "
-                        "Activada contingencia fiscal DGT para comprobante "
+                        "Se requiere revisión del comprobante "
                         f"{record.numeric_key}."
                     )
                     inv_stmt = select(ElectronicInvoice).where(ElectronicInvoice.id == record.invoice_id)
@@ -96,7 +114,7 @@ class HaciendaOutboxWorker:
                     inv = inv_res.scalar_one_or_none()
                     if inv:
                         inv.status = "CONTINGENCY"
-                        inv.hacienda_error_message = f"Contingencia fiscal: Hacienda no disponible tras {self.max_retries} intentos ({str(ex)})"
+                        inv.hacienda_error_message = f"Procesamiento fiscal detenido tras {self.max_retries} intentos ({str(ex)})"
                 else:
                     backoff = min(
                         self.max_backoff_seconds,
@@ -105,9 +123,11 @@ class HaciendaOutboxWorker:
                     record.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=backoff)
                     record.status = "PENDING"
 
+            await db.commit()
+
         email_retries = await self._retry_pending_emails(
             db,
-            exclude_invoice_ids={record.invoice_id for record in records},
+            exclude_invoice_ids=invoice_ids,
         )
         await db.commit()
         return len(records) + email_retries
@@ -116,18 +136,25 @@ class HaciendaOutboxWorker:
         now = datetime.now(timezone.utc)
 
         inv = (await db.execute(
-            select(ElectronicInvoice).where(ElectronicInvoice.id == record.invoice_id)
+            select(ElectronicInvoice).where(ElectronicInvoice.id == record.invoice_id).with_for_update()
         )).scalar_one_or_none()
         org = (await db.execute(
             select(Organization).where(Organization.id == record.organization_id)
         )).scalar_one_or_none()
 
-        fiscal_environment = inv.environment if inv else (org.atv_environment if org else "STAGING")
+        if not inv or not org:
+            raise ValueError("Comprobante u organización no encontrados")
+        if inv.organization_id != record.organization_id or inv.numeric_key != record.numeric_key:
+            raise ValueError("El evento fiscal no coincide con el comprobante")
+        if inv.status in {"CANCELLED", "ACCEPTED", "REJECTED"}:
+            record.status = inv.status
+            return
+        fiscal_environment = inv.environment
 
         # A durable receipt timestamp means Hacienda already received this key.
         # Never transmit it again, even if a recovery routine changed the outbox
         # status after a worker crash.
-        if inv and inv.sent_to_hacienda_at and record.status in {"PENDING", "QUEUED", "PROCESSING", "ERROR"}:
+        if inv and inv.sent_to_hacienda_at and record.status in {"PENDING_SIGNATURE", "PENDING", "QUEUED", "PROCESSING", "ERROR"}:
             record.status = "SENT"
 
         # A worker can crash after marking PROCESSING but before sending. If no
@@ -136,14 +163,12 @@ class HaciendaOutboxWorker:
             record.status = "PENDING"
 
         # Step 1: PENDING / QUEUED / ERROR -> PROCESSING -> SENT
-        if record.status in ("PENDING", "QUEUED", "ERROR"):
-            if fiscal_environment == "PRODUCTION" and (
-                not settings.HACIENDA_SANDBOX_VALIDATED
-                or not settings.HACIENDA_LIVE_EMISSION_ENABLED
-            ):
-                raise ValueError(
-                    "Transmisión bloqueada: la emisión en vivo requiere Sandbox validado y habilitación explícita"
-                )
+        if record.status in ("PENDING_SIGNATURE", "PENDING", "QUEUED", "ERROR"):
+            await require_live_readiness(db, record.organization_id, fiscal_environment)
+            if not inv.xml_signed:
+                inv = await ElectronicInvoicingService(db).prepare_and_sign_invoice(inv.id, inv.organization_id)
+            record.xml_signed = inv.xml_signed
+            record.xml_uncompressed = inv.xml_generated or record.xml_uncompressed
             record.status = "PROCESSING"
             await db.flush()
 
@@ -170,11 +195,41 @@ class HaciendaOutboxWorker:
             else:
                 access_token = "mock_test_token"
 
+            # Always reconcile the original key before POST. This also covers a
+            # crash after Hacienda received the document but before DB commit.
+            previous = await client.check_status(token=access_token, clave=record.numeric_key)
+            if previous.get("status_code") != 404:
+                if str(previous.get("status", "")).lower() not in {"aceptado", "rechazado", "recibido", "procesando"}:
+                    raise ValueError("No se pudo reconciliar la clave antes de transmitir")
+                record.status = "SENT"
+                record.next_retry_at = now
+                inv.status = "PROCESSING"
+                inv.sent_to_hacienda_at = inv.sent_to_hacienda_at or now
+                return
+
             rec_tax_id = inv.receiver_tax_id if inv else None
             rec_tax_type = inv.receiver_tax_id_type if inv else None
 
-            em_tipo = org.identification_type.zfill(2)[:2] if org.identification_type.isdigit() else ("02" if org.identification_type == "JURIDICA" else "01")
-            em_num = "".join(c for c in org.identification_number if c.isdigit())
+            emitter = (inv.fiscal_snapshot or {}).get("emitter") or {
+                "identification_type": org.identification_type, "identification_number": org.identification_number,
+            }
+            em_tipo = {"FISICA": "01", "JURIDICA": "02", "DIMEX": "03", "NITE": "04"}.get(
+                emitter["identification_type"], emitter["identification_type"],
+            )
+            if em_tipo not in {"01", "02", "03", "04"}:
+                raise ValueError("Tipo de identificación del emisor no válido")
+            em_num = "".join(c for c in emitter["identification_number"] if c.isdigit())
+
+            # Persist the uncertainty boundary BEFORE network I/O. A refund
+            # must not cancel a key whose response was lost after reception.
+            record.transmission_attempted_at = now
+            inv.status = "PROCESSING"
+            await db.commit()
+            # The durable claim prevents a second worker selecting this row;
+            # re-lock it after the checkpoint until result persistence.
+            record = (await db.execute(select(HaciendaOutbox).where(
+                HaciendaOutbox.id == record.id,
+            ).with_for_update().execution_options(populate_existing=True))).scalar_one()
 
             send_res = await client.send_invoice(
                 token=access_token,
@@ -216,10 +271,11 @@ class HaciendaOutboxWorker:
                         inv.status = "PROCESSING"
                         inv.sent_to_hacienda_at = inv.sent_to_hacienda_at or now
                 else:
-                    record.status = "REJECTED"
-                    record.last_error = f"Hacienda rechazó la recepción: {error_text}"
+                    record.transmission_attempted_at = None
+                    record.status = "CONTINGENCY"
+                    record.last_error = f"Error de recepción de Hacienda: {error_text}"
                     if inv:
-                        inv.status = "REJECTED"
+                        inv.status = "ERROR"
                         inv.hacienda_error_message = error_text
             else:
                 raise ValueError(f"Fallo en transmisión a Hacienda: {send_res}")
@@ -273,9 +329,13 @@ class HaciendaOutboxWorker:
                     inv.hacienda_status_code = "rechazado"
                     inv.hacienda_response_xml = resp_xml
                     inv.hacienda_processed_at = now
+                    inv.hacienda_error_message = record.last_error
             else:
-                # Still processing at Hacienda; check again in 5 seconds
-                record.next_retry_at = now + timedelta(seconds=5)
+                if h_status not in {"recibido", "procesando"}:
+                    raise ValueError("Estado de Hacienda no reconocido; requiere reconciliación")
+                record.retry_count += 1
+                record.next_retry_at = now + timedelta(seconds=min(
+                    self.max_backoff_seconds, self.base_backoff_seconds * 2 ** min(record.retry_count, 6)))
 
     @staticmethod
     def _document_name(doc_type: str) -> str:
@@ -308,8 +368,11 @@ class HaciendaOutboxWorker:
         if sent:
             invoice.email_sent_at = now
             invoice.email_delivery_error = None
+            invoice.email_next_retry_at = None
         else:
             invoice.email_delivery_error = "No se pudo entregar el correo fiscal; se reintentará automáticamente"
+            invoice.email_next_retry_at = now + timedelta(seconds=min(
+                self.max_backoff_seconds, self.base_backoff_seconds * 2 ** invoice.email_retry_count))
         return sent
 
     async def _retry_pending_emails(
@@ -322,11 +385,13 @@ class HaciendaOutboxWorker:
                 ElectronicInvoice.receiver_email.is_not(None),
                 ElectronicInvoice.email_sent_at.is_(None),
                 ElectronicInvoice.email_retry_count < self.max_retries,
+                or_(ElectronicInvoice.email_next_retry_at.is_(None),
+                    ElectronicInvoice.email_next_retry_at <= datetime.now(timezone.utc)),
             )
         if exclude_invoice_ids:
             query = query.where(ElectronicInvoice.id.notin_(exclude_invoice_ids))
         invoices = list((await db.execute(
-            query.order_by(ElectronicInvoice.updated_at.asc()).limit(self.batch_size)
+            query.order_by(ElectronicInvoice.updated_at.asc()).limit(self.batch_size).with_for_update(skip_locked=True)
         )).scalars().all())
 
         attempted = 0

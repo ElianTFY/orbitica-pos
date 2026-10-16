@@ -36,10 +36,11 @@ export default function EmployeesPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"CASHIER" | "MANAGER" | "INVENTORY" | "ADMIN">("CASHIER");
+  const [role, setRole] = useState<Employee["role"]>("CASHIER");
   const [branchName, setBranchName] = useState(settings.branch_name || "Sucursal Central (001)");
   const [pin, setPin] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const resetForm = () => {
@@ -65,12 +66,12 @@ export default function EmployeesPage() {
     setPhone(emp.phone || "");
     setRole(emp.role);
     setBranchName(emp.branch_name);
-    setPin(emp.pin || "");
+    setPin("");
     setIsActive(emp.is_active);
     setFormError(null);
   };
 
-  const handleSaveEmployee = (e: React.FormEvent) => {
+  const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -84,42 +85,49 @@ export default function EmployeesPage() {
       return;
     }
 
-    if (pin && pin.length < 4) {
-      setFormError("El PIN de acceso rápido al POS debe tener al menos 4 dígitos.");
+    if (!editingEmployee && pin.length < 8) {
+      setFormError("La contraseña inicial debe tener al menos 8 caracteres.");
       return;
     }
 
+    setIsSaving(true);
+    try {
     if (editingEmployee) {
-      updateEmployee(editingEmployee.id, {
+      await updateEmployee(editingEmployee.id, {
         full_name: fullName.trim(),
         email: email.trim(),
         phone: phone.trim(),
         role,
         branch_name: branchName,
-        pin: pin.trim(),
+        password: pin,
         is_active: isActive,
       });
       setEditingEmployee(null);
     } else {
-      addEmployee({
+      await addEmployee({
         full_name: fullName.trim(),
         email: email.trim(),
         phone: phone.trim(),
         role,
         branch_name: branchName,
-        pin: pin.trim(),
+        password: pin,
         is_active: isActive,
       });
       setIsCreateModalOpen(false);
     }
     resetForm();
+    } catch (error: any) { setFormError(error?.message || "No se pudo guardar."); }
+    finally { setIsSaving(false); }
   };
 
-  const handleConfirmDelete = () => {
-    if (employeeToDelete) {
-      deleteEmployee(employeeToDelete.id);
+  const handleConfirmDelete = async () => {
+    if (!employeeToDelete || isSaving) return;
+    setIsSaving(true);
+    try {
+      await deleteEmployee(employeeToDelete.id);
       setEmployeeToDelete(null);
-    }
+    } catch (error: any) { setFormError(error?.message || "No se pudo desactivar."); }
+    finally { setIsSaving(false); }
   };
 
   const filteredEmployees = employees.filter(
@@ -132,6 +140,8 @@ export default function EmployeesPage() {
 
   const getRoleLabel = (r: string) => {
     switch (r) {
+      case "ACCOUNTANT":
+        return { label: "Contador", variant: "default" as const };
       case "ADMIN":
         return { label: "Administrador", variant: "blue" as const };
       case "MANAGER":
@@ -147,6 +157,7 @@ export default function EmployeesPage() {
   return (
     <OwnerLayout>
       <div className="space-y-6">
+        {formError && <p role="alert" className="text-semantic-danger-text">{formError}</p>}
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -184,7 +195,7 @@ export default function EmployeesPage() {
                   <th scope="col" className="pb-3 font-bold">Rol / Permiso</th>
                   <th scope="col" className="pb-3 font-bold">Sucursal Asignada</th>
                   <th scope="col" className="pb-3 font-bold">Contacto</th>
-                  <th scope="col" className="pb-3 font-bold">PIN POS</th>
+                  <th scope="col" className="pb-3 font-bold">Acceso</th>
                   <th scope="col" className="pb-3 font-bold">Estado</th>
                   <th scope="col" className="pb-3 font-bold text-right">Acciones</th>
                 </tr>
@@ -236,7 +247,7 @@ export default function EmployeesPage() {
                           {emp.phone ? emp.phone : "-"}
                         </td>
                         <td className="py-3 font-mono text-text-muted text-[11px]">
-                          {emp.pin ? "••••" : "Sin PIN"}
+                          Correo y contraseña
                         </td>
                         <td className="py-3">
                           <Badge variant={emp.is_active ? "success" : "default"}>
@@ -307,6 +318,7 @@ export default function EmployeesPage() {
                   type="email"
                   placeholder="carlos@negocio.cr"
                   value={email}
+                  disabled={Boolean(editingEmployee)}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
@@ -334,7 +346,8 @@ export default function EmployeesPage() {
                     <option value="CASHIER">Cajero (POS y Cobro)</option>
                     <option value="INVENTORY">Inventario (Stock y Compras)</option>
                     <option value="MANAGER">Gerente (Reportes y Caja)</option>
-                    <option value="ADMIN">Administrador (Total)</option>
+                    <option value="ACCOUNTANT">Contador</option>
+                    {editingEmployee?.role === "ADMIN" && <option value="ADMIN">Propietario</option>}
                   </select>
                 </div>
 
@@ -363,9 +376,11 @@ export default function EmployeesPage() {
 
               <Input
                 id="emp-pin"
-                label="PIN de Acceso Rápido POS (Opcional - 4 dígitos)"
+                label={editingEmployee ? "Contraseña (use recuperación de cuenta para cambiarla)" : "Contraseña inicial (mínimo 8 caracteres)"}
                 type="password"
-                maxLength={6}
+                minLength={8}
+                disabled={Boolean(editingEmployee)}
+                required={!editingEmployee}
                 placeholder="••••"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
@@ -396,7 +411,7 @@ export default function EmployeesPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" variant="primary">
+                <Button type="submit" variant="primary" disabled={isSaving}>
                   {editingEmployee ? "Guardar Cambios" : "Registrar Empleado"}
                 </Button>
               </div>
@@ -424,7 +439,7 @@ export default function EmployeesPage() {
                   Cancelar
                 </Button>
                 <Button variant="danger" onClick={handleConfirmDelete}>
-                  Eliminar Empleado
+                  Desactivar Empleado
                 </Button>
               </div>
             </div>

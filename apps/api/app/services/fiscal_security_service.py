@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.fiscal_credential import FiscalCredential
 from app.core.config import settings
+from app.core.exceptions import BadRequestException
 
 def get_fernet_cipher() -> Fernet:
     # Deterministically derive the 32-byte Fernet key without truncating the
@@ -55,15 +56,17 @@ class FiscalSecurityService:
                 p12_bytes,
                 pin.encode("utf-8")
             )
-            if not cert:
-                raise ValueError("No se encontró certificado en el archivo .p12")
-
-            exp_date = cert.not_valid_after_utc if hasattr(cert, "not_valid_after_utc") else cert.not_valid_after.replace(tzinfo=timezone.utc)
-            issuer = cert.issuer.rfc4514_string()
-            subject = cert.subject.rfc4514_string()
-            return exp_date, issuer, subject
-        except Exception as e:
-            raise ValueError(f"Error al procesar certificado criptográfico .p12 o PIN inválido: {str(e)}")
+        except (ValueError, TypeError):
+            raise BadRequestException("No se pudo abrir el certificado .p12/.pfx. Revisa el archivo y su PIN.") from None
+        if not cert or not private_key:
+            raise BadRequestException("El archivo debe incluir el certificado y su clave privada")
+        now = datetime.now(timezone.utc)
+        exp_date = cert.not_valid_after_utc
+        if exp_date <= now:
+            raise BadRequestException("El certificado criptográfico está expirado")
+        if cert.not_valid_before_utc > now:
+            raise BadRequestException("La vigencia del certificado criptográfico todavía no ha iniciado")
+        return exp_date, cert.issuer.rfc4514_string(), cert.subject.rfc4514_string()
 
     @classmethod
     async def save_fiscal_credentials(

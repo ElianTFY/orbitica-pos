@@ -11,7 +11,7 @@ from app.models.support import DelegatedAccessGrant
 from app.models.audit_log import AuditLog
 from app.core.constants import UserRole
 from app.security.password import hash_password
-from app.security.tokens import create_access_token
+from tests.session_helpers import token_for
 from app.services.support_service import SupportService
 
 async def create_superadmin_helper(db: AsyncSession):
@@ -27,7 +27,7 @@ async def create_superadmin_helper(db: AsyncSession):
     )
     db.add(sa)
     await db.commit()
-    token = create_access_token(subject=str(sa.id), claims={"role": sa.role.value})
+    token = await token_for(db, sa)
     return sa, token
 
 @pytest.mark.asyncio

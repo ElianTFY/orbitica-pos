@@ -57,7 +57,9 @@ def generate_custom_p12(
     )
 
 @pytest.fixture
-def sample_xml():
+def sample_xml(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "SOFTWARE_PROVIDER_TAX_ID", "3101999888")
     org_id = uuid.uuid4()
     org = Organization(
         id=org_id,

@@ -1,4 +1,5 @@
 from uuid import UUID
+from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
 from app.schemas.common import BaseSchema
@@ -20,6 +21,8 @@ class UserUpdate(BaseModel):
     branch_ids: Optional[List[UUID]] = None
 
 class UserResponse(BaseSchema):
+    branch_ids: List[UUID] = []
+    created_at: datetime
     id: UUID
     organization_id: Optional[UUID] = None
     email: str

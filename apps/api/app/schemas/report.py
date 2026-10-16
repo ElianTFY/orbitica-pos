@@ -19,6 +19,7 @@ class TopProductSummary(BaseModel):
     gross_profit: Decimal
 
 class SalesSummaryReport(BaseModel):
+    currency: str = "CRC"
     total_sales: Decimal
     total_subtotal: Decimal
     total_taxes: Decimal

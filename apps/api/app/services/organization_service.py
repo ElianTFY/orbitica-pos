@@ -23,10 +23,10 @@ class OrganizationService:
         self.db = db
 
     async def register_organization(self, data: OrganizationCreate) -> Organization:
-        # Validate registration token if provided
-        if data.registration_token:
-            if not verify_registration_token(data.registration_token, data.owner_email):
-                raise BadRequestException("Token de verificación de correo inválido o expirado")
+        # The browser's verification step is not a security boundary. Every
+        # registration, including direct API calls, must prove email ownership.
+        if not data.registration_token or not verify_registration_token(data.registration_token, data.owner_email):
+            raise BadRequestException("Verifica tu correo antes de registrar la empresa. Token inválido o expirado.")
 
         normalized_email = data.owner_email.strip().lower()
 
@@ -187,9 +187,13 @@ class OrganizationService:
                 "organization_id": str(org.id),
                 "role": owner.role,
                 "email": owner.email,
+                "session_family": str(session.family_id),
                 "permissions": ["*"]
             }
             setattr(org, "access_token", create_access_token(str(owner.id), claims=token_claims))
+            # The route delivers this secret only as an HttpOnly cookie; it is
+            # not part of OrganizationResponse or any persistent fiscal data.
+            setattr(org, "registration_refresh_token", refresh_token)
             return org
 
         except Exception:
