@@ -1,0 +1,71 @@
+{
+  "checked_at": "2026-10-15T23:12:28.223519+00:00",
+  "scope": "Public read-only checks; no account created, email sent, or Hacienda request made",
+  "checks": [
+    {
+      "url": "https://orbitica-pos-test-api.onrender.com/health/ready",
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 182,
+      "body": {
+        "success": true,
+        "data": {
+          "status": "ready",
+          "checks": {
+            "database": "connected",
+            "migrations": "current",
+            "outbox": "ready",
+            "configuration": "valid"
+          },
+          "environment": "production"
+        },
+        "message": null
+      }
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/health/ready",
+      "status": 200,
+      "content_type": "application/json",
+      "bytes": 182,
+      "body": {
+        "success": true,
+        "data": {
+          "status": "ready",
+          "checks": {
+            "database": "connected",
+            "migrations": "current",
+            "outbox": "ready",
+            "configuration": "valid"
+          },
+          "environment": "production"
+        },
+        "message": null
+      }
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/login",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 11594
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/register",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 11611
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/api/v1/products",
+      "status": 401,
+      "content_type": "application/json",
+      "bytes": 101,
+      "body": {
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "No se proporcionó token de autenticación",
+          "details": {}
+        }
+      }
+    }
+  ]
+}

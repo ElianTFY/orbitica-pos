@@ -4,6 +4,8 @@ Rama `fix/verified-pos-hacienda-20261011`, basada en `codex/final-production-fix
 
 Este documento describe lo implementado y probado, sin atribuir aceptación fiscal a pruebas locales. Los checks del PR identifican el SHA exacto y el resultado de cada ejecución remota. Los informes anteriores no sustituyen esta evidencia.
 
+**Actualización del despliegue: 15 de octubre de 2026, Costa Rica.** API y web de Render publicadas en `58218bb3c292921cf122363c4a1b80afd203a95d`; PostgreSQL nuevo conectado y migraciones hasta `0007` aplicadas. Acceso: [ORBÍTICA POS de pruebas](https://orbitica-pos-test-web.onrender.com/login). Esto no acredita registro con correo real, un recorrido autenticado en este despliegue ni aceptación de Hacienda.
+
 ## Matriz de correcciones y evidencia
 
 Rutas de backend relativas a `apps/api`; rutas de frontend relativas a `apps/web`.
@@ -77,19 +79,34 @@ Rutas de backend relativas a `apps/api`; rutas de frontend relativas a `apps/web
 
 ## Acceso de prueba y bloqueadores externos
 
-Vercel corrigió Root Directory y generó Preview listo del commit `4594206`: `https://web-3f0i6ouue-eliantfys-projects.vercel.app`. **No es todavía un POS utilizable:** `/login` responde 200, pero falta `FASTAPI_BACKEND_URL`; `/health/ready` devolvió 404 `DNS_HOSTNAME_RESOLVED_PRIVATE`. La URL antigua no demuestra qué API/worker está desplegado. No se entrega un enlace solo por mostrar el login.
+La versión actual de pruebas está en **https://orbitica-pos-test-web.onrender.com/login**. La base es nueva: se debe usar **Registrar Negocio**, verificar el correo en la propia aplicación y completar el perfil fiscal antes de vender. La entrega real de correo y el recorrido autenticado sobre este despliegue todavía requieren validación; las 10 pruebas de navegador anteriores corresponden al entorno CI separado.
 
-El workspace correcto quedó identificado por sus servicios y repositorio: **Orbítica POS Pruebas** (`tea-dagp5uon74is739f9bsg`). Contiene `orbitica-pos-test-api` y `orbitica-pos-test-web`, ambos todavía en `84288cc` de `codex/final-production-fixes`; no hay worker separado. `liaa` corresponde a otros proyectos.
+En **Orbítica POS Pruebas** (`tea-dagp5uon74is739f9bsg`), los dos servicios usan `fix/verified-pos-hacienda-20261011` y tienen publicado `58218bb3c292921cf122363c4a1b80afd203a95d`, cuyo código de aplicación es idéntico al `4594206` validado en CI:
+
+| Servicio | Despliegue comprobado | Estado |
+|---|---|---|
+| API | `dep-db8lqufavr4c7388m610`, publicado el 15 de octubre a las 17:12 CR | `live`; PostgreSQL conectado; migraciones `0001`–`0007` ejecutadas |
+| Web | `dep-db86bcjncjis73eqb400`, publicado el 14 de octubre a las 23:35 CR | `live`; proxy `/api/v1` y `/health` conectado a la API |
+
+La comprobación pública del 15 de octubre a las 17:12 CR devolvió **200** en `/health/ready` tanto directamente en la API como a través de la web: `database=connected`, `migrations=current`, `outbox=ready`, `configuration=valid`. `/login` y `/register` devolvieron 200; `/api/v1/products` sin sesión devolvió 401, como corresponde. La etiqueta de entorno `production` activa controles de seguridad del servidor; **no significa emisión fiscal productiva**. `outbox=ready` comprueba la tabla, no un worker en ejecución. Evidencia sin secretos en `audit-evidence/2026-10-15/`: `public-http.json`, `render-migrations.txt` y captura de acceso.
+
+`DATABASE_URL` quedó conectado a la nueva base mediante la URL interna de Render; no se habilitó acceso externo. API conserva cookies seguras y CORS para la web de pruebas; `HACIENDA_LIVE_EMISSION_ENABLED=false` y `HACIENDA_SANDBOX_VALIDATED=false`. El primer intento del 15 de octubre a las 17:06 CR falló porque el formulario de Render conservó el valor anterior mientras cargaba el campo protegido. Se corrigió y verificó el valor persistido antes del despliegue exitoso; no fue necesario cambiar el código de aplicación.
+
+Los despliegues automáticos de API y web permanecen desactivados: las publicaciones se controlan manualmente para mantener versiones coordinadas. El intento de cambiar a «After CI Checks Pass» no se guardó antes de cerrarse la sesión del panel; no se atribuye ese ajuste como completado. Los servicios gratuitos se suspenden por inactividad y al abrir pueden mostrar la pantalla de arranque de Render.
+
+La repetición tras varias horas sin uso, el 15 de octubre a las 22:08 CR, mostró ese límite: login/registro respondieron 200, pero la API agotó inicialmente 55 segundos y el proxy devolvió 429. Los logs confirmaron un arranque normal, sin migraciones pendientes. A las **22:10 CR**, `/health/ready` volvió a responder **200 en API y web** con los cuatro controles válidos. Se conservan ambos resultados en `public-http-after-idle.json` y `public-readiness-after-wake.json`; el primer acceso al plan gratuito no tiene disponibilidad inmediata garantizada.
 
 La base anterior `orbitica-pos-test-db` venció el 9 de octubre y está suspendida. El 14 de octubre el propietario confirmó que solo contenía pruebas sin información importante. No se contrató su recuperación ni se borró manualmente.
 
-Se creó **`orbitica-pos-test-db-20261014`** (`dpg-db80lf1srm7s73893um0-a`), PostgreSQL 16, Ohio, **plan free**, sin autoscaling, réplicas ni HA, con acceso externo restringido (`ipAllowList: []`). Vence el **13 de noviembre de 2026 a las 17:05, hora de Costa Rica**. No se contrataron servicios de pago. Falta conectar la API y ejecutar las migraciones; crear la base no acredita un despliegue utilizable.
+Se creó **`orbitica-pos-test-db-20261014`** (`dpg-db80lf1srm7s73893um0-a`), PostgreSQL 16, Ohio, **plan free**, sin autoscaling, réplicas ni HA, con acceso externo restringido (`ipAllowList: []`). Vence el **13 de noviembre de 2026 a las 17:05, hora de Costa Rica**. Está conectada a la API y migrada. No se contrataron servicios de pago.
 
-`render.free.yaml` ahora apunta a esa base y a `fix/verified-pos-hacienda-20261011`, manteniendo la emisión productiva desactivada. El Blueprint preparado no se ha aplicado. La conexión de Render permite crear la base y actualizar variables, pero no expone sus credenciales de conexión ni permite cambiar la rama de los servicios existentes; tampoco hay CLI autenticada disponible. Se necesita completar esos ajustes en el panel de Render. El entorno gratuito no incluye worker permanente ni almacenamiento durable de archivos; sirve para pruebas del POS y no demuestra aceptación fiscal.
+`render.free.yaml` apunta a esa base y a la rama revisada. El Blueprint preparado no se ha aplicado: se actualizaron los servicios existentes mediante el conector y el panel de Render. El entorno gratuito **no incluye worker permanente ni almacenamiento durable de archivos**. Una venta puede quedar en cola; este despliegue no demuestra envío ni aceptación fiscal.
+
+Vercel mantiene pendiente su conexión a la API. La última comprobación de su preview `https://web-3f0i6ouue-eliantfys-projects.vercel.app` dio 200 en `/login` y 404 `DNS_HOSTNAME_RESOLVED_PRIVATE` en `/health/ready` por falta de `FASTAPI_BACKEND_URL`. No se presenta ese preview ni la URL antigua de Vercel como acceso funcional actual.
 
 | Responsable | Bloqueador / acción concreta |
 |---|---|
-| Técnico + acceso al panel | Conectar la nueva base a la API, cambiar API/web a la rama revisada y desplegar; verificar migraciones, SHA, HTTPS, registro y persistencia antes de entregar URL funcional |
+| Operador + técnico | Probar registro con correo real y el flujo autenticado en la URL de Render; confirmar entrega del código, recarga, venta y persistencia. La conectividad, migraciones y proxy ya están comprobados |
 | Técnico | Conectar Vercel a la API cuando esta esté saludable. Para el piloto fiscal: resolver worker, correo y archivos durables; cualquier infraestructura de pago requiere autorización separada |
 | Empresa piloto | Completar perfil fiscal real y credenciales **de sandbox** mediante configuración segura; no enviarlas a un PR ni pegarlas en chat |
 | Técnico + operador | FE, TE y NC referenciada reales en sandbox; conservar privadamente fecha, SHA, clave, estado y respuesta original. No inventar evidencia ni usar una respuesta simulada |

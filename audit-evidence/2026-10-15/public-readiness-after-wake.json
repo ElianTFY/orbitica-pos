@@ -1,0 +1,44 @@
+{
+  "checked_at": "2026-10-16T04:10:07.791941+00:00",
+  "scope": "Repeat readiness checks after free service cold start",
+  "checks": [
+    {
+      "url": "https://orbitica-pos-test-api.onrender.com/health/ready",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "success": true,
+        "data": {
+          "status": "ready",
+          "checks": {
+            "database": "connected",
+            "migrations": "current",
+            "outbox": "ready",
+            "configuration": "valid"
+          },
+          "environment": "production"
+        },
+        "message": null
+      }
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/health/ready",
+      "status": 200,
+      "content_type": "application/json",
+      "body": {
+        "success": true,
+        "data": {
+          "status": "ready",
+          "checks": {
+            "database": "connected",
+            "migrations": "current",
+            "outbox": "ready",
+            "configuration": "valid"
+          },
+          "environment": "production"
+        },
+        "message": null
+      }
+    }
+  ]
+}
