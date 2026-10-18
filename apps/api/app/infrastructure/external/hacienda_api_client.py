@@ -34,11 +34,11 @@ class HaciendaAPIClient:
     async def query_document_status(self, token: str, numeric_key: str, environment: str = "STAGING") -> Dict[str, Any]:
         result = await HaciendaTransport(environment).query_invoice_status(token, numeric_key)
         indicator = str(result.get("ind_estado") or "").lower()
-        if indicator not in {"aceptado", "rechazado", "recibido", "procesando", "no_encontrado"}:
+        if indicator not in {"aceptado", "rechazado", "recibido", "procesando", "no_encontrado", "error"}:
             raise ValueError("Estado de Hacienda no reconocido; se conservará el estado pendiente")
         return {
             "ind_estado": indicator,
-            "status": {"aceptado": "ACCEPTED", "rechazado": "REJECTED"}.get(indicator, "PROCESSING"),
+            "status": {"aceptado": "ACCEPTED", "rechazado": "REJECTED", "error": "ERROR"}.get(indicator, "PROCESSING"),
             "numeric_key": numeric_key, "response_date": result.get("fecha"),
             "response_xml": result.get("respuesta_xml_decoded"),
             "raw_response": {"detalle-mensaje": result.get("detail_message")},

@@ -218,3 +218,45 @@ async def test_sandbox_email_is_labeled_and_business_text_cannot_inject_markup()
     assert '<script>' not in mail['html'] and '<img src=x>' not in mail['html']
     assert '&lt;script&gt;' in mail['html']
     assert len(mail['attachments']) == 2
+
+
+@pytest.mark.asyncio
+async def test_hacienda_error_is_visible_and_recovery_only_polls_original_key(db_session, sample_organization):
+    from app.models.outbox import HaciendaOutbox
+    from app.services.invoice_service import InvoiceService
+    branch_id = (await db_session.execute(select(Branch.id).where(
+        Branch.organization_id == sample_organization.id))).scalars().first()
+    invoice = ElectronicInvoice(organization_id=sample_organization.id, branch_id=branch_id,
+        doc_type='04', numeric_key='7' * 50, consecutive_number='1' * 20,
+        environment='STAGING', status='PROCESSING', xml_signed='<synthetic-signed/>',
+        sent_to_hacienda_at=datetime.now(timezone.utc))
+    db_session.add(invoice)
+    await db_session.flush()
+    outbox = HaciendaOutbox(organization_id=sample_organization.id, branch_id=branch_id,
+        invoice_id=invoice.id, numeric_key=invoice.numeric_key, consecutive_number=invoice.consecutive_number,
+        doc_type='04', status='SENT', xml_uncompressed='<synthetic/>', xml_signed=invoice.xml_signed)
+    db_session.add(outbox)
+    await db_session.commit()
+
+    class SimulatedHacienda:
+        status = 'error'
+        async def check_status(self, token, clave):
+            assert clave == invoice.numeric_key
+            return {'status_code': 200, 'status': self.status,
+                    'response_xml': '<synthetic-response/>' if self.status == 'aceptado' else None}
+        async def send_invoice(self, **kwargs):
+            pytest.fail('An already received document must never be retransmitted')
+
+    transport = SimulatedHacienda()
+    worker = HaciendaOutboxWorker(hacienda_client=transport)
+    await worker.process_batch(db_session)
+    assert invoice.status == 'ERROR' and outbox.status == 'CONTINGENCY'
+    assert invoice.hacienda_status_code == 'error'
+    assert invoice.sent_to_hacienda_at and invoice.hacienda_error_message
+    report = await fiscal_readiness_report(db_session, sample_organization, 'STAGING')
+    assert report['queue']['attention'] == 1
+    await InvoiceService(db_session, sample_organization.id).queue_invoice_for_transmission(invoice.id)
+    transport.status = 'aceptado'
+    await worker.process_batch(db_session)
+    assert invoice.status == 'ACCEPTED' and outbox.status == 'ACCEPTED'
+    assert invoice.hacienda_error_message is None and outbox.last_error is None

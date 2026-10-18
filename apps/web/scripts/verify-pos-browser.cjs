@@ -112,9 +112,13 @@ async function responseFor(action, suffix, method = 'POST') {
     await page.getByLabel('Ambiente de Hacienda', { exact: true }).selectOption('STAGING');
     await page.getByText('Preparación para enviar pruebas', { exact: true }).waitFor();
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction(() => document.querySelector('aside[aria-label="Barra lateral principal"]').getBoundingClientRect().right <= 1);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    assert.match(await page.evaluate(() => getComputedStyle(document.body).fontFamily), /system-ui/, 'Missing optional fonts must retain the sans-serif fallback');
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2), 'Fiscal setup must fit mobile');
     await page.screenshot({ path: path.join(output, 'fiscal-setup-mobile.png'), fullPage: true });
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.waitForFunction(() => Math.abs(document.querySelector('aside[aria-label="Barra lateral principal"]').getBoundingClientRect().left) < 1);
     await page.screenshot({ path: path.join(output, 'fiscal-setup-desktop.png'), fullPage: true });
     pass('Configuración fiscal: worker ausente visible, claves separadas por ambiente y pantalla móvil');
 

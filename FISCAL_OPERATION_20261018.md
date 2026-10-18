@@ -21,13 +21,15 @@
 - El worker registra actividad cada 15 segundos en una tabla independiente. Una señal de más de 60 segundos, una parada o un error no acreditan actividad. La pantalla muestra cola, incidencias y correos pendientes por empresa y ambiente.
 - La consulta manual rechaza una clave diferente, Base64 inválido, estado desconocido o respuesta final sin XML. Se conserva el pendiente para consultar de nuevo.
 - Los nombres comerciales se escapan en el HTML del correo y se usa el emisor capturado al emitir. Se retiró el mensaje de interfaz que afirmaba procesamiento sin respuesta registrada.
+- El estado oficial `error` requiere revisión visible. Reanudar un comprobante recibido solo consulta su clave original. Una aceptación posterior limpia el error anterior.
+- La tipografía mantiene una alternativa sans-serif cuando no hay fuente Geist configurada. Las capturas esperan a que termine el cambio de tamaño del menú lateral.
 - Migración aditiva `0008_fiscal_monitoring`; no cambia claves, consecutivos ni documentos existentes.
 
 ## Instalación preparada, no contratada
 
 `render.hacienda-worker.yaml` añade únicamente `orbitica-pos-test-hacienda-worker` al piloto existente de Ohio. Usa la misma DATABASE_URL, JWT_SECRET_KEY y ENCRYPTION_MASTER_KEY de `orbitica-pos-test-api`, además del proveedor y correo de esa API. No recrea bases ni servicios existentes. Conserva desactivada la emisión productiva.
 
-El plan `0.5c-512mb` del worker figura a USD 7/mes en la tarifa oficial consultada el 16 de octubre de 2026; el importe final, impuestos, uso y condiciones se deben revisar al contratar. No se ha aplicado este Blueprint ni autorizado un cargo. Fuente: https://render.com/pricing .
+El plan `0.5c-512mb` del worker figura a USD 7/mes en la tarifa oficial consultada el 18 de octubre de 2026; el importe final, impuestos, uso y condiciones se deben revisar al contratar. No se ha aplicado este Blueprint ni autorizado un cargo. Fuente: https://render.com/pricing .
 
 Antes de aplicarlo:
 
@@ -50,6 +52,14 @@ Antes de aplicarlo:
 
 ## Validación
 
-En la sesión anterior pasaron las 139 pruebas existentes del backend y, después de corregir el fixture de sucursal, 23 pruebas enfocadas en configuración fiscal, correo y outbox. Pasó el typecheck. La ejecución final ampliada, el build y la migración se iniciaron pero sus archivos temporales no sobrevivieron a la pausa; por eso no se presentan como aprobados. El commit publicado se verificará nuevamente en CI, incluyendo PostgreSQL y el navegador. Las evidencias y resultados finales se añadirán una vez terminados.
+CI completa aprobada para `21af2910b73a8f11d44a2ad568025c86d7992dfe`: https://github.com/ElianTFY/orbitica-pos/actions/runs/39097232768 .
+
+- 152 pruebas del backend aprobadas; 6 PostgreSQL aprobadas por separado.
+- Migraciones hasta 0008 y `alembic check` correctos; arranque público con comprobaciones de producción y restauración a base separada aprobados.
+- Typecheck, auditoría npm de producción y build aprobados; contenedores ARM de API, worker y web arrancados y comprobados.
+- 11 pasos desde navegador contra PostgreSQL aprobados, incluidos configuración por ambiente, estado del worker ausente, ventas, vuelto, reportes, devolución, cierre, permisos y recuperación. Correo capturado en memoria; Hacienda no contactada.
+- Artefacto: https://github.com/ElianTFY/orbitica-pos/actions/runs/39097232768/artifacts/12125142583 . SHA-256: `274781c55e4164ed137c6a5505f9e1ab866c7a996ae200ebb25a3a981a15fb98`.
+- Los tres Blueprints validan contra el JSON Schema oficial de Render descargado el 18 de octubre. Esto comprueba estructura, no crea recursos ni confirma valores secretos externos.
+- Tras añadir el caso de error/reconciliación, 14 pruebas fiscales enfocadas pasaron localmente. La revisión final de ese cambio y el ajuste de fuente se publicará y verificará de nuevo antes del despliegue.
 
 Documentación oficial del protocolo: https://www.hacienda.go.cr/docs/ComprobantesElectronicosAPI.html .

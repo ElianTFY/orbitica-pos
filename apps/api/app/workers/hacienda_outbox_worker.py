@@ -318,11 +318,13 @@ class HaciendaOutboxWorker:
 
             if h_status == "aceptado":
                 record.status = "ACCEPTED"
+                record.last_error = None
                 if inv:
                     inv.status = "ACCEPTED"
                     inv.hacienda_status_code = "aceptado"
                     inv.hacienda_response_xml = resp_xml
                     inv.hacienda_processed_at = now
+                    inv.hacienda_error_message = None
                     if inv.receiver_email and not inv.email_sent_at:
                         await self._send_fiscal_email(inv, org, now)
             elif h_status == "rechazado":
@@ -334,6 +336,15 @@ class HaciendaOutboxWorker:
                     inv.hacienda_response_xml = resp_xml
                     inv.hacienda_processed_at = now
                     inv.hacienda_error_message = record.last_error
+            elif h_status == "error":
+                # Official API state: requires attention, not a new document.
+                # Keep the durable receipt marker so resuming only polls.
+                record.status = "CONTINGENCY"
+                record.next_retry_at = None
+                record.last_error = "Hacienda reportó un error de procesamiento; consulta nuevamente el estado del comprobante"
+                inv.status = "ERROR"
+                inv.hacienda_status_code = "error"
+                inv.hacienda_error_message = record.last_error
             else:
                 if h_status not in {"recibido", "procesando"}:
                     raise ValueError("Estado de Hacienda no reconocido; requiere reconciliación")
