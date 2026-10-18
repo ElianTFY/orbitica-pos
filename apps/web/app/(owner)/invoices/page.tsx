@@ -95,7 +95,9 @@ export default function InvoicesPage() {
       const resp = await api.request<any>(polling ? `/hacienda/${selectedInvoice.id}/status` : `/invoices/${selectedInvoice.id}/send-hacienda`, {method: polling ? "GET" : "POST"});
       await retryFetch();
       await handleOpenDetail(selectedInvoice, activeTab);
-      setRetryMessage(resp?.message || "Comprobante encolado exitosamente para transmisión");
+      setRetryMessage(resp?.message || (polling
+        ? `Consulta completada. Estado fiscal: ${resp?.data?.status || "pendiente"}.`
+        : "Comprobante encolado para envío; falta la respuesta de Hacienda."));
     } catch (err: any) {
       setRetryMessage(err?.message || "Error al solicitar reintento con Hacienda");
     } finally {
