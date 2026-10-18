@@ -13,7 +13,7 @@ from app.models.organization import Organization
 from app.models.branch import Branch, UserBranchAccess
 from app.models.catalog import TaxRate
 from app.security.password import hash_password
-from app.security.tokens import create_access_token
+from tests.session_helpers import token_for
 from app.core.constants import UserRole
 from app.core.config import settings
 
@@ -66,15 +66,8 @@ async def superadmin_user(db_session: AsyncSession) -> User:
     return user
 
 @pytest_asyncio.fixture
-async def superadmin_token(superadmin_user: User) -> str:
-    return create_access_token(
-        subject=str(superadmin_user.id),
-        claims={
-            "org_id": None,
-            "role": superadmin_user.role,
-            "email": superadmin_user.email
-        }
-    )
+async def superadmin_token(superadmin_user: User, db_session: AsyncSession) -> str:
+    return await token_for(db_session, superadmin_user)
 
 @pytest_asyncio.fixture
 async def sample_organization(db_session: AsyncSession, request) -> Organization:
@@ -82,7 +75,9 @@ async def sample_organization(db_session: AsyncSession, request) -> Organization
         legal_name='Comercializadora El Sol S.A.',
         trade_name='Supermercado El Sol',
         identification_type='02',
-        identification_number=f'3101{uuid.uuid4().hex[:6]}',
+        identification_number=f'3101{uuid.uuid4().int % 1000000:06d}',
+        economic_activity_code='521101', province_code='1', canton_code='01', district_code='01',
+        address_detail='Dirección sintética de pruebas locales',
         email='contacto@elsol.cr',
         country_code='CR',
         default_currency='CRC'

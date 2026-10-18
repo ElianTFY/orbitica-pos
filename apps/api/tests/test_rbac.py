@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from app.security.tokens import create_registration_token
 
 @pytest.mark.asyncio
 async def test_rbac_cashier_cannot_create_branches(client: AsyncClient):
@@ -14,7 +15,9 @@ async def test_rbac_cashier_cannot_create_branches(client: AsyncClient):
         "owner_password": "FarmaciaPass123!",
         "owner_full_name": "Dra. Central"
     }
-    await client.post("/api/v1/organizations/register", json=org_payload)
+    org_payload["registration_token"] = create_registration_token(org_payload["owner_email"])
+    registration = await client.post("/api/v1/organizations/register", json=org_payload)
+    assert registration.status_code == 201
 
     # Login Owner
     owner_login = await client.post("/api/v1/auth/login", json={"email": "owner@farmacia.cr", "password": "FarmaciaPass123!"})

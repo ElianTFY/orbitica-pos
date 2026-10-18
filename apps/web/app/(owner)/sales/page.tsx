@@ -18,10 +18,18 @@ import { Badge } from "@/components/ui/badge";
 import { ThermalReceipt } from "@/components/pos/thermal-receipt";
 import { useStore } from "@/features/store/store-context";
 import { formatCRC } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { api } from "@/lib/api-client";
+import { useAuth } from "@/features/auth/auth-context";
 import { SaleRecord } from "@/types";
 
 export default function SalesPage() {
-  const { sales, settings } = useStore();
+  const { sales, settings, retryFetch } = useStore();
+  const { hasPermission } = useAuth();
+  const [refundSale, setRefundSale] = useState<SaleRecord | null>(null);
+  const [refundReason, setRefundReason] = useState("");
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSale, setSelectedSale] = useState<SaleRecord | null>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
@@ -34,81 +42,21 @@ export default function SalesPage() {
       s.consecutive_number?.includes(searchQuery)
   );
 
-  const openReceipt = (sale: SaleRecord) => {
-    // Use the exact receipt data stored at time of sale, if available
-    if (sale.receipt_data) {
-      setReceiptData(sale.receipt_data);
+  const openReceipt = async (sale: SaleRecord) => {
+    if (busy) return;
+    setBusy(true); setOperationError(null);
+    try {
+      const response = await api.request<any>(`/sales/${sale.id}/receipt`);
+      setReceiptData(response.data);
       setIsReceiptModalOpen(true);
-      return;
-    }
-
-    // Fallback: reconstruct from available data (for older sales without snapshot)
-    const now = new Date(sale.created_at || Date.now());
-    const d = String(now.getDate()).padStart(2, "0");
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const y = String(now.getFullYear()).slice(-2);
-    const rawCedula = (settings.identification_number || "0").replace(/\D/g, "");
-    const cedula12 = rawCedula.padStart(12, "0").slice(-12);
-    const consecutive = sale.consecutive_number || `0010000104${(sale.id || "1").slice(-10).padStart(10, "0")}`;
-    const securityCode = Math.floor(10000000 + Math.random() * 90000000).toString();
-    const key = sale.numeric_key || `506${d}${m}${y}${cedula12}${consecutive}1${securityCode}`;
-
-    setReceiptData({
-      sale_number: sale.sale_number,
-      created_at: sale.created_at,
-      store: {
-        name: settings.trade_name,
-        legal_name: settings.legal_name,
-        legal_id: settings.identification_number,
-        phone: settings.phone,
-        email: settings.email,
-        address: settings.address,
-        branch_name: settings.branch_name,
-      },
-      customer: {
-        name: sale.customer_name,
-        identification: sale.customer_cedula || null,
-      },
-      hacienda: {
-        doc_type: "Tiquete Electrónico (04)",
-        consecutive: consecutive,
-        numeric_key: key,
-        resolution: "Autorizada mediante resolución Nº DGT-R-033-2019 (Esquema v4.4)",
-        qr_url: `https://www.hacienda.go.cr/ATV/ComprobanteElectronico/qr?clave=${key}`,
-      },
-      items: sale.items_snapshot
-        ? sale.items_snapshot
-        : [
-            {
-              name: "Venta Registrada POS",
-              quantity: sale.items_count || 1,
-              unit_price: sale.subtotal / (sale.items_count || 1),
-              tax_amount: sale.tax,
-              total: sale.total,
-            },
-          ],
-      totals: {
-        subtotal: sale.subtotal,
-        discount: 0,
-        tax: sale.tax,
-        total: sale.total,
-        currency: settings.default_currency,
-      },
-      payments: [
-        {
-          method: sale.payment_method,
-          amount: sale.total,
-          reference: null,
-        },
-      ],
-      footer_message: `¡Gracias por su preferencia en ${settings.trade_name}!`,
-    });
-    setIsReceiptModalOpen(true);
+    } catch (error: any) { setOperationError(error?.message || "No se pudo recuperar el recibo guardado."); }
+    finally { setBusy(false); }
   };
 
   return (
     <OwnerLayout>
       <div className="space-y-6">
+        {operationError && <p role="alert" className="text-semantic-danger-text">{operationError}</p>}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-text-main tracking-tight">Historial de Ventas</h1>
@@ -189,12 +137,19 @@ export default function SalesPage() {
                         <Button
                           variant="secondary"
                           size="sm"
+                          disabled={busy}
                           onClick={() => openReceipt(s)}
                           className="text-[11px] py-1 px-2.5"
                         >
                           <Printer className="w-3.5 h-3.5 mr-1" />
                           Reimprimir
                         </Button>
+                        {s.status === "COMPLETED" && hasPermission("pos:refund") && (
+                          <Button variant="danger" size="sm" className="ml-2" disabled={busy}
+                            onClick={() => { setRefundSale(s); setRefundReason(""); setOperationError(null); }}>
+                            Devolver
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -204,6 +159,27 @@ export default function SalesPage() {
           </div>
         </Card>
       </div>
+
+      <Modal isOpen={Boolean(refundSale)} onClose={() => setRefundSale(null)} title="Devolución total de venta" maxWidth="md">
+        <form className="space-y-4" onSubmit={async event => {
+          event.preventDefault();
+          if (!refundSale || busy) return;
+          setBusy(true); setOperationError(null);
+          try {
+            const key = `refund-${refundSale.id}`;
+            await api.request(`/sales/${refundSale.id}/refund`, { method: "POST",
+              headers: { "Idempotency-Key": key }, body: { reason: refundReason } });
+            await retryFetch(); setRefundSale(null);
+          } catch (error: any) { setOperationError(error?.message || "No se pudo devolver la venta."); }
+          finally { setBusy(false); }
+        }}>
+          <p>Se devolverán todos los artículos de {refundSale?.sale_number}. El reembolso en efectivo requiere una caja abierta. Si Hacienda aceptó el original, se creará una nota de crédito pendiente de procesamiento.</p>
+          <p className="text-sm text-text-muted">Los reembolsos por tarjeta o SINPE se deben efectuar y verificar por separado en el banco.</p>
+          {operationError && <p role="alert" className="text-semantic-danger-text">{operationError}</p>}
+          <Input label="Motivo de devolución" value={refundReason} onChange={e => setRefundReason(e.target.value)} minLength={3} maxLength={255} required />
+          <Button type="submit" variant="danger" disabled={busy}>{busy ? "Procesando…" : "Confirmar devolución total"}</Button>
+        </form>
+      </Modal>
 
       {/* Thermal Receipt Modal */}
       {receiptData && (

@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.report import SalesSummaryReport, InventoryValuationReport
@@ -16,13 +16,31 @@ async def get_sales_summary(
     branch_id: Optional[UUID] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    currency: Literal["CRC", "USD"] = Query("CRC"),
     context: CurrentUserContext = Depends(require_permissions("reports:read")),
     db: AsyncSession = Depends(get_db)
 ):
     b_id = branch_id or context.selected_branch_id
     service = ReportService(db, context.organization_id)
-    report = await service.get_sales_summary(branch_id=b_id, start_date=start_date, end_date=end_date)
+    report = await service.get_sales_summary(branch_id=b_id, start_date=start_date, end_date=end_date, currency=currency)
     return StandardResponse(data=report)
+
+
+@router.get("/sales-export")
+async def export_sales(
+    branch_id: Optional[UUID] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    currency: Literal["CRC", "USD"] = Query("CRC"),
+    context: CurrentUserContext = Depends(require_permissions("reports:read")),
+    db: AsyncSession = Depends(get_db),
+):
+    csv_data = await ReportService(db, context.organization_id).export_sales_csv(
+        branch_id=branch_id or context.selected_branch_id, start_date=start_date, end_date=end_date, currency=currency,
+    )
+    return Response(csv_data, media_type="text/csv", headers={
+        "Content-Disposition": 'attachment; filename="reporte_ventas.csv"', "Cache-Control": "no-store",
+    })
 
 @router.get("/inventory-valuation", response_model=StandardResponse[InventoryValuationReport])
 async def get_inventory_valuation(

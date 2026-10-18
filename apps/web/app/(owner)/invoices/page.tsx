@@ -91,11 +91,13 @@ export default function InvoicesPage() {
     setIsRetrying(true);
     setRetryMessage(null);
     try {
-      const polling = ["SENT", "PROCESSING"].includes(selectedInvoice.status);
+      const polling = Boolean(selectedInvoice.sent_to_hacienda_at) || ["SENT", "PROCESSING"].includes(selectedInvoice.status);
       const resp = await api.request<any>(polling ? `/hacienda/${selectedInvoice.id}/status` : `/invoices/${selectedInvoice.id}/send-hacienda`, {method: polling ? "GET" : "POST"});
       await retryFetch();
       await handleOpenDetail(selectedInvoice, activeTab);
-      setRetryMessage(resp?.message || "Comprobante encolado exitosamente para transmisión");
+      setRetryMessage(resp?.message || (polling
+        ? `Consulta completada. Estado fiscal: ${resp?.data?.status || "pendiente"}.`
+        : "Comprobante encolado para envío; falta la respuesta de Hacienda."));
     } catch (err: any) {
       setRetryMessage(err?.message || "Error al solicitar reintento con Hacienda");
     } finally {
@@ -374,13 +376,13 @@ export default function InvoicesPage() {
                   </div>
                 </div>
 
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
-                    <CheckCircle className="w-4 h-4" />
+                <div className="p-3 bg-surface-secondary border border-border rounded-xl text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 text-text-secondary font-bold">
+                    {selectedInvoice.status === "ACCEPTED" ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
                     <span>Resultado de Recepción DGT</span>
                   </div>
                   <p className="text-text-secondary">
-                    {selectedInvoice.hacienda_message || "Comprobante procesado por la Dirección General de Tributación."}
+                    {selectedInvoice.hacienda_message || "Todavía no se ha registrado una respuesta de Hacienda."}
                   </p>
                 </div>
               </div>
@@ -537,7 +539,7 @@ export default function InvoicesPage() {
                     disabled={isRetrying || ["ACCEPTED", "REJECTED", "CANCELLED"].includes(selectedInvoice.status)}
                   >
                     <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRetrying ? "animate-spin" : ""}`} />
-                    {isRetrying ? "Procesando..." : ["SENT", "PROCESSING"].includes(selectedInvoice.status) ? "Consultar estado en Hacienda" : "Enviar a Hacienda"}
+                    {isRetrying ? "Procesando..." : (selectedInvoice.sent_to_hacienda_at || ["SENT", "PROCESSING"].includes(selectedInvoice.status)) ? "Consultar estado en Hacienda" : "Enviar a Hacienda"}
                   </Button>
                 </div>
               </div>

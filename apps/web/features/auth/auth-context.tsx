@@ -26,6 +26,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasInitialized, setHasInitialized] = useState(false);
   const router = useRouter();
 
   const fetchProfile = async (): Promise<UserProfile | null> => {
@@ -38,6 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     } finally {
       setIsLoading(false);
+      setHasInitialized(true);
     }
   };
 
@@ -133,7 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile: fetchProfile,
       }}
     >
-      {children}
+      {hasInitialized ? children : (
+        <div role="status" className="min-h-[100dvh] flex items-center justify-center text-sm text-text-secondary">
+          Cargando sesión…
+        </div>
+      )}
     </AuthContext.Provider>
   );
 }

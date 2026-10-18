@@ -18,7 +18,9 @@ HACIENDA_URLS = {
 
 class HaciendaAPIClient:
     def __init__(self, environment: str = "STAGING"):
-        self.env = environment.upper() if environment.upper() in HACIENDA_URLS else "STAGING"
+        if environment.upper() not in HACIENDA_URLS:
+            raise ValueError("Ambiente fiscal desconocido")
+        self.env = environment.upper()
         self.config = HACIENDA_URLS[self.env]
 
     async def get_access_token(self, username: str, password: str) -> Dict[str, Any]:
@@ -35,8 +37,11 @@ class HaciendaAPIClient:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(self.config["token_url"], data=data, headers=headers)
             if response.status_code != 200:
-                raise ValueError(f"Error al obtener token de Hacienda ({response.status_code}): {response.text}")
-            return response.json()
+                raise ValueError(f"Error al obtener token de Hacienda ({response.status_code})")
+            result = response.json()
+            if not isinstance(result, dict) or not isinstance(result.get("access_token"), str) or not result["access_token"]:
+                raise ValueError("Hacienda no devolvió un token de autenticación válido")
+            return result
 
     async def send_invoice(
         self,
@@ -89,7 +94,7 @@ class HaciendaAPIClient:
             # and remains pending validation. Accept 200/202 defensively for
             # compatible gateways, but never treat them as final acceptance.
             if response.status_code not in (200, 201, 202):
-                raise ValueError(f"Error de transporte con Hacienda ({response.status_code}): {response.text}")
+                raise ValueError(f"Error de transporte con Hacienda ({response.status_code})")
 
             return {
                 "success": True,
@@ -107,24 +112,32 @@ class HaciendaAPIClient:
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(url, headers=headers)
+            if response.status_code == 404:
+                return {"clave": clave, "ind_estado": "no_encontrado", "status_code": 404}
             if response.status_code != 200:
-                raise ValueError(f"Error consultando estado en Hacienda ({response.status_code}): {response.text}")
+                raise ValueError(f"Error consultando estado en Hacienda ({response.status_code})")
             
             data = response.json()
+            if data.get("clave") != clave:
+                raise ValueError("Hacienda devolvió una clave distinta a la consultada")
             # If Hacienda returned a base64 XML response
             hacienda_xml = None
             if "respuesta-xml" in data and data["respuesta-xml"]:
                 try:
-                    hacienda_xml = base64.b64decode(data["respuesta-xml"]).decode("utf-8")
-                except Exception:
-                    hacienda_xml = None
+                    hacienda_xml = base64.b64decode(data["respuesta-xml"], validate=True).decode("utf-8")
+                except Exception as exc:
+                    raise ValueError("Respuesta XML de Hacienda inválida") from exc
+
+            if str(data.get("ind-estado", "")).lower() in {"aceptado", "rechazado"} and not hacienda_xml:
+                raise ValueError("Hacienda aún no entregó el XML de su respuesta final; se volverá a consultar")
 
             return {
                 "clave": data.get("clave"),
                 "fecha": data.get("fecha"),
                 "ind_estado": data.get("ind-estado"),  # 'aceptado', 'rechazado', 'procesando'
                 "respuesta_xml_raw": data.get("respuesta-xml"),
-                "respuesta_xml_decoded": hacienda_xml
+                "respuesta_xml_decoded": hacienda_xml,
+                "detail_message": data.get("detalle-mensaje"),
             }
 
     async def check_status(self, token: str, clave: str) -> Dict[str, Any]:
@@ -132,7 +145,7 @@ class HaciendaAPIClient:
         result = await self.query_invoice_status(token=token, clave=clave)
         status = str(result.get("ind_estado") or "procesando").lower()
         return {
-            "status_code": 200,
+            "status_code": result.get("status_code", 200),
             "status": status,
             "response_xml": result.get("respuesta_xml_decoded"),
             "error": None if status != "rechazado" else "Comprobante rechazado por Hacienda",

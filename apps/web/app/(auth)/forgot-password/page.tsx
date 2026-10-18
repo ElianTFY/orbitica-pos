@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Lock, Mail, ArrowRight, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,20 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [requestSent, setRequestSent] = useState(false);
+
+  useEffect(() => {
+    const fragment = new URLSearchParams(window.location.hash.slice(1));
+    const query = new URLSearchParams(window.location.search);
+    const received = fragment.get("token") || query.get("token");
+    if (received) {
+      setToken(received);
+      setStep(2);
+      // Tokens in new emails use fragments, which are never sent to the web
+      // server. Also consume older query links without retaining the secret.
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,14 +43,11 @@ export default function ForgotPasswordPage() {
 
     setIsLoading(true);
     try {
-      const res = await api.request<any>("/auth/recovery", {
+      await api.request("/auth/recovery", {
         method: "POST",
-        body: JSON.stringify({ action: "request_reset", email: email.trim().toLowerCase() }),
+        body: { email: email.trim().toLowerCase() },
       });
-      if (res.data?.token) {
-        setToken(res.data.token);
-      }
-      setStep(2);
+      setRequestSent(true);
     } catch (err: any) {
       setError(err?.message || "Error al solicitar recuperación.");
     } finally {
@@ -60,10 +71,9 @@ export default function ForgotPasswordPage() {
 
     setIsLoading(true);
     try {
-      await api.request("/auth/recovery", {
+      await api.request("/auth/reset-password", {
         method: "POST",
         body: JSON.stringify({
-          action: "reset_password",
           token: token.trim(),
           new_password: newPassword,
         }),
@@ -97,7 +107,7 @@ export default function ForgotPasswordPage() {
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-surface py-8 px-4 shadow-xl border border-border sm:rounded-3xl sm:px-8">
           {error && (
-            <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-red-600 dark:text-red-400 font-medium">
+            <div role="alert" className="mb-5 p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-2.5 text-xs text-red-600 dark:text-red-400 font-medium">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
@@ -116,17 +126,21 @@ export default function ForgotPasswordPage() {
                 </Button>
               </Link>
             </div>
+          ) : requestSent ? (
+            <div role="status" className="space-y-4 text-sm text-text-secondary">
+              <h2 className="text-base font-bold text-text-main">Revisa tu correo</h2>
+              <p>Si el correo está registrado, recibirás un enlace para cambiar la contraseña. Abre ese enlace para continuar.</p>
+              <Button type="button" variant="secondary" onClick={() => setRequestSent(false)}>Solicitar otro enlace</Button>
+            </div>
           ) : step === 1 ? (
             <form onSubmit={handleRequestReset} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Correo Electrónico Registrado *
-                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-text-muted">
                     <Mail className="h-4 w-4" />
                   </div>
                   <Input
+                    label="Correo Electrónico"
                     type="email"
                     required
                     placeholder="admin@negocio.cr"
@@ -150,26 +164,12 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Token de Seguridad / Enlace *
-                </label>
-                <Input
-                  type="text"
-                  required
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  className="font-mono text-xs"
-                  placeholder="Token de recuperación"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Nueva Contraseña Segura *
-                </label>
                 <Input
                   type="password"
                   required
+                  label="Nueva Contraseña"
+                  autoComplete="new-password"
+                  minLength={8}
                   placeholder="Mínimo 8 caracteres"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -178,12 +178,12 @@ export default function ForgotPasswordPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-text-secondary mb-1">
-                  Confirmar Nueva Contraseña *
-                </label>
                 <Input
                   type="password"
                   required
+                  label="Confirmar Nueva Contraseña"
+                  autoComplete="new-password"
+                  minLength={8}
                   placeholder="Repite tu nueva contraseña"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

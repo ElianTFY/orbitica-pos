@@ -1,0 +1,84 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+# ADICIÓN DE PAGO: requiere aprobación del titular antes de aplicar.
+# Solo crea el worker del piloto existente. No recrea API, web ni PostgreSQL.
+# Configurar primero los datos reales SOFTWARE_PROVIDER_* en la API.
+# La base Free actual vence el 13-11-2026; este worker no cambia esa limitación.
+previews:
+  generation: "off"
+services:
+  - type: worker
+    name: orbitica-pos-test-hacienda-worker
+    runtime: python
+    region: ohio
+    plan: 0.5c-512mb
+    repo: https://github.com/ElianTFY/orbitica-pos
+    branch: fix/verified-pos-hacienda-20261011
+    autoDeployTrigger: "off"
+    rootDir: apps/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.workers.hacienda_outbox_worker
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.13"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: ENVIRONMENT
+        value: production
+      - key: FRONTEND_URL
+        value: https://orbitica-pos-test-web.onrender.com
+      - key: BACKEND_CORS_ORIGINS
+        value: '["https://orbitica-pos-test-web.onrender.com"]'
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: HACIENDA_LIVE_EMISSION_ENABLED
+        value: "false"
+      - key: HACIENDA_SANDBOX_VALIDATED
+        value: "false"
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: DATABASE_URL
+      - key: JWT_SECRET_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: JWT_SECRET_KEY
+      - key: ENCRYPTION_MASTER_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: ENCRYPTION_MASTER_KEY
+      - key: EMAIL_PROVIDER
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: EMAIL_PROVIDER
+      - key: BREVO_API_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: BREVO_API_KEY
+      - key: EMAIL_FROM_ADDRESS
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: EMAIL_FROM_ADDRESS
+      - key: EMAIL_FROM_NAME
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: EMAIL_FROM_NAME
+      - key: SOFTWARE_PROVIDER_TAX_ID
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: SOFTWARE_PROVIDER_TAX_ID
+      - key: SOFTWARE_PROVIDER_NAME
+        fromService:
+          type: web
+          name: orbitica-pos-test-api
+          envVarKey: SOFTWARE_PROVIDER_NAME

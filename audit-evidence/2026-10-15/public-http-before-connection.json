@@ -1,0 +1,28 @@
+{
+  "checked_at": "2026-10-15T23:08:02.793637+00:00",
+  "scope": "Public read-only checks; no registration email or Hacienda request sent",
+  "checks": [
+    {
+      "url": "https://orbitica-pos-test-api.onrender.com/health/ready",
+      "error": "TimeoutError",
+      "detail": "The read operation timed out"
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/health/ready",
+      "error": "HTTPError",
+      "detail": "HTTP Error 500: Internal Server Error"
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/login",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 11594
+    },
+    {
+      "url": "https://orbitica-pos-test-web.onrender.com/register",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "bytes": 11611
+    }
+  ]
+}

@@ -13,6 +13,7 @@ from app.models.purchase import Purchase, PurchaseItem
 from app.models.sale import Sale, SaleItem, SalePayment
 from app.models.consecutive_sequence import ConsecutiveSequence
 from app.models.fiscal_credential import FiscalCredential
+from app.models.fiscal_worker import FiscalWorkerHeartbeat
 from app.models.invoice import ElectronicInvoice
 from app.models.outbox import HaciendaOutbox
 from app.models.idempotency import IdempotencyRecord
@@ -46,6 +47,7 @@ __all__ = [
     "SalePayment",
     "ConsecutiveSequence",
     "FiscalCredential",
+    "FiscalWorkerHeartbeat",
     "ElectronicInvoice",
     "HaciendaOutbox",
     "IdempotencyRecord",

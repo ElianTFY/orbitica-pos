@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layouts/sidebar";
 import { Topbar } from "@/components/layouts/topbar";
 import { MobileNav } from "@/components/layouts/mobile-nav";
 import { useAuth } from "@/features/auth/auth-context";
+import { useStore } from "@/features/store/store-context";
 
 function LoadingScreen() {
   return (
@@ -27,6 +28,7 @@ function LoadingScreen() {
 /** Standard layout with max-width centering — used by all pages except /pos */
 export function OwnerLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const { isInitialLoading, errorMessage, retryFetch } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
@@ -36,7 +38,7 @@ export function OwnerLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, router]);
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading || (user && isInitialLoading)) return <LoadingScreen />;
   if (!user) return null;
 
   return (
@@ -50,6 +52,9 @@ export function OwnerLayout({ children }: { children: React.ReactNode }) {
         className="lg:pl-64 pt-16 pb-20 lg:pb-8 min-h-[100dvh] focus:outline-none"
       >
         <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 md:py-6 space-y-6">
+          {errorMessage && <div role="alert" className="rounded-xl border border-semantic-danger-border p-3 text-sm text-semantic-danger-text">
+            {errorMessage} <button type="button" className="underline" onClick={() => void retryFetch()}>Reintentar carga</button>
+          </div>}
           {children}
         </div>
       </main>
@@ -66,6 +71,7 @@ export function OwnerLayout({ children }: { children: React.ReactNode }) {
  */
 export function POSLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
+  const { isInitialLoading } = useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const router = useRouter();
 
@@ -75,7 +81,7 @@ export function POSLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, router]);
 
-  if (isLoading) return <LoadingScreen />;
+  if (isLoading || (user && isInitialLoading)) return <LoadingScreen />;
   if (!user) return null;
 
   return (

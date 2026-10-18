@@ -2,13 +2,14 @@
 # PRUEBAS: aplicar en un workspace Hobby con cupo de PostgreSQL gratuito.
 # Elegir este archivo en Blueprint Path; render.yaml contiene planes de pago.
 # No incluye worker, cron ni discos de pago. No habilita emisión fiscal real.
+# Base de pruebas creada el 14-10-2026; vence el 13-11-2026.
 previews:
   generation: "off"
 
 databases:
-  - name: orbitica-pos-test-db
-    databaseName: orbitica_pos_test
-    user: orbitica_pos_test
+  - name: orbitica-pos-test-db-20261014
+    databaseName: orbitica_pos_test_db_20261014
+    user: orbitica_pos_test_db_20261014_user
     region: ohio
     plan: free
     postgresMajorVersion: "16"
@@ -21,7 +22,7 @@ services:
     region: ohio
     plan: free
     repo: https://github.com/ElianTFY/orbitica-pos
-    branch: codex/final-production-fixes
+    branch: fix/verified-pos-hacienda-20261011
     rootDir: apps/api
     autoDeployTrigger: checksPass
     buildCommand: pip install -r requirements.txt
@@ -36,7 +37,7 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: orbitica-pos-test-db
+          name: orbitica-pos-test-db-20261014
           property: connectionString
       - key: JWT_SECRET_KEY
         generateValue: true
@@ -73,7 +74,7 @@ services:
     region: ohio
     plan: free
     repo: https://github.com/ElianTFY/orbitica-pos
-    branch: codex/final-production-fixes
+    branch: fix/verified-pos-hacienda-20261011
     rootDir: apps/web
     autoDeployTrigger: checksPass
     buildCommand: npm ci && npm run build

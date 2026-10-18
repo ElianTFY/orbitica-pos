@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Save,
   ShieldCheck,
@@ -21,6 +21,20 @@ import { AppearanceSettings } from "@/components/accessibility/appearance-settin
 import { useStore } from "@/features/store/store-context";
 import { useAuth } from "@/features/auth/auth-context";
 import { api } from "@/lib/api-client";
+
+type FiscalCredentialsStatus = {
+  environment: string; atv_username: string; has_certificate: boolean; is_active: boolean;
+  status_message: string; certificate_expires_at: string | null;
+  connection_tested_at: string | null; connection_test_success: boolean | null;
+};
+type FiscalReadiness = {
+  ready: boolean; environment: string;
+  checks: Array<{ code: string; ok: boolean; message: string }>;
+  queue: { pending: number; attention: number; email_pending: number };
+  worker: { active: boolean; last_seen_at: string | null };
+  sandbox_documents: Array<{ doc_type: string; name: string; accepted: boolean }>;
+};
+const fiscalDate = (value: string) => new Date(value).toLocaleString("es-CR", { timeZone: "America/Costa_Rica" });
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useStore();
@@ -55,8 +69,12 @@ export default function SettingsPage() {
   const [atvPass, setAtvPass] = useState("");
   const [pin, setPin] = useState("");
   const [p12File, setP12File] = useState<File | null>(null);
-  const [credentialStatus, setCredentialStatus] = useState<{ has_certificate: boolean; is_active: boolean; status_message: string } | null>(null);
-  const [readiness, setReadiness] = useState<{ ready: boolean; environment: string; checks: Array<{ code: string; ok: boolean; message: string }> } | null>(null);
+  const [credentialStatus, setCredentialStatus] = useState<FiscalCredentialsStatus | null>(null);
+  const [readiness, setReadiness] = useState<FiscalReadiness | null>(null);
+  const [fiscalStatusError, setFiscalStatusError] = useState<string | null>(null);
+  const [loadingFiscalStatus, setLoadingFiscalStatus] = useState(false);
+  const fiscalStatusRequest = useRef(0);
+  const certificateInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTradeName(settings.trade_name);
@@ -75,24 +93,48 @@ export default function SettingsPage() {
     setAtvUser(settings.atv_username);
   }, [settings]);
 
-  const refreshFiscalStatus = async () => {
+  const refreshFiscalStatus = useCallback(async (loadUsername = false) => {
+    if (!user?.id) return;
+    const requestId = ++fiscalStatusRequest.current;
+    setLoadingFiscalStatus(true);
     try {
       const [credentialsResponse, readinessResponse] = await Promise.all([
-        api.request<any>("/hacienda/credentials"),
-        api.request<any>("/hacienda/readiness"),
+        api.request<FiscalCredentialsStatus>(`/hacienda/credentials?environment=${env}`),
+        api.request<FiscalReadiness>(`/hacienda/readiness?environment=${env}`),
       ]);
+      if (requestId !== fiscalStatusRequest.current) return;
       setCredentialStatus(credentialsResponse.data);
       setReadiness(readinessResponse.data);
-      if (credentialsResponse.data?.atv_username) setAtvUser(credentialsResponse.data.atv_username);
+      setFiscalStatusError(null);
+      if (loadUsername) setAtvUser(credentialsResponse.data.atv_username || "");
     } catch {
+      if (requestId !== fiscalStatusRequest.current) return;
       setCredentialStatus(null);
       setReadiness(null);
+      setFiscalStatusError("No se pudo consultar la configuración fiscal. Pulsa Actualizar estado para intentar nuevamente.");
+    } finally {
+      if (requestId === fiscalStatusRequest.current) setLoadingFiscalStatus(false);
     }
-  };
+  }, [env, user?.id]);
 
   useEffect(() => {
-    void refreshFiscalStatus();
-  }, []);
+    setCredentialStatus(null);
+    setReadiness(null);
+    setAtvUser("");
+    setAtvPass("");
+    setPin("");
+    setP12File(null);
+    setSaveError(null);
+    if (certificateInput.current) certificateInput.current.value = "";
+    void refreshFiscalStatus(true);
+    return () => { fiscalStatusRequest.current += 1; };
+  }, [refreshFiscalStatus]);
+
+  useEffect(() => {
+    if (activeTab !== "hacienda") return;
+    const interval = setInterval(() => { void refreshFiscalStatus(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [activeTab, refreshFiscalStatus]);
 
   // Clear connection result whenever the user changes ATV credentials
   useEffect(() => {
@@ -132,12 +174,16 @@ export default function SettingsPage() {
 
   const handleSaveHacienda = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!atvUser.trim() || !atvPass || !/^\d{4}$/.test(pin)) {
-      setSaveError("Usuario, contraseña API y PIN de 4 dígitos son obligatorios.");
+    if (!atvUser.trim() || (!atvPass && !credentialStatus?.is_active) || (pin ? !/^\d{4}$/.test(pin) : !credentialStatus?.has_certificate || !!p12File)) {
+      setSaveError("Ingresa el usuario, la contraseña API y el PIN de 4 dígitos. Si ya están guardados, deja las claves vacías para conservarlas; un certificado nuevo siempre requiere su PIN.");
       return;
     }
     if (!p12File && !credentialStatus?.has_certificate) {
       setSaveError("Selecciona la llave criptográfica .p12/.pfx antes de guardar.");
+      return;
+    }
+    if (p12File && p12File.size > 1_500_000) {
+      setSaveError("El certificado supera el tamaño máximo de 1.5 MB.");
       return;
     }
     setSaving(true);
@@ -158,14 +204,15 @@ export default function SettingsPage() {
         body: JSON.stringify({
           environment: env,
           atv_username: atvUser.trim(),
-          atv_password: atvPass,
-          pin,
+          atv_password: atvPass || undefined,
+          pin: pin || undefined,
           p12_base64: p12Base64,
         }),
       });
       await updateSettings({ atv_environment: env, atv_username: atvUser.trim() });
       await refreshFiscalStatus();
       setP12File(null);
+      if (certificateInput.current) certificateInput.current.value = "";
       setAtvPass("");
       setPin("");
       setSaved(true);
@@ -178,37 +225,26 @@ export default function SettingsPage() {
   };
 
   const handleTestConnection = async () => {
-    // Client-side guard — never call the API with missing credentials
-    if (!atvUser.trim()) {
-      setConnectionResult({
-        success: false,
-        message: "Debe ingresar el Usuario ATV (CPF-...) antes de validar.",
-      });
+    if (!atvPass && (!credentialStatus?.is_active || atvUser.trim() !== credentialStatus.atv_username)) {
+      setConnectionResult({ success: false, message: "Guarda primero las credenciales de este ambiente o ingresa usuario y contraseña para probar los datos nuevos." });
       return;
     }
-    if (!atvPass.trim()) {
-      setConnectionResult({
-        success: false,
-        message: "Debe ingresar la Contraseña API ATV antes de validar la conexión.",
-      });
-      return;
-    }
-
     setTestingConnection(true);
     setConnectionResult(null);
     try {
       const res = await api.request<{ success: boolean; message: string }>("/hacienda/test-connection", {
         method: "POST",
+        timeoutMs: 30_000,
         body: JSON.stringify({
           environment: env,
-          atv_username: atvUser,
-          atv_password: atvPass,
+          ...(atvPass ? { atv_username: atvUser.trim(), atv_password: atvPass } : {}),
         }),
       });
       setConnectionResult({
         success: res.data.success,
         message: res.data.message,
       });
+      await refreshFiscalStatus();
     } catch (err: any) {
       setConnectionResult({
         success: false,
@@ -392,12 +428,12 @@ export default function SettingsPage() {
 
         {activeTab === "hacienda" && (
           <Card className="max-w-2xl space-y-6">
-            <div className="flex items-center justify-between p-3.5 bg-surface-secondary rounded-2xl border border-border">
+            <div className="flex flex-wrap gap-3 items-center justify-between p-3.5 bg-surface-secondary rounded-2xl border border-border">
               <div className="flex items-center gap-2.5">
                 <ShieldCheck className={`w-5 h-5 ${atvUser ? "text-emerald-500" : "text-text-muted"}`} />
                 <div>
-                  <span className="text-xs font-bold text-text-main block">Firmador Digital XAdES-EPES & API ATV</span>
-                  <span className="text-[10px] text-text-muted">Firma criptográfica SHA-256 + Token OAuth2 de Hacienda v4.4</span>
+                  <span className="text-xs font-bold text-text-main block">Conexión fiscal de esta empresa</span>
+                  <span className="text-[10px] text-text-muted">Comprobantes electrónicos de Costa Rica v4.4</span>
                 </div>
               </div>
               <Badge variant={credentialStatus?.is_active ? "success" : "default"}>
@@ -405,6 +441,9 @@ export default function SettingsPage() {
               </Badge>
             </div>
 
+            <p className="text-xs text-text-secondary leading-relaxed">
+              El correo y la contraseña de Orbítica identifican a cada usuario. Aquí el dueño configura el usuario API, la contraseña API y la llave de Hacienda de su empresa. Las claves de pruebas y producción se guardan por separado.
+            </p>
             <form onSubmit={handleSaveHacienda} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-text-secondary uppercase tracking-wider block">
@@ -412,12 +451,15 @@ export default function SettingsPage() {
                 </label>
                 <select
                   value={env}
+                  aria-label="Ambiente de Hacienda"
+                  disabled={saving || testingConnection}
                   onChange={(e) => setEnv(e.target.value as any)}
                   className="w-full px-3.5 py-2.5 bg-surface-input border border-border rounded-xl text-xs sm:text-sm text-text-main focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  <option value="STAGING">Sandbox / Pruebas (api-sandbox.comprobanteselectronicos.go.cr)</option>
-                  <option value="PRODUCTION">Producción Oficial (api.comprobanteselectronicos.go.cr)</option>
+                  <option value="STAGING">Pruebas (sin validez tributaria)</option>
+                  <option value="PRODUCTION">Producción</option>
                 </select>
+                <p className="text-xs text-text-muted">Ambiente activo del negocio: {settings.atv_environment === "STAGING" ? "Pruebas" : "Producción"}. {env !== settings.atv_environment && "El cambio se aplicará al guardar las credenciales."}</p>
               </div>
 
               <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
@@ -426,13 +468,15 @@ export default function SettingsPage() {
                     <KeyRound className="w-4 h-4 text-primary" />
                     <span className="text-xs font-bold text-text-main">Llave Criptográfica (.p12 / .pfx)</span>
                   </div>
-                  <span className="text-[10px] text-text-muted">Certificado criptográfico de ATV</span>
+                  <span className="text-[10px] text-text-muted">Llave emitida por Hacienda</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] text-text-muted block mb-1">Archivo de Certificado (.p12 / .pfx)</label>
                     <input
                       type="file"
+                      ref={certificateInput}
+                      disabled={saving || loadingFiscalStatus}
                       accept=".p12,.pfx"
                       aria-label="Archivo de certificado llave criptográfica"
                       onChange={(e) => setP12File(e.target.files?.[0] || null)}
@@ -452,22 +496,34 @@ export default function SettingsPage() {
               <div className="p-4 bg-surface-secondary rounded-2xl border border-border space-y-3">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-purple-500" />
-                  <span className="text-xs font-bold text-text-main">Credenciales API ATV (Ministerio de Hacienda)</span>
+                  <span className="text-xs font-bold text-text-main">Credenciales API de comprobantes electrónicos</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Usuario ATV (cpf-...)"
+                    label="Usuario API de Hacienda"
                     value={atvUser}
                     onChange={(e) => setAtvUser(e.target.value)}
                   />
                   <Input
-                    label="Contraseña API ATV"
+                    label="Contraseña API de Hacienda"
                     type="password"
                     value={atvPass}
                     onChange={(e) => setAtvPass(e.target.value)}
                   />
                 </div>
               </div>
+
+              <p className="text-xs text-text-muted">Usa la contraseña de la API de comprobantes, no la contraseña de acceso al portal tributario. Si las claves ya están guardadas, deja contraseña y PIN vacíos para conservarlos.</p>
+              {credentialStatus && <div className="text-xs text-text-secondary space-y-1">
+                <p>{credentialStatus.status_message}</p>
+                {credentialStatus.certificate_expires_at && <p>Vencimiento del certificado: {fiscalDate(credentialStatus.certificate_expires_at)}</p>}
+                {credentialStatus.connection_tested_at && <p>Última prueba de las claves guardadas: {credentialStatus.connection_test_success ? "exitosa" : "fallida"} · {fiscalDate(credentialStatus.connection_tested_at)}</p>}
+              </div>}
+              <Button type="button" variant="secondary" disabled={loadingFiscalStatus} onClick={() => { void refreshFiscalStatus(); }}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${loadingFiscalStatus ? "animate-spin" : ""}`} />
+                {loadingFiscalStatus ? "Consultando estado…" : "Actualizar estado"}
+              </Button>
+              {fiscalStatusError && <p role="alert" className="text-xs text-semantic-danger-text">{fiscalStatusError}</p>}
 
               {connectionResult && (
                 <div
@@ -485,9 +541,9 @@ export default function SettingsPage() {
 
               {readiness && (
                 <div className="rounded-2xl border border-border bg-surface-secondary p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-text-main">Preparación para emisión {readiness.environment}</span>
-                    <Badge variant={readiness.ready ? "success" : "warning"}>{readiness.ready ? "LISTO" : "INCOMPLETO"}</Badge>
+                  <div className="flex flex-wrap gap-2 items-center justify-between">
+                    <span className="text-xs font-bold text-text-main">Preparación para {readiness.environment === "STAGING" ? "enviar pruebas" : "emitir en producción"}</span>
+                    <Badge variant={readiness.ready ? "success" : "warning"}>{readiness.ready ? "CONFIGURACIÓN COMPLETA" : "PENDIENTES"}</Badge>
                   </div>
                   {readiness.checks.map((check) => (
                     <div key={check.code} className="flex items-center gap-2 text-xs">
@@ -495,29 +551,35 @@ export default function SettingsPage() {
                       <span className={check.ok ? "text-text-secondary" : "text-amber-500"}>{check.message}</span>
                     </div>
                   ))}
+                  <p className="pt-2 text-xs text-text-secondary">En cola: {readiness.queue.pending} · Requieren revisión: {readiness.queue.attention} · Correos pendientes: {readiness.queue.email_pending}</p>
+                  {readiness.worker.last_seen_at && <p className="text-xs text-text-muted">Última actividad del servicio de envío: {fiscalDate(readiness.worker.last_seen_at)}</p>}
+                  <div className="border-t border-border pt-2 space-y-1">
+                    <p className="text-xs font-bold text-text-main">Comprobantes aceptados en pruebas de esta empresa</p>
+                    {readiness.sandbox_documents.map((doc) => <p key={doc.doc_type} className="text-xs text-text-secondary">{doc.name}: {doc.accepted ? "aceptado" : "pendiente"}</p>)}
+                  </div>
+                  <p className="text-xs text-text-muted">La autenticación y la configuración no garantizan aceptación fiscal. Cada comprobante debe recibir su respuesta de Hacienda. Consulta los XML y los rechazos en Facturación.</p>
                 </div>
               )}
 
               {saveError && <div role="alert" className="p-3 rounded-xl border border-semantic-danger-border bg-semantic-danger-bg text-xs text-semantic-danger-text">{saveError}</div>}
 
-              <div className="pt-3 border-t border-border flex items-center justify-between gap-3">
+              <div className="pt-3 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={handleTestConnection}
-                  disabled={testingConnection || !atvUser.trim() || !atvPass.trim()}
-                  title={!atvUser.trim() || !atvPass.trim() ? "Ingrese usuario y contraseña ATV para validar" : undefined}
+                  disabled={testingConnection || saving || loadingFiscalStatus || (!credentialStatus?.is_active && (!atvUser.trim() || !atvPass))}
                 >
                   {testingConnection ? (
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin text-primary" />
                   ) : (
                     <ShieldCheck className="w-4 h-4 mr-2 text-emerald-500" />
                   )}
-                  {testingConnection ? "Probando Conexión..." : "Validar Conexión con Hacienda"}
+                  {testingConnection ? "Probando conexión…" : atvPass ? "Probar datos ingresados" : "Probar credenciales guardadas"}
                 </Button>
 
                 <div className="ml-auto">
-                  <Button type="submit" variant="primary" disabled={saving}>
+                  <Button type="submit" variant="primary" disabled={saving || testingConnection || loadingFiscalStatus}>
                     <Save className="w-4 h-4 mr-2" />
                     {saving ? "Guardando…" : "Guardar Credenciales"}
                   </Button>

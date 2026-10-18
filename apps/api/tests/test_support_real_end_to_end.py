@@ -7,14 +7,7 @@ from app.core.constants import UserRole
 from app.models.organization import Organization
 from app.models.user import User
 from app.security.password import hash_password
-from app.security.tokens import create_access_token
-
-
-def token_for(user: User) -> str:
-    return create_access_token(
-        subject=str(user.id),
-        claims={"org_id": str(user.organization_id) if user.organization_id else None, "role": user.role},
-    )
+from tests.session_helpers import token_for
 
 
 @pytest.mark.asyncio
@@ -30,8 +23,8 @@ async def test_support_and_delegated_access_are_server_backed(
             User.role == UserRole.OWNER,
         )
     )).scalar_one()
-    owner_headers = {"Authorization": f"Bearer {token_for(owner)}"}
-    admin_headers = {"Authorization": f"Bearer {token_for(superadmin_user)}"}
+    owner_headers = {"Authorization": f"Bearer {await token_for(db_session, owner)}"}
+    admin_headers = {"Authorization": f"Bearer {await token_for(db_session, superadmin_user)}"}
 
     created = await client.post(
         "/api/v1/support/tickets",
@@ -104,7 +97,7 @@ async def test_support_and_delegated_access_are_server_backed(
     bound_token_reuse = await client.get(
         "/api/v1/organizations/me",
         headers={
-            "Authorization": f"Bearer {token_for(second_admin)}",
+            "Authorization": f"Bearer {await token_for(db_session, second_admin)}",
             "X-Delegated-Token": grant["delegated_token"],
         },
     )
@@ -144,7 +137,7 @@ async def test_full_admin_delegation_requires_step_up_and_new_grant_revokes_prev
             User.role == UserRole.OWNER,
         )
     )).scalar_one()
-    owner_headers = {"Authorization": f"Bearer {token_for(owner)}"}
+    owner_headers = {"Authorization": f"Bearer {await token_for(db_session, owner)}"}
     payload = {
         "reason": "Asistencia administrativa autorizada por el propietario",
         "duration_minutes": 30,
@@ -197,7 +190,7 @@ async def test_full_admin_delegation_requires_step_up_and_new_grant_revokes_prev
     revoked_token = await client.get(
         "/api/v1/organizations/me",
         headers={
-            "Authorization": f"Bearer {token_for(superadmin_user)}",
+            "Authorization": f"Bearer {await token_for(db_session, superadmin_user)}",
             "X-Delegated-Token": full_admin_token,
         },
     )
@@ -223,7 +216,7 @@ async def test_cashier_cannot_grant_delegated_admin_access(
 
     response = await client.post(
         "/api/v1/support/delegated-access",
-        headers={"Authorization": f"Bearer {token_for(cashier)}"},
+        headers={"Authorization": f"Bearer {await token_for(db_session, cashier)}"},
         json={
             "reason": "Intento de escalar privilegios de soporte",
             "duration_minutes": 60,

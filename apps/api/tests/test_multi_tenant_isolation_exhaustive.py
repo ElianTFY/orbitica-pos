@@ -22,7 +22,9 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
         legal_name="Panadería La Espiga S.A.",
         trade_name="La Espiga",
         identification_type="02",
-        identification_number=f"3101{uuid.uuid4().hex[:6]}",
+        identification_number=f"3101{uuid.uuid4().int % 1000000:06d}",
+        economic_activity_code="521101", province_code="1", canton_code="01", district_code="01",
+        address_detail="Dirección sintética de pruebas locales",
         email="owner_a@laespiga.cr"
     )
     db_session.add(org_a)
@@ -69,7 +71,9 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
         legal_name="Farmacia Santa Lucía S.A.",
         trade_name="Farmacia Santa Lucía",
         identification_type="02",
-        identification_number=f"3101{uuid.uuid4().hex[:6]}",
+        identification_number=f"3101{uuid.uuid4().int % 1000000:06d}",
+        economic_activity_code="521101", province_code="1", canton_code="01", district_code="01",
+        address_detail="Dirección sintética de pruebas locales",
         email="owner_b@santalucia.cr"
     )
     db_session.add(org_b)
@@ -128,11 +132,8 @@ async def test_multi_tenant_isolation_exhaustive_negative_cases(
     # -------------------------------------------------------------------------
     headers_a_spoofed = {**headers_a, "X-Branch-ID": str(branch_b.id)}
     me_resp = await client.get("/api/v1/auth/me", headers=headers_a_spoofed)
-    assert me_resp.status_code == 200
-    # The selected_branch_id must NOT be branch_b!
-    # Because branch_b belongs to Org B
-    res_data = me_resp.json()["data"]
-    assert str(branch_b.id) not in [str(x) for x in res_data.get("accessible_branches", [])]
+    # Explicit foreign selections are rejected instead of silently ignored.
+    assert me_resp.status_code == 403
 
     # -------------------------------------------------------------------------
     # NEGATIVE TEST 2: Attempt POS sale using Branch B (Sucursal Ajena) in Body

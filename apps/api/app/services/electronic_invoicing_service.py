@@ -17,6 +17,8 @@ from app.infrastructure.external.hacienda_api_client import HaciendaAPIClient
 from app.services.audit_service import AuditService
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.core.config import settings
+from app.services.fiscal_snapshot import fiscal_parties, capture_fiscal_snapshot
+from app.services.fiscal_profile import validate_emitter_profile
 
 class ElectronicInvoicingService:
     def __init__(self, db: AsyncSession):
@@ -43,18 +45,15 @@ class ElectronicInvoicingService:
         if not invoice:
             raise NotFoundException("Factura electrónica no encontrada")
 
+        if invoice.xml_signed:
+            return invoice
+        if invoice.status in {"SENT", "PROCESSING", "ACCEPTED", "REJECTED", "CANCELLED"}:
+            raise BadRequestException("No se puede modificar un comprobante transmitido o cancelado")
+
         org_res = await self.db.execute(select(Organization).where(Organization.id == organization_id))
         org = org_res.scalar_one_or_none()
         if not org:
             raise NotFoundException("Organización no encontrada")
-
-        provider_id = "".join(c for c in settings.SOFTWARE_PROVIDER_TAX_ID if c.isdigit())
-        if not provider_id or provider_id == "3101000000":
-            raise BadRequestException("Debe configurar la identificación real del proveedor de sistemas antes de firmar comprobantes")
-        if not (org.economic_activity_code and len(org.economic_activity_code) == 6 and org.economic_activity_code.isdigit()):
-            raise BadRequestException("La actividad económica del emisor debe contener 6 dígitos")
-        if not all([org.province_code, org.canton_code, org.district_code, org.address_detail]):
-            raise BadRequestException("La ubicación fiscal del emisor está incompleta")
 
         branch_res = await self.db.execute(select(Branch).where(
             Branch.id == invoice.branch_id,
@@ -69,6 +68,17 @@ class ElectronicInvoicingService:
                 Customer.organization_id == organization_id,
             ))
             customer = cust_res.scalar_one_or_none()
+
+        # Legacy unsigned rows acquire their snapshot once; existing signed
+        # documents are returned above and are never rewritten.
+        if not invoice.fiscal_snapshot:
+            invoice.fiscal_snapshot = capture_fiscal_snapshot(org, customer, branch)
+        org, customer, branch = fiscal_parties(invoice.fiscal_snapshot)
+
+        provider_id = "".join(c for c in settings.SOFTWARE_PROVIDER_TAX_ID if c.isdigit())
+        if not provider_id or provider_id == "3101000000":
+            raise BadRequestException("Debe configurar la identificación real del proveedor de sistemas antes de firmar comprobantes")
+        validate_emitter_profile(org)
 
         # 1. Fetch encrypted credentials
         creds = await FiscalSecurityService.get_decrypted_credentials(
@@ -195,22 +205,29 @@ class ElectronicInvoicingService:
         if ind_estado == "aceptado":
             invoice.status = "ACCEPTED"
             invoice.hacienda_processed_at = now
-            invoice.hacienda_status_code = "200"
+            invoice.hacienda_status_code = "aceptado"
             invoice.hacienda_response_xml = status_result.get("response_xml")
+            invoice.hacienda_error_message = None
         elif ind_estado == "rechazado":
             invoice.status = "REJECTED"
             invoice.hacienda_processed_at = now
-            invoice.hacienda_status_code = "400"
+            invoice.hacienda_status_code = "rechazado"
             invoice.hacienda_response_xml = status_result.get("response_xml")
-            invoice.hacienda_error_message = status_result.get("raw_response", {}).get("detalle-mensaje", "Comprobante rechazado por Hacienda")
+            invoice.hacienda_error_message = status_result.get("raw_response", {}).get("detalle-mensaje") or "Comprobante rechazado por Hacienda"
+        elif ind_estado == "error":
+            invoice.status = "ERROR"
+            invoice.hacienda_status_code = "error"
+            invoice.hacienda_error_message = "Hacienda reportó un error de procesamiento; consulta nuevamente el estado del comprobante"
         else:
             invoice.status = "PROCESSING"
 
         if outbox:
-            outbox.status = invoice.status if invoice.status in {"ACCEPTED", "REJECTED"} else "SENT"
+            outbox.status = invoice.status if invoice.status in {"ACCEPTED", "REJECTED"} else "CONTINGENCY" if invoice.status == "ERROR" else "SENT"
             outbox.hacienda_response_xml = invoice.hacienda_response_xml
-            if invoice.status == "REJECTED":
+            if invoice.status in {"REJECTED", "ERROR"}:
                 outbox.last_error = invoice.hacienda_error_message
+            elif invoice.status == "ACCEPTED":
+                outbox.last_error = None
 
         await AuditService.log_action(
             db=self.db,

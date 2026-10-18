@@ -251,6 +251,8 @@ class CatalogService:
             if not category:
                 raise NotFoundException("Categoría no válida para la organización")
 
+        if data.initial_stock and data.initial_stock > 0 and not data.branch_id:
+            raise BadRequestException("Selecciona una sucursal para registrar el inventario inicial")
         if data.branch_id:
             branch = (await self.db.execute(
                 select(Branch).where(

@@ -82,6 +82,7 @@ interface StoreContextType {
   updateSettings: (newSettings: Partial<BusinessSettings>) => Promise<void>;
   // Real State Machine Statuses
   fetchStatus: "idle" | "loading" | "error" | "empty" | "unauthorized" | "offline";
+  isInitialLoading: boolean;
   errorMessage: string | null;
   retryFetch: () => Promise<void>;
   isOffline: boolean;
@@ -117,13 +118,13 @@ interface StoreContextType {
   updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
   // Employees
-  addEmployee: (employee: Omit<Employee, "id" | "organization_id" | "created_at">) => Employee;
-  updateEmployee: (id: string, employee: Partial<Employee>) => void;
-  deleteEmployee: (id: string) => void;
+  addEmployee: (employee: Omit<Employee, "id" | "organization_id" | "created_at">) => Promise<Employee>;
+  updateEmployee: (id: string, employee: Partial<Employee>) => Promise<void>;
+  deleteEmployee: (id: string) => Promise<void>;
   // Branches
-  addBranch: (branch: Omit<Branch, "id" | "organization_id" | "created_at">) => Branch;
-  updateBranch: (id: string, branch: Partial<Branch>) => void;
-  deleteBranch: (id: string) => void;
+  addBranch: (branch: Omit<Branch, "id" | "organization_id" | "created_at">) => Promise<Branch>;
+  updateBranch: (id: string, branch: Partial<Branch>) => Promise<void>;
+  deleteBranch: (id: string) => Promise<void>;
   // Quotes
   addQuote: (quote: Omit<Quote, "id" | "organization_id" | "quote_number" | "created_at">) => Promise<Quote>;
   updateQuote: (id: string, quote: Partial<Quote>) => void;
@@ -278,14 +279,17 @@ const mapApiSale = (row: any, invoice?: InvoiceRecord): SaleRecord => ({
 const mapApiCashSession = (row: any): CashSession => ({
   id: String(row.id),
   organization_id: "",
+  branch_id: row.branch_id,
   cash_register_id: String(row.cash_register_id),
   opened_at: row.opened_at,
   closed_at: row.closed_at,
   initial_amount: numberValue(row.initial_cash_amount),
-  cash_sales: Math.max(0, numberValue(row.expected_cash_amount) - numberValue(row.initial_cash_amount)),
-  sinpe_sales: 0,
-  card_sales: 0,
-  total_sales: Math.max(0, numberValue(row.expected_cash_amount) - numberValue(row.initial_cash_amount)),
+  cash_sales: numberValue(row.cash_sales),
+  sinpe_sales: numberValue(row.sinpe_sales),
+  card_sales: numberValue(row.card_sales),
+  total_sales: numberValue(row.total_sales),
+  cash_inflows: numberValue(row.cash_inflows),
+  cash_outflows: numberValue(row.cash_outflows),
   expected_cash_amount: numberValue(row.expected_cash_amount),
   status: row.status,
   actual_cash: row.actual_cash_amount == null ? undefined : numberValue(row.actual_cash_amount),
@@ -333,7 +337,27 @@ const mapApiSupportTicket = (
   updated_at: row.updated_at || row.created_at,
 });
 
+const employeeRoles: Record<string, Employee["role"]> = {
+  owner: "ADMIN", manager: "MANAGER", cashier: "CASHIER", inventory_staff: "INVENTORY", accountant: "ACCOUNTANT",
+};
+const apiEmployeeRoles: Record<string, string> = { MANAGER: "manager", CASHIER: "cashier", INVENTORY: "inventory_staff", ACCOUNTANT: "accountant" };
+const mapApiEmployee = (row: any, branchRows: Branch[]): Employee => ({
+  id: String(row.id), organization_id: String(row.organization_id), full_name: row.full_name,
+  email: row.email, phone: row.phone || "", role: employeeRoles[row.role] || "CASHIER",
+  branch_ids: row.branch_ids || [], branch_name: branchRows.find(b => row.branch_ids?.includes(b.id))?.name || "Sin asignar",
+  is_active: row.is_active, created_at: row.created_at,
+});
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  // Discard all tenant/user state on sign-out or account change, including any
+  // late responses from the previous provider instance.
+  return <BusinessStoreProvider key={`${user?.id || "anonymous"}:${user?.organization_id || "none"}`}>
+    {children}
+  </BusinessStoreProvider>;
+}
+
+function BusinessStoreProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   // Empty while unauthenticated; protected owner routes only invoke mutations after auth.
   const orgId = user?.organization_id || "";
@@ -352,9 +376,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     atv_environment: "STAGING",
     atv_username: "",
     economic_activity_code: "",
-    province_code: "1",
-    canton_code: "01",
-    district_code: "01",
+    province_code: "",
+    canton_code: "",
+    district_code: "",
     neighborhood_code: "",
   });
 
@@ -430,6 +454,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [activeSupportGrant, setActiveSupportGrant] = useState<SupportAccessGrant | null>(null);
   const [healthAlerts, setHealthAlerts] = useState<TenantHealthAlert[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const fetchGeneration = useRef(0);
 
   // Sync settings when user context changes
   useEffect(() => {
@@ -452,33 +477,54 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [isOffline, setIsOffline] = useState(false);
   const [fiscalContingencyNotice, setFiscalContingencyNotice] = useState<string | null>(null);
 
+  const permissionsKey = (user?.permissions || []).join("|");
+
   // Authoritative Backend API Sync
   const fetchBusinessData = useCallback(async () => {
     if (!orgId) return;
+    const generation = ++fetchGeneration.current;
     setFetchStatus("loading");
     setErrorMessage(null);
 
     try {
-      const [productsRes, customersRes, invoicesRes, salesRes, purchasesRes, movementsRes, cashRes, supportRes, grantRes, branchesRes, suppliersRes, orgRes, auditRes, onbRes, subRes, quotesRes] =
+      const permissions = new Set(permissionsKey.split("|"));
+      const allowed = (permission: string) => permissions.has("*") || permissions.has(permission);
+      const request = <T,>(path: string, permission: string, empty: T) =>
+        allowed(permission) ? api.request<T>(path) : Promise.resolve({ success: true, data: empty });
+      const loadCatalog = async () => {
+        if (!allowed("catalog:read")) return { success: true, data: [] };
+        const rows: any[] = [];
+        for (let offset = 0; ; offset += 200) {
+          const page = await api.request<any[]>(`/products?limit=200&offset=${offset}`);
+          rows.push(...page.data);
+          if (page.data.length < 200) return { success: true, data: rows };
+        }
+      };
+      const [productsRes, customersRes, invoicesRes, salesRes, purchasesRes, movementsRes, cashRes, supportRes, grantRes, branchesRes, suppliersRes, orgRes, auditRes, onbRes, subRes, quotesRes, usersRes] =
         await Promise.allSettled([
-          api.request<any[]>("/products"),
-          api.request<any[]>("/customers"),
-          api.request<any[]>("/invoices"),
-          api.request<any[]>("/sales"),
-          api.request<any[]>("/purchases"),
-          api.request<any[]>("/inventory/movements?limit=100"),
-          api.request<any>("/cash-registers/sessions/active"),
+          loadCatalog(),
+          request<any[]>("/customers", "customers:read", []),
+          request<any[]>("/invoices", "invoicing:read", []),
+          request<any[]>("/sales", "pos:read", []),
+          request<any[]>("/purchases", "purchases:read", []),
+          request<any[]>("/inventory/movements?limit=100", "inventory:read", []),
+          request<any>("/cash-registers/sessions/active", "cash:open", null),
           api.request<any[]>("/support/tickets"),
-          api.request<any>("/support/delegated-access/active"),
-          api.request<any[]>("/branches"),
-          api.request<any[]>("/suppliers?is_active=true"),
-          api.request<any>("/organizations/me"),
-          api.request<any[]>("/audit?limit=100"),
-          api.request<any>("/organizations/onboarding"),
-          api.request<any>("/subscription/current"),
-          api.request<any[]>("/quotes"),
+          request<any>("/support/delegated-access/active", "org:update", null),
+          request<any[]>("/branches", "branch:read", []),
+          request<any[]>("/suppliers?is_active=true", "suppliers:read", []),
+          request<any>("/organizations/me", "org:read", null),
+          request<any[]>("/audit?limit=100", "audit:read", []),
+          request<any>("/organizations/onboarding", "org:read", null),
+          request<any>("/subscription/current", "org:read", null),
+          request<any[]>("/quotes", "pos:read", []),
+          request<any[]>("/users", "user:read", []),
         ]);
 
+      if (generation !== fetchGeneration.current) return;
+      if (usersRes.status === "fulfilled" && branchesRes.status === "fulfilled") {
+        setEmployees(usersRes.value.data.map(row => mapApiEmployee(row, branchesRes.value.data)));
+      }
       const critical = [productsRes, invoicesRes, salesRes, movementsRes, cashRes, branchesRes];
       const criticalFailure = critical.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
       if (criticalFailure) throw criticalFailure.reason;
@@ -638,9 +684,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           default_currency: org.default_currency,
           atv_environment: org.atv_environment,
           economic_activity_code: org.economic_activity_code || "",
-          province_code: org.province_code || "1",
-          canton_code: org.canton_code || "01",
-          district_code: org.district_code || "01",
+          province_code: org.province_code || "",
+          canton_code: org.canton_code || "",
+          district_code: org.district_code || "",
           neighborhood_code: org.neighborhood_code || "",
           branch_name: branchesRes.status === "fulfilled" ? branchesRes.value.data[0]?.name || previous.branch_name : previous.branch_name,
         }));
@@ -656,9 +702,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ip_address: row.ip_address || "—",
         })));
       }
-      if (suppliersRes.status === "fulfilled" && suppliersRes.value?.data) {
-        setSuppliers(suppliersRes.value.data);
-      }
+
       if (quotesRes.status === "fulfilled" && quotesRes.value?.data) {
         setQuotes(quotesRes.value.data.map(mapApiQuote));
       }
@@ -667,21 +711,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFiscalContingencyNotice(null);
       setFetchStatus(hasData ? "idle" : "empty");
     } catch (err: any) {
+      if (generation !== fetchGeneration.current) return;
       if (err?.status === 401) {
         setFetchStatus("unauthorized");
         setErrorMessage("Sesión no autorizada o expirada.");
+      } else if (err?.status && err.status !== 408) {
+        setFetchStatus("error");
+        setErrorMessage(err.message || "No se pudieron cargar los datos autorizados.");
       } else {
         setFetchStatus("offline");
         setIsOffline(true);
         setFiscalContingencyNotice(
-          "Sin conexión con el servidor central de Orbítica. Por disposición tributaria de la DGT, la emisión fiscal automática requiere validación en línea. En caso de contingencia prolongada, debe utilizar comprobantes físicos preimpresos autorizados."
+          "No hay conexión con el servidor. Este POS requiere conexión para guardar ventas. Los comprobantes ya guardados conservan su estado pendiente y el worker reintentará procesarlos."
         );
         setErrorMessage("Sin conexión con el backend central.");
       }
     } finally {
-      setIsLoaded(true);
+      if (generation === fetchGeneration.current) setIsLoaded(true);
     }
-  }, [orgId, user?.email, user?.full_name, user?.id]);
+  }, [orgId, user?.email, user?.full_name, user?.id, permissionsKey]);
 
   useEffect(() => {
     fetchBusinessData();
@@ -870,54 +918,46 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await fetchBusinessData();
   };
 
-  // Employees
-  const addEmployee = (emp: Omit<Employee, "id" | "organization_id" | "created_at">): Employee => {
-    const newEmp: Employee = {
-      ...emp,
-      id: `emp_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
-    };
-    setEmployees((prev) => [newEmp, ...prev]);
-    logAudit("EMPLOYEE_CREATED", `Empleado: ${newEmp.full_name} (${newEmp.role})`);
-    return newEmp;
+  // Employee and branch mutations become visible only after the API commits.
+  const employeeBranchIds = (emp: Partial<Employee>) => {
+    const selected = branches.find(branch => branch.name === emp.branch_name);
+    if (!selected) throw new Error("Seleccione una sucursal activa para el empleado.");
+    return [selected.id];
   };
-
-  const updateEmployee = (id: string, updated: Partial<Employee>) => {
-    setEmployees((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, ...updated } : e))
-    );
-    logAudit("EMPLOYEE_UPDATED", `Empleado ID: ${id}`);
+  const addEmployee = async (emp: Omit<Employee, "id" | "organization_id" | "created_at">): Promise<Employee> => {
+    if (!emp.password || emp.password.length < 8) throw new Error("La contraseña inicial debe tener al menos 8 caracteres.");
+    const role = apiEmployeeRoles[emp.role];
+    if (!role) throw new Error("Seleccione un rol de empleado válido.");
+    const result = await api.request<any>("/users", { method: "POST", body: {
+      full_name: emp.full_name, email: emp.email, phone: emp.phone, role,
+      password: emp.password, branch_ids: employeeBranchIds(emp),
+    } });
+    await fetchBusinessData();
+    return mapApiEmployee(result.data, branches);
   };
-
-  const deleteEmployee = (id: string) => {
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
-    logAudit("EMPLOYEE_DELETED", `Empleado ID: ${id}`);
+  const updateEmployee = async (id: string, emp: Partial<Employee>) => {
+    const body: Record<string, unknown> = { full_name: emp.full_name, phone: emp.phone, is_active: emp.is_active };
+    if (emp.role && emp.role !== "ADMIN") body.role = apiEmployeeRoles[emp.role];
+    if (emp.branch_name && id !== user?.id) body.branch_ids = employeeBranchIds(emp);
+    await api.request(`/users/${id}`, { method: "PUT", body });
+    await fetchBusinessData();
   };
-
-  // Branches
-  const addBranch = (br: Omit<Branch, "id" | "organization_id" | "created_at">): Branch => {
-    const newBranch: Branch = {
-      ...br,
-      id: `br_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      organization_id: orgId,
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 10),
-    };
-    setBranches((prev) => [...prev, newBranch]);
-    logAudit("BRANCH_CREATED", `Sucursal: ${newBranch.name} (${newBranch.code})`);
-    return newBranch;
+  const deleteEmployee = async (id: string) => {
+    await api.request(`/users/${id}`, { method: "PUT", body: { is_active: false } });
+    await fetchBusinessData();
   };
-
-  const updateBranch = (id: string, updated: Partial<Branch>) => {
-    setBranches((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...updated } : b))
-    );
-    logAudit("BRANCH_UPDATED", `Sucursal ID: ${id}`);
+  const addBranch = async (br: Omit<Branch, "id" | "organization_id" | "created_at">): Promise<Branch> => {
+    const result = await api.request<Branch>("/branches", { method: "POST", body: br });
+    await fetchBusinessData();
+    return result.data;
   };
-
-  const deleteBranch = (id: string) => {
-    setBranches((prev) => prev.filter((b) => b.id !== id));
-    logAudit("BRANCH_DELETED", `Sucursal ID: ${id}`);
+  const updateBranch = async (id: string, updated: Partial<Branch>) => {
+    await api.request(`/branches/${id}`, { method: "PUT", body: updated });
+    await fetchBusinessData();
+  };
+  const deleteBranch = async (id: string) => {
+    await api.request(`/branches/${id}`, { method: "DELETE" });
+    await fetchBusinessData();
   };
 
   // Quotes
@@ -1262,7 +1302,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     quantity: number;
     reason?: string;
   }): Promise<InventoryMovement> => {
-    const branchId = branches[0]?.id;
+    const branchId = user?.branch_id || branches[0]?.id;
     if (!branchId) throw new Error("No existe una sucursal activa.");
     const response = await api.request<any>("/inventory/adjust", {
       method: "POST",
@@ -1302,7 +1342,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     docType?: "04" | "01";
     isTest?: boolean;
   }) => {
-    const branchId = branches[0]?.id;
+    const branchId = activeCashSession?.branch_id;
     if (!branchId) throw new Error("No existe una sucursal activa para procesar la venta.");
     if (!activeCashSession?.id) throw new Error("Debes abrir una caja antes de vender.");
 
@@ -1337,7 +1377,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       branch_id: branchId,
       cash_session_id: activeCashSession.id,
       customer_id: customerId,
-      currency: settings.default_currency,
+      currency: "CRC",
       notes: isTest ? "VENTA DE PRUEBA EN AMBIENTE STAGING" : undefined,
       items: items.map((item) => ({
         product_id: item.product.id, quantity: item.quantity,
@@ -1349,33 +1389,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }],
     };
     const fingerprint = JSON.stringify(payload);
+    const attemptStorageKey = `orbitica.sale-attempt:${orgId}:${user?.id}`;
+    if (!pendingSaleAttempt.current) {
+      try { pendingSaleAttempt.current = JSON.parse(sessionStorage.getItem(attemptStorageKey) || "null"); } catch { /* Start a new attempt if browser storage is unavailable. */ }
+    }
     if (pendingSaleAttempt.current?.fingerprint !== fingerprint) {
       pendingSaleAttempt.current = { fingerprint, key: crypto.randomUUID() };
     }
+    try { sessionStorage.setItem(attemptStorageKey, JSON.stringify(pendingSaleAttempt.current)); } catch { /* In-memory retry key remains available. */ }
     const saleResponse = await api.request<any>("/sales", {
       method: "POST", body: fingerprint,
       headers: { "Idempotency-Key": pendingSaleAttempt.current!.key },
     });
 
-    const invoiceList = await api.request<any[]>("/invoices?limit=20");
-    const invoiceRow = invoiceList.data.find((row) => String(row.sale_id) === String(saleResponse.data.id) && ["01", "04"].includes(row.doc_type));
-    if (!invoiceRow) throw new Error("La venta se guardó, pero no se creó su comprobante fiscal. Contacta soporte antes de reintentar.");
-
-    let fiscalWarning: string | undefined;
-    let queuedInvoice = invoiceRow;
+    const stored = saleResponse.data;
+    // The API commits sale + payments + stock + fiscal event atomically.
+    // A receipt/network failure after this point must never suggest reselling.
+    let receiptData: any = null;
+    let fiscalWarning = `Venta ${stored.sale_number} guardada. Comprobante pendiente de Hacienda.`;
+    const invoice = mapApiInvoice({ id: stored.invoice_id, sale_id: stored.id,
+      organization_id: stored.organization_id, numeric_key: stored.numeric_key,
+      consecutive_number: stored.consecutive_number, status: stored.fiscal_status,
+      doc_type: docType, total_amount: stored.total_amount, created_at: stored.created_at,
+      receiver_name: customerName, environment: settings.atv_environment });
+    const sale = mapApiSale(stored, invoice);
     try {
-      queuedInvoice = (await api.request<any>(`/invoices/${invoiceRow.id}/send-hacienda`, { method: "POST" })).data;
-    } catch (error: any) {
-      fiscalWarning = `La venta ${saleResponse.data.sale_number} quedó guardada, pero su comprobante sigue pendiente: ${error?.message || "no se pudo encolar"}. No repitas la venta.`;
+      receiptData = (await api.request<any>(`/sales/${stored.id}/receipt`)).data;
+      sale.receipt_data = receiptData;
+    } catch {
+      fiscalWarning += " El recibo se puede reimprimir desde el historial. No repita la venta.";
     }
-
-    const receiptResponse = await api.request<any>(`/sales/${saleResponse.data.id}/receipt`);
-    const invoice = mapApiInvoice(queuedInvoice);
-    const sale = mapApiSale(saleResponse.data, invoice);
-    sale.receipt_data = receiptResponse.data;
-    await fetchBusinessData();
     pendingSaleAttempt.current = null;
-    return { sale, invoice, receiptData: receiptResponse.data, fiscalWarning };
+    try { sessionStorage.removeItem(attemptStorageKey); } catch { /* Browser storage may be disabled. */ }
+    await fetchBusinessData();
+    return { sale, invoice, receiptData, fiscalWarning };
   };
 
   const openCashSession = async (initialAmount: number) => {
@@ -1384,6 +1431,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const registersResponse = await api.request<any[]>(`/cash-registers?branch_id=${branchId}`);
     let register = registersResponse.data[0];
     if (!register) {
+      if (!user?.permissions.some(p => ["*", "cash:manage"].includes(p))) throw new Error("El propietario debe crear una terminal para esta sucursal.");
       register = (await api.request<any>("/cash-registers", {
         method: "POST",
         body: JSON.stringify({ branch_id: branchId, name: "Caja POS 01", pos_terminal_number: "00001" }),
@@ -1717,6 +1765,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         updateFoundersPromo,
         updateSettings,
         fetchStatus,
+        isInitialLoading: !isLoaded,
         errorMessage,
         retryFetch: fetchBusinessData,
         isOffline,

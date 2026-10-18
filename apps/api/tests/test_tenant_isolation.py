@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from app.security.tokens import create_registration_token
 
 @pytest.mark.asyncio
 async def test_tenant_isolation(client: AsyncClient):
@@ -14,6 +15,7 @@ async def test_tenant_isolation(client: AsyncClient):
         "owner_password": "AlfaPassword123!",
         "owner_full_name": "Owner Alfa"
     }
+    org1_payload["registration_token"] = create_registration_token(org1_payload["owner_email"])
     r1 = await client.post("/api/v1/organizations/register", json=org1_payload)
     assert r1.status_code == 201
 
@@ -28,6 +30,7 @@ async def test_tenant_isolation(client: AsyncClient):
         "owner_password": "BetaPassword123!",
         "owner_full_name": "Owner Beta"
     }
+    org2_payload["registration_token"] = create_registration_token(org2_payload["owner_email"])
     r2 = await client.post("/api/v1/organizations/register", json=org2_payload)
     assert r2.status_code == 201
 
@@ -38,6 +41,14 @@ async def test_tenant_isolation(client: AsyncClient):
     # Login as Org 2 Owner
     login2 = await client.post("/api/v1/auth/login", json={"email": "owner@beta.cr", "password": "BetaPassword123!"})
     token2 = login2.json()["data"]["access_token"]
+    # Explicit synthetic profiles keep the isolation checks independent of the
+    # separate rule that prevents sales with incomplete issuer information.
+    for token in (token1, token2):
+        configured = await client.patch('/api/v1/organizations/me', headers={"Authorization": f"Bearer {token}"}, json={
+            'economic_activity_code': '521101', 'province_code': '1', 'canton_code': '01', 'district_code': '01',
+            'address_detail': 'Dirección sintética de pruebas locales',
+        })
+        assert configured.status_code == 200
 
     # Org 1 queries branches
     b1_resp = await client.get("/api/v1/branches", headers={"Authorization": f"Bearer {token1}"})

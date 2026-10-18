@@ -125,11 +125,10 @@ async def test_hacienda_receipt_and_supplier_purchases(client: AsyncClient, samp
     assert "04 Tiquete" in receipt_data["hacienda"]["doc_type"]
     assert len(receipt_data["hacienda"]["numeric_key"]) == 50
 
-    # 8. Get Hacienda XML Comprobante (v4.4 Schema)
+    # Unsigned documents must not invent a new fiscal identity for download.
+    assert receipt_data["hacienda"]["numeric_key"] == sale_resp.json()["data"]["numeric_key"]
+    assert receipt_data["hacienda"]["consecutive"] == sale_resp.json()["data"]["consecutive_number"]
+    repeated_receipt = await client.get(f"/api/v1/sales/{sale_id}/receipt", headers=headers)
+    assert repeated_receipt.json()["data"]["hacienda"] == receipt_data["hacienda"]
     xml_resp = await client.get(f"/api/v1/sales/{sale_id}/xml", headers=headers)
-    assert xml_resp.status_code == 200
-    assert "application/xml" in xml_resp.headers.get("content-type", "")
-    assert "<TiqueteElectronico" in xml_resp.text
-    assert "<Clave>" in xml_resp.text
-    assert "v4.4/tiqueteElectronico" in xml_resp.text
-    assert "<ProveedorSistemas>" in xml_resp.text
+    assert xml_resp.status_code == 409

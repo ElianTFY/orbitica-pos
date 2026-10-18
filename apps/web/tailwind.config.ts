@@ -66,8 +66,8 @@ const config: Config = {
         glow: "0 0 25px var(--primary-glow)",
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "Inter", "system-ui", "-apple-system", "sans-serif"],
-        mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+        sans: ["var(--font-geist-sans, Inter)", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["var(--font-geist-mono, ui-monospace)", "ui-monospace", "monospace"],
       },
     },
   },

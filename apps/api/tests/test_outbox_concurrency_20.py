@@ -17,6 +17,7 @@ class MockHaciendaClient:
         self.fail_all = fail_all
         self.sent_claves = []
         self.checked_claves = []
+        self.received_claves = set()
         self._lock = asyncio.Lock()
 
     async def get_access_token(self, username: str, password: str) -> Dict[str, Any]:
@@ -44,6 +45,8 @@ class MockHaciendaClient:
             raise ConnectionError("Simulated Hacienda 504 Gateway Timeout")
         async with self._lock:
             self.checked_claves.append(clave)
+        if clave not in self.sent_claves and clave not in self.received_claves:
+            return {"status_code": 404, "status": "no_encontrado"}
         return {
             "status_code": 200,
             "status": "aceptado",
@@ -166,6 +169,11 @@ async def test_outbox_exponential_backoff_and_contingency(
     )
 
     inv_id = uuid.uuid4()
+    db_session.add(ElectronicInvoice(id=inv_id, organization_id=sample_organization.id,
+        branch_id=branch.id, doc_type="04", consecutive_number="00100001049999999999",
+        numeric_key="50602092600310199988800100001049999999999111234567",
+        xml_generated="<dummy/>", xml_signed="<dummy_signed/>", status="QUEUED"))
+    await db_session.flush()
     entry = await OutboxService.enqueue_invoice(
         db=db_session,
         organization_id=sample_organization.id,
@@ -205,7 +213,8 @@ async def test_outbox_exponential_backoff_and_contingency(
     await db_session.refresh(entry)
     assert entry.retry_count == 3
     assert entry.status == "CONTINGENCY"
-    assert "contingencia" in str(entry.last_error).lower()
+    assert "detenido" in str(entry.last_error).lower()
+    assert "Simulated Hacienda" in entry.last_error
 
 
 @pytest.mark.asyncio
@@ -247,6 +256,7 @@ async def test_durable_sent_marker_is_polled_without_retransmission(
     await db_session.commit()
 
     client = MockHaciendaClient()
+    client.received_claves.add(clave)
     await HaciendaOutboxWorker(batch_size=1, hacienda_client=client).process_batch(db_session)
     await db_session.refresh(entry)
 
@@ -312,4 +322,4 @@ async def test_duplicate_key_response_is_polled_and_never_retransmitted(
     await db_session.commit()
     await worker.process_batch(db_session)
     assert client.sent_claves == [clave]
-    assert client.checked_claves == [clave]
+    assert client.checked_claves == [clave, clave]

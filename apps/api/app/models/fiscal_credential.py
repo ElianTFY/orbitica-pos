@@ -23,6 +23,8 @@ class FiscalCredential(Base, UUIDMixin, TimestampMixin):
     certificate_issuer: Mapped[str | None] = mapped_column(String(255), nullable=True)
     certificate_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    connection_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    connection_test_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("organization_id", "environment", name="uq_fiscal_cred_org_env"),

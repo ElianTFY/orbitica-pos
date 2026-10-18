@@ -95,7 +95,8 @@ class ApiClient {
         json = await response.json();
       } else {
         const text = await response.text();
-        json = { success: response.ok, message: text, data: null };
+        json = { success: response.ok, data: response.ok ? text : null,
+          message: response.ok ? undefined : "No fue posible conectar con el servicio. Intenta nuevamente." };
       }
 
       if (!response.ok) {

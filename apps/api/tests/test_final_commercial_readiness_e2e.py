@@ -15,7 +15,7 @@ from app.models.sale import Sale
 from app.models.inventory import InventoryMovement
 from app.core.constants import UserRole
 from app.security.password import hash_password
-from app.security.tokens import create_access_token
+from tests.session_helpers import token_for
 
 async def create_tenant_setup(db: AsyncSession, suffix: str, org_name: str):
     org_id = uuid.uuid4()
@@ -27,6 +27,8 @@ async def create_tenant_setup(db: AsyncSession, suffix: str, org_name: str):
         identification_number=f"3101{uuid.uuid4().int % 1000000:06d}",
         email=f"admin_{suffix}@test.cr",
         phone="2222-3333",
+        economic_activity_code="521101", province_code="1", canton_code="01", district_code="01",
+        address_detail="Dirección sintética de pruebas locales",
         is_active=True,
         atv_environment="STAGING"
     )
@@ -88,7 +90,7 @@ async def create_tenant_setup(db: AsyncSession, suffix: str, org_name: str):
     db.add(register)
 
     await db.commit()
-    token = create_access_token(subject=str(user_id), claims={"role": owner.role.value})
+    token = await token_for(db, owner)
     return {
         "org": org,
         "branch": branch,
@@ -411,7 +413,7 @@ async def test_cashier_rbac_blocked_from_admin_endpoints(
     db_session.add(access)
     await db_session.commit()
 
-    cashier_token = create_access_token(subject=str(cashier_id), claims={"role": cashier.role.value})
+    cashier_token = await token_for(db_session, cashier)
     headers = {"Authorization": f"Bearer {cashier_token}", "X-Branch-ID": str(tenant["branch"].id)}
 
     # Attempt 1: Cashier tries to create a new branch (Forbidden)

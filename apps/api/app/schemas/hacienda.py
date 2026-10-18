@@ -1,11 +1,12 @@
 from typing import Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 class HaciendaCredentialsInput(BaseModel):
     environment: Literal["STAGING", "PRODUCTION"] = "STAGING"
     atv_username: str = Field(..., min_length=3, max_length=255, description="Usuario ATV de Hacienda (cpf-...)")
-    atv_password: str = Field(..., min_length=1, max_length=255, description="Contraseña del usuario ATV")
-    pin: str = Field(..., pattern=r"^\d{4}$", description="PIN de 4 dígitos de la llave criptográfica")
+    atv_password: Optional[str] = Field(None, min_length=1, max_length=255, description="Omitir para conservar la contraseña guardada")
+    pin: Optional[str] = Field(None, pattern=r"^\d{4}$", description="Omitir para conservarlo si no cambia el certificado")
     p12_base64: Optional[str] = Field(None, description="Certificado .p12 codificado en Base64")
 
     @field_validator("p12_base64")
@@ -17,8 +18,14 @@ class HaciendaCredentialsInput(BaseModel):
 
 class HaciendaConnectionTestInput(BaseModel):
     environment: Literal["STAGING", "PRODUCTION"] = "STAGING"
-    atv_username: str = Field(..., min_length=3, max_length=255)
-    atv_password: str = Field(..., min_length=1, max_length=255)
+    atv_username: Optional[str] = Field(None, min_length=3, max_length=255)
+    atv_password: Optional[str] = Field(None, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def require_pair_or_stored_credentials(self):
+        if (self.atv_username is None) != (self.atv_password is None):
+            raise ValueError("Envía usuario y contraseña juntos, o ninguno para probar las credenciales guardadas")
+        return self
 
 class HaciendaCredentialsResponse(BaseModel):
     environment: str
@@ -26,6 +33,9 @@ class HaciendaCredentialsResponse(BaseModel):
     has_certificate: bool
     is_active: bool
     status_message: str
+    certificate_expires_at: Optional[datetime] = None
+    connection_tested_at: Optional[datetime] = None
+    connection_test_success: Optional[bool] = None
 
 class HaciendaTestConnectionResponse(BaseModel):
     success: bool
