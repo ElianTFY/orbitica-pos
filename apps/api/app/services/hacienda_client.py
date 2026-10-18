@@ -38,7 +38,10 @@ class HaciendaAPIClient:
             response = await client.post(self.config["token_url"], data=data, headers=headers)
             if response.status_code != 200:
                 raise ValueError(f"Error al obtener token de Hacienda ({response.status_code})")
-            return response.json()
+            result = response.json()
+            if not isinstance(result, dict) or not isinstance(result.get("access_token"), str) or not result["access_token"]:
+                raise ValueError("Hacienda no devolvió un token de autenticación válido")
+            return result
 
     async def send_invoice(
         self,
@@ -125,12 +128,16 @@ class HaciendaAPIClient:
                 except Exception as exc:
                     raise ValueError("Respuesta XML de Hacienda inválida") from exc
 
+            if str(data.get("ind-estado", "")).lower() in {"aceptado", "rechazado"} and not hacienda_xml:
+                raise ValueError("Hacienda aún no entregó el XML de su respuesta final; se volverá a consultar")
+
             return {
                 "clave": data.get("clave"),
                 "fecha": data.get("fecha"),
                 "ind_estado": data.get("ind-estado"),  # 'aceptado', 'rechazado', 'procesando'
                 "respuesta_xml_raw": data.get("respuesta-xml"),
-                "respuesta_xml_decoded": hacienda_xml
+                "respuesta_xml_decoded": hacienda_xml,
+                "detail_message": data.get("detalle-mensaje"),
             }
 
     async def check_status(self, token: str, clave: str) -> Dict[str, Any]:

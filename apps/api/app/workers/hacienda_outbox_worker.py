@@ -6,12 +6,13 @@ import base64
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Set
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, delete
 from app.db.session import AsyncSessionLocal, async_engine, sync_engine
 from app.models.outbox import HaciendaOutbox
 from app.models.invoice import ElectronicInvoice
 from app.models.organization import Organization
 from app.models.fiscal_credential import FiscalCredential
+from app.models.fiscal_worker import FiscalWorkerHeartbeat
 from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.hacienda_client import HaciendaAPIClient
 from app.services.email_service import FiscalEmailService
@@ -38,6 +39,9 @@ class HaciendaOutboxWorker:
         self._custom_client = hacienda_client
         self._running = False
         self._stop_event = asyncio.Event()
+        self.worker_id = uuid.uuid4()
+        self.started_at = datetime.now(timezone.utc)
+        self._heartbeat_status = "STARTING"
 
     async def process_batch(self, db: AsyncSession) -> int:
         """
@@ -354,7 +358,9 @@ class HaciendaOutboxWorker:
     ) -> bool:
         sent = await FiscalEmailService().send_invoice_email(
             to_email=invoice.receiver_email or "",
-            issuer_name=organization.trade_name or organization.legal_name,
+            issuer_name=((invoice.fiscal_snapshot or {}).get("emitter") or {}).get("trade_name")
+                or ((invoice.fiscal_snapshot or {}).get("emitter") or {}).get("legal_name")
+                or organization.trade_name or organization.legal_name,
             customer_name=invoice.receiver_name or "Cliente",
             consecutive_number=invoice.consecutive_number,
             numeric_key=invoice.numeric_key,
@@ -363,6 +369,7 @@ class HaciendaOutboxWorker:
             signed_xml=invoice.xml_signed or "",
             hacienda_response_xml=invoice.hacienda_response_xml,
             doc_type_name=self._document_name(invoice.doc_type),
+            environment=invoice.environment,
         )
         invoice.email_retry_count += 1
         if sent:
@@ -418,14 +425,48 @@ class HaciendaOutboxWorker:
                 async with AsyncSessionLocal() as session:
                     processed = await self.process_batch(session)
                     idle = processed == 0
+                    self._heartbeat_status = "RUNNING"
             except Exception as ex:
-                logger.error(f"Error en bucle de Outbox Worker: {ex}")
+                self._heartbeat_status = "ERROR"
+                logger.error("Error en bucle de Outbox Worker: %s", type(ex).__name__)
                 idle = True
             if idle and self._running:
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=poll_interval_seconds)
                 except asyncio.TimeoutError:
                     pass
+
+    async def write_heartbeat(self, db: AsyncSession, status: str) -> None:
+        now = datetime.now(timezone.utc)
+        record = await db.get(FiscalWorkerHeartbeat, self.worker_id)
+        if record is None:
+            record = FiscalWorkerHeartbeat(id=self.worker_id, started_at=self.started_at)
+            db.add(record)
+        record.last_seen_at = now
+        record.status = status
+        await db.execute(delete(FiscalWorkerHeartbeat).where(
+            FiscalWorkerHeartbeat.last_seen_at < now - timedelta(days=1),
+        ))
+        await db.commit()
+
+    async def report_heartbeat(self, interval_seconds: int = 15) -> None:
+        # Separate transaction: a batch can wait on Hacienda without blocking
+        # liveness updates. A stale heartbeat is never treated as healthy.
+        while not self._stop_event.is_set():
+            try:
+                async with AsyncSessionLocal() as session:
+                    await self.write_heartbeat(session, self._heartbeat_status)
+            except Exception as exc:
+                logger.error("No se pudo registrar actividad del worker: %s", type(exc).__name__)
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=interval_seconds)
+            except asyncio.TimeoutError:
+                pass
+        try:
+            async with AsyncSessionLocal() as session:
+                await self.write_heartbeat(session, "STOPPED")
+        except Exception as exc:
+            logger.error("No se pudo registrar parada del worker: %s", type(exc).__name__)
 
     def stop(self):
         self._running = False
@@ -448,7 +489,7 @@ async def main() -> None:
     try:
         # SIGTERM stops fetching new batches and lets the current transaction
         # finish before Render replaces this process.
-        await worker.run_loop()
+        await asyncio.gather(worker.run_loop(), worker.report_heartbeat())
     finally:
         for stop_signal in registered:
             loop.remove_signal_handler(stop_signal)

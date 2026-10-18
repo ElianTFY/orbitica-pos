@@ -99,6 +99,25 @@ async function responseFor(action, suffix, method = 'POST') {
       identification_number: `3101${identity.slice(-6)}`, economic_activity_code: '521101', province_code: '1',
       canton_code: '01', district_code: '01', address_detail: 'Dirección sintética para prueba local', email: ownerEmail,
       atv_environment: 'STAGING' } });
+    await page.goto('http://127.0.0.1:3000/settings');
+    await page.getByRole('tab', { name: 'Hacienda v4.4', exact: true }).click();
+    await page.getByText('El servicio de envío fiscal no está activo; los comprobantes permanecerán en cola', { exact: true }).waitFor();
+    assert.equal(await page.getByText('CONFIGURACIÓN COMPLETA', { exact: true }).count(), 0);
+    await page.getByLabel('Usuario API de Hacienda', { exact: true }).fill('unsaved-staging@example.test');
+    await page.getByLabel('Contraseña API de Hacienda', { exact: true }).fill('synthetic-secret');
+    await page.getByLabel('Ambiente de Hacienda', { exact: true }).selectOption('PRODUCTION');
+    await page.getByText('Preparación para emitir en producción', { exact: true }).waitFor();
+    assert.equal(await page.getByLabel('Contraseña API de Hacienda', { exact: true }).inputValue(), '');
+    assert.equal(await page.getByLabel('Usuario API de Hacienda', { exact: true }).inputValue(), '');
+    await page.getByLabel('Ambiente de Hacienda', { exact: true }).selectOption('STAGING');
+    await page.getByText('Preparación para enviar pruebas', { exact: true }).waitFor();
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2), 'Fiscal setup must fit mobile');
+    await page.screenshot({ path: path.join(output, 'fiscal-setup-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.screenshot({ path: path.join(output, 'fiscal-setup-desktop.png'), fullPage: true });
+    pass('Configuración fiscal: worker ausente visible, claves separadas por ambiente y pantalla móvil');
+
     await page.goto('http://127.0.0.1:3000/products');
     await page.getByRole('button', { name: 'Nuevo Producto', exact: true }).click();
     const productName = `Producto E2E ${identity}`;

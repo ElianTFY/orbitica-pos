@@ -205,14 +205,14 @@ class ElectronicInvoicingService:
         if ind_estado == "aceptado":
             invoice.status = "ACCEPTED"
             invoice.hacienda_processed_at = now
-            invoice.hacienda_status_code = "200"
+            invoice.hacienda_status_code = "aceptado"
             invoice.hacienda_response_xml = status_result.get("response_xml")
         elif ind_estado == "rechazado":
             invoice.status = "REJECTED"
             invoice.hacienda_processed_at = now
-            invoice.hacienda_status_code = "400"
+            invoice.hacienda_status_code = "rechazado"
             invoice.hacienda_response_xml = status_result.get("response_xml")
-            invoice.hacienda_error_message = status_result.get("raw_response", {}).get("detalle-mensaje", "Comprobante rechazado por Hacienda")
+            invoice.hacienda_error_message = status_result.get("raw_response", {}).get("detalle-mensaje") or "Comprobante rechazado por Hacienda"
         else:
             invoice.status = "PROCESSING"
 

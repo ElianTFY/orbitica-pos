@@ -16,9 +16,9 @@ envVarGroups:
       - key: ENVIRONMENT
         value: production
       - key: FRONTEND_URL
-        value: https://web-mocha-gamma-es6gomw437.vercel.app
+        value: https://orbitica-pos-test-web.onrender.com
       - key: BACKEND_CORS_ORIGINS
-        value: '["https://web-mocha-gamma-es6gomw437.vercel.app"]'
+        value: '["https://orbitica-pos-test-web.onrender.com"]'
       - key: COOKIE_SECURE
         value: "true"
       - key: COOKIE_SAMESITE
@@ -27,10 +27,10 @@ envVarGroups:
         value: "false"
       - key: HACIENDA_SANDBOX_VALIDATED
         value: "false"
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_TLS
-        value: "true"
+      - key: EMAIL_PROVIDER
+        value: BREVO
+      - key: EMAIL_FROM_NAME
+        value: Orbítica POS
 
 databases:
   - name: orbitica-pos-db
@@ -49,7 +49,7 @@ services:
     region: ohio
     plan: 0.5c-512mb
     repo: https://github.com/ElianTFY/orbitica-pos
-    branch: codex/final-production-fixes
+    branch: fix/verified-pos-hacienda-20261011
     autoDeployTrigger: "off"
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt
@@ -75,11 +75,9 @@ services:
         value: LOCAL
       - key: LOCAL_STORAGE_DIR
         value: /var/data/orbitica-uploads
-      - key: SMTP_HOST
+      - key: BREVO_API_KEY
         sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
+      - key: EMAIL_FROM_ADDRESS
         sync: false
       - key: SOFTWARE_PROVIDER_TAX_ID_TYPE
         sync: false
@@ -94,7 +92,7 @@ services:
     region: ohio
     plan: 0.5c-512mb
     repo: https://github.com/ElianTFY/orbitica-pos
-    branch: codex/final-production-fixes
+    branch: fix/verified-pos-hacienda-20261011
     autoDeployTrigger: "off"
     rootDir: apps/api
     buildCommand: pip install -r requirements.txt
@@ -116,21 +114,6 @@ services:
           type: web
           name: orbitica-pos-api
           envVarKey: ENCRYPTION_MASTER_KEY
-      - key: SMTP_HOST
-        fromService:
-          type: web
-          name: orbitica-pos-api
-          envVarKey: SMTP_HOST
-      - key: SMTP_USER
-        fromService:
-          type: web
-          name: orbitica-pos-api
-          envVarKey: SMTP_USER
-      - key: SMTP_PASSWORD
-        fromService:
-          type: web
-          name: orbitica-pos-api
-          envVarKey: SMTP_PASSWORD
       - key: SOFTWARE_PROVIDER_TAX_ID_TYPE
         fromService:
           type: web
@@ -146,3 +129,13 @@ services:
           type: web
           name: orbitica-pos-api
           envVarKey: SOFTWARE_PROVIDER_NAME
+      - key: BREVO_API_KEY
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: BREVO_API_KEY
+      - key: EMAIL_FROM_ADDRESS
+        fromService:
+          type: web
+          name: orbitica-pos-api
+          envVarKey: EMAIL_FROM_ADDRESS

@@ -1,4 +1,5 @@
 import logging
+from html import escape
 from typing import Optional, Dict, Any, List
 from decimal import Decimal
 from app.adapters.email_adapter import get_email_adapter, BaseEmailAdapter
@@ -17,8 +18,13 @@ class FiscalEmailService:
         numeric_key: str,
         total_amount: Decimal,
         currency: str = "CRC",
-        doc_type_name: str = "Factura Electrónica"
+        doc_type_name: str = "Factura Electrónica",
+        environment: str = "STAGING"
     ) -> str:
+        fiscal_label = "Comprobante de pruebas — sin validez tributaria" if environment == "STAGING" else "Comprobante aceptado por Hacienda"
+        issuer_name, customer_name, consecutive_number, numeric_key, currency, doc_type_name = (
+            escape(value) for value in (issuer_name, customer_name, consecutive_number, numeric_key, currency, doc_type_name)
+        )
         formatted_total = f"{total_amount:,.2f}"
         return f"""<!DOCTYPE html>
 <html lang="es">
@@ -43,11 +49,11 @@ class FiscalEmailService:
     <div class="container">
         <div class="header">
             <h2 style="margin:0;">{issuer_name}</h2>
-            <p style="margin:4px 0 0 0; font-size:14px; opacity:0.8;">Comprobante Electrónico Autorizado por DGT</p>
+            <p style="margin:4px 0 0 0; font-size:14px; opacity:0.8;">{fiscal_label}</p>
         </div>
         <div class="content">
             <p>Estimado(a) <strong>{customer_name}</strong>,</p>
-            <p>Le hacemos entrega de su <strong>{doc_type_name}</strong> emitida bajo las disposiciones técnicas oficiales de la Dirección General de Tributación de Costa Rica.</p>
+            <p>Le hacemos entrega de su <strong>{doc_type_name}</strong> y de la respuesta registrada por Hacienda.</p>
             
             <div class="data-box">
                 <div class="data-row">
@@ -65,7 +71,7 @@ class FiscalEmailService:
             </div>
 
             <p style="font-size:13px; color:#64748b;">
-                Adjunto a este correo encontrará el archivo XML firmado digitalmente (XAdES-EPES) que constituye el comprobante fiscal legal, así como el acuse de recibo de Hacienda.
+                Adjunto a este correo encontrará el archivo XML firmado digitalmente (XAdES-EPES) y el XML de respuesta de Hacienda. {fiscal_label}.
             </p>
         </div>
         <div class="footer">
@@ -86,13 +92,17 @@ class FiscalEmailService:
         currency: str,
         signed_xml: str,
         hacienda_response_xml: Optional[str] = None,
-        doc_type_name: str = "Factura Electrónica"
+        doc_type_name: str = "Factura Electrónica",
+        environment: str = "STAGING"
     ) -> bool:
         """
         Sends fiscal email with signed XML and Hacienda acceptance XML attached.
         Falls back gracefully if SMTP is unavailable.
         """
-        subject = f"{doc_type_name} {consecutive_number} - {issuer_name}"
+        if environment not in {"STAGING", "PRODUCTION"} or not signed_xml or not hacienda_response_xml:
+            return False
+        prefix = "[PRUEBAS] " if environment == "STAGING" else ""
+        subject = f"{prefix}{doc_type_name} {consecutive_number} - {issuer_name}"
         html_content = self.render_invoice_html(
             issuer_name=issuer_name,
             customer_name=customer_name,
@@ -100,7 +110,8 @@ class FiscalEmailService:
             numeric_key=numeric_key,
             total_amount=total_amount,
             currency=currency,
-            doc_type_name=doc_type_name
+            doc_type_name=doc_type_name,
+            environment=environment,
         )
         text_content = (
             f"{doc_type_name} {consecutive_number}\n"
@@ -108,7 +119,8 @@ class FiscalEmailService:
             f"Cliente: {customer_name}\n"
             f"Total: {currency} {total_amount:,.2f}\n"
             f"Clave: {numeric_key}\n"
-            "Adjunto encontrará su comprobante en XML firmado oficial."
+            + ("Ambiente de pruebas: sin validez tributaria.\n" if environment == "STAGING" else "Comprobante aceptado por Hacienda.\n")
+            + "Se adjuntan el comprobante firmado y la respuesta de Hacienda."
         )
 
         attachments = [
@@ -135,5 +147,5 @@ class FiscalEmailService:
                 attachments=attachments
             )
         except Exception as e:
-            logger.error(f"Fallo no crítico al enviar correo fiscal a {to_email}: {e}")
+            logger.error("Fallo al entregar correo fiscal: %s", type(e).__name__)
             return False

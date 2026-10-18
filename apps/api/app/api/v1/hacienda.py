@@ -1,14 +1,13 @@
 import base64
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Dict, Any, Optional, Literal
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.db.session import get_db
 from app.models.invoice import ElectronicInvoice
 from app.models.organization import Organization
-from app.core.config import settings
 from app.security.deps import CurrentUserContext, require_permissions
 from app.schemas.common import StandardResponse
 from app.schemas.hacienda import (
@@ -23,7 +22,8 @@ from app.schemas.hacienda import (
 from app.services.fiscal_security_service import FiscalSecurityService
 from app.services.electronic_invoicing_service import ElectronicInvoicingService
 from app.services.invoice_service import InvoiceService
-from app.infrastructure.external.hacienda_api_client import HaciendaAPIClient
+from app.services.hacienda_client import HaciendaAPIClient
+from app.services.fiscal_readiness import fiscal_readiness_report
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.services.audit_service import AuditService
 
@@ -51,7 +51,7 @@ async def save_hacienda_credentials(
         environment=payload.environment,
         p12_bytes=p12_bytes,
         pin=payload.pin,
-        atv_username=payload.atv_username,
+        atv_username=payload.atv_username.strip(),
         atv_password=payload.atv_password
     )
     await AuditService.log_action(
@@ -70,7 +70,7 @@ async def save_hacienda_credentials(
 
     data = HaciendaCredentialsResponse(
         environment=cred.environment,
-        atv_username=payload.atv_username,
+        atv_username=payload.atv_username.strip(),
         has_certificate=bool(cred.encrypted_p12),
         is_active=cred.is_active,
         status_message="Credenciales y certificado criptográfico cifrados y guardados exitosamente"
@@ -79,108 +79,92 @@ async def save_hacienda_credentials(
 
 @router.get("/credentials", response_model=StandardResponse[HaciendaCredentialsResponse])
 async def get_hacienda_credentials_status(
-    context: CurrentUserContext = Depends(require_permissions("invoicing:read")),
-    db: AsyncSession = Depends(get_db)
+    environment: Optional[Literal["STAGING", "PRODUCTION"]] = Query(None),
+    context: CurrentUserContext = Depends(require_permissions("org:update")),
+    db: AsyncSession = Depends(get_db),
 ):
     if not context.organization_id:
         raise BadRequestException("Usuario sin organización")
+    org = (await db.execute(select(Organization).where(Organization.id == context.organization_id))).scalar_one()
+    selected_environment = environment or org.atv_environment
+    cred = await FiscalSecurityService.get_credential_record(db, org.id, selected_environment)
+    username, readable = "", True
+    if cred and cred.encrypted_atv_username:
+        try:
+            username = FiscalSecurityService.decrypt_data(cred.encrypted_atv_username)
+        except Exception:
+            readable = False
+    active = bool(cred and cred.is_active and readable)
+    return StandardResponse(data=HaciendaCredentialsResponse(
+        environment=selected_environment, atv_username=username,
+        has_certificate=bool(cred and cred.encrypted_p12), is_active=active,
+        certificate_expires_at=cred.certificate_expiration if cred else None,
+        connection_tested_at=cred.connection_tested_at if cred else None,
+        connection_test_success=cred.connection_test_success if cred else None,
+        status_message=("No se pueden abrir las credenciales guardadas; revisa la configuración de cifrado del servidor"
+                        if not readable else "Credenciales guardadas para este ambiente" if active
+                        else "No se han configurado credenciales fiscales para este ambiente"),
+    ))
 
-    org = (await db.execute(
-        select(Organization).where(Organization.id == context.organization_id)
-    )).scalar_one()
-    creds = await FiscalSecurityService.get_decrypted_credentials(
-        db=db,
-        organization_id=context.organization_id,
-        environment=org.atv_environment
-    )
-    if not creds:
-        data = HaciendaCredentialsResponse(
-            environment=org.atv_environment,
-            atv_username="",
-            has_certificate=False,
-            is_active=False,
-            status_message="No se han configurado credenciales fiscales para esta empresa"
-        )
-    else:
-        exp_str = f" (Vence: {creds['expiration'].strftime('%Y-%m-%d')})" if creds.get("expiration") else ""
-        data = HaciendaCredentialsResponse(
-            environment=creds["environment"],
-            atv_username=creds["username"],
-            has_certificate=bool(creds.get("p12_bytes")),
-            is_active=True,
-            status_message=f"Credenciales configuradas activas{exp_str}"
-        )
-    return StandardResponse(data=data)
 
 @router.get("/readiness", response_model=StandardResponse[Dict[str, Any]])
 async def get_hacienda_readiness(
+    environment: Optional[Literal["STAGING", "PRODUCTION"]] = Query(None),
     context: CurrentUserContext = Depends(require_permissions("invoicing:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    org = (await db.execute(
-        select(Organization).where(Organization.id == context.organization_id)
-    )).scalar_one()
-    creds = await FiscalSecurityService.get_decrypted_credentials(
-        db=db,
-        organization_id=context.organization_id,
-        environment=org.atv_environment,
-    )
+    if not context.organization_id:
+        raise BadRequestException("Usuario sin organización")
+    org = (await db.execute(select(Organization).where(Organization.id == context.organization_id))).scalar_one()
+    return StandardResponse(data=await fiscal_readiness_report(db, org, environment or org.atv_environment))
 
-    checks = [
-        {"code": "LEGAL_ID", "ok": org.identification_type in {"01", "02", "03", "04", "05"} and bool(org.identification_number), "message": "Identificación legal del emisor"},
-        {"code": "ECONOMIC_ACTIVITY", "ok": len(org.economic_activity_code or "") == 6 and str(org.economic_activity_code).isdigit(), "message": "Actividad económica de 6 dígitos"},
-        {"code": "LOCATION", "ok": bool(org.province_code and org.canton_code and org.district_code and org.address_detail), "message": "Ubicación fiscal completa"},
-        {"code": "ATV_USER", "ok": bool(creds and creds.get("username") and creds.get("password")), "message": f"Usuario API de Hacienda ({org.atv_environment})"},
-        {"code": "CERTIFICATE", "ok": bool(creds and creds.get("p12_bytes") and creds.get("pin")), "message": "Llave criptográfica .p12 y PIN"},
-        {"code": "CERTIFICATE_EXPIRY", "ok": bool(creds and creds.get("expiration") and creds["expiration"].replace(tzinfo=creds["expiration"].tzinfo or timezone.utc) > datetime.now(timezone.utc)), "message": "Certificado vigente"},
-        {"code": "PROVIDER_ID", "ok": settings.SOFTWARE_PROVIDER_TAX_ID != "3101000000", "message": "Identificación real del proveedor de sistemas"},
-    ]
-    if org.atv_environment == "PRODUCTION":
-        checks.extend([
-            {"code": "SANDBOX_APPROVED", "ok": settings.HACIENDA_SANDBOX_VALIDATED, "message": "Piloto Sandbox validado"},
-            {"code": "LIVE_ENABLED", "ok": settings.HACIENDA_LIVE_EMISSION_ENABLED, "message": "Emisión en vivo habilitada"},
-            {"code": "SMTP", "ok": settings.email_provider_configured, "message": "Entrega de correo fiscal configurada"},
-        ])
-
-    return StandardResponse(data={
-        "ready": all(check["ok"] for check in checks),
-        "environment": org.atv_environment,
-        "checks": checks,
-    })
 
 @router.post("/test-connection", response_model=StandardResponse[HaciendaTestConnectionResponse])
 async def test_hacienda_connection(
     payload: HaciendaConnectionTestInput,
-    context: CurrentUserContext = Depends(require_permissions("invoicing:read"))
+    context: CurrentUserContext = Depends(require_permissions("org:update")),
+    db: AsyncSession = Depends(get_db),
 ):
-    client = HaciendaAPIClient()
+    if not context.organization_id:
+        raise BadRequestException("Usuario sin organización")
+    stored = payload.atv_username is None
+    cred = None
+    if stored:
+        cred = await FiscalSecurityService.get_credential_record(db, context.organization_id, payload.environment)
+        if not cred or not cred.is_active or not cred.encrypted_atv_username or not cred.encrypted_atv_password:
+            raise BadRequestException("Guarda las credenciales de este ambiente antes de probar la conexión")
+        # Detect simultaneous replacement without holding a lock over network I/O.
+        version = (cred.encrypted_atv_username, cred.encrypted_atv_password, cred.encrypted_p12, cred.encrypted_pin)
+    token_data = {}
     try:
-        token = await client.get_oauth_token(
-            username=payload.atv_username,
-            password=payload.atv_password,
-            environment=payload.environment
+        username = FiscalSecurityService.decrypt_data(cred.encrypted_atv_username) if stored else payload.atv_username
+        password = FiscalSecurityService.decrypt_data(cred.encrypted_atv_password) if stored else payload.atv_password
+        token_data = await HaciendaAPIClient(environment=payload.environment).get_access_token(username, password)
+        success = bool(token_data.get("access_token"))
+    except Exception:
+        # Never expose IdP bodies, passwords or access tokens in UI/audit.
+        success = False
+    message = ("Hacienda autenticó las credenciales guardadas. Esta prueba no emite ni valida un comprobante."
+               if success and stored else "Hacienda autenticó los datos ingresados. Guárdalos y prueba las credenciales guardadas para registrar la verificación."
+               if success else "No fue posible autenticar con Hacienda. Revisa el ambiente, el usuario y la contraseña API; si son correctos, vuelve a intentar.")
+    if stored:
+        await db.refresh(cred, with_for_update=True)
+        current_version = (cred.encrypted_atv_username, cred.encrypted_atv_password, cred.encrypted_p12, cred.encrypted_pin)
+        if current_version != version or not cred.is_active:
+            raise BadRequestException("Las credenciales cambiaron durante la prueba; valida nuevamente")
+        cred.connection_tested_at = datetime.now(timezone.utc)
+        cred.connection_test_success = success
+        await AuditService.log_action(
+            db=db, action="HACIENDA_CONNECTION_TESTED", resource="FiscalCredential",
+            actor_id=context.user_id, organization_id=context.organization_id, resource_id=str(cred.id),
+            payload_after={"environment": payload.environment, "success": success},
         )
-        data = HaciendaTestConnectionResponse(
-            success=True,
-            environment=payload.environment,
-            message="Conexión exitosa con el servidor IdP de Hacienda Costa Rica",
-            token_type="bearer",
-            expires_in=300
-        )
-        return StandardResponse(data=data, message="Conexión validada con IdP oficial")
-    except Exception as e:
-        data = HaciendaTestConnectionResponse(
-            success=False,
-            environment=payload.environment,
-            message=f"Fallo de conexión con IdP de Hacienda: {str(e)}",
-            token_type="",
-            expires_in=0
-        )
-        return StandardResponse(
-            data=data,
-            success=False,
-            message=f"No se pudo conectar con el IdP de Hacienda: {str(e)}"
-        )
+        await db.commit()
+    return StandardResponse(success=success, message=message, data=HaciendaTestConnectionResponse(
+        success=success, environment=payload.environment, message=message,
+        token_type=token_data.get("token_type") if success else None,
+        expires_in=token_data.get("expires_in") if success else None,
+    ))
 
 @router.post("/transmit", response_model=StandardResponse[HaciendaTransmitResponse])
 async def transmit_to_hacienda(

@@ -75,9 +75,9 @@ class FiscalSecurityService:
         organization_id: uuid.UUID,
         environment: str,
         p12_bytes: Optional[bytes],
-        pin: str,
+        pin: Optional[str],
         atv_username: str,
-        atv_password: str
+        atv_password: Optional[str]
     ) -> FiscalCredential:
         stmt = select(FiscalCredential).where(
             FiscalCredential.organization_id == organization_id,
@@ -85,6 +85,19 @@ class FiscalSecurityService:
         )
         res = await db.execute(stmt)
         cred = res.scalar_one_or_none()
+
+        if environment not in {"STAGING", "PRODUCTION"}:
+            raise BadRequestException("Ambiente fiscal desconocido")
+        if not atv_username.strip():
+            raise BadRequestException("Ingresa el usuario API de Hacienda")
+        if p12_bytes and not pin:
+            raise BadRequestException("El PIN es obligatorio al cargar un certificado nuevo")
+        if not pin and cred and cred.encrypted_pin:
+            pin = cls.decrypt_data(cred.encrypted_pin)
+        if not atv_password and cred and cred.encrypted_atv_password:
+            atv_password = cls.decrypt_data(cred.encrypted_atv_password)
+        if not pin or not atv_password:
+            raise BadRequestException("El PIN y la contraseña API son obligatorios para configurar este ambiente")
 
         exp_date = None
         issuer = None
@@ -100,10 +113,12 @@ class FiscalSecurityService:
             # already stored for this environment.
             existing_p12_b64 = cls.decrypt_data(cred.encrypted_p12)
             existing_p12 = base64.b64decode(existing_p12_b64, validate=True)
-            cls.extract_p12_metadata(existing_p12, pin)
+            exp_date, issuer, subject = cls.extract_p12_metadata(existing_p12, pin)
+        else:
+            raise BadRequestException("Carga el certificado .p12/.pfx de este ambiente antes de guardar")
 
         enc_pin = cls.encrypt_data(pin)
-        enc_user = cls.encrypt_data(atv_username)
+        enc_user = cls.encrypt_data(atv_username.strip())
         enc_pass = cls.encrypt_data(atv_password)
 
         if not cred:
@@ -123,17 +138,26 @@ class FiscalSecurityService:
         else:
             if enc_p12:
                 cred.encrypted_p12 = enc_p12
-                cred.certificate_expiration = exp_date
-                cred.certificate_issuer = issuer
-                cred.certificate_subject = subject
+            cred.certificate_expiration = exp_date
+            cred.certificate_issuer = issuer
+            cred.certificate_subject = subject
             cred.encrypted_pin = enc_pin
             cred.encrypted_atv_username = enc_user
             cred.encrypted_atv_password = enc_pass
             cred.is_active = True
 
-        await db.commit()
-        await db.refresh(cred)
+        # Commit credentials and audit together at the endpoint boundary.
+        cred.connection_tested_at = None
+        cred.connection_test_success = None
+        await db.flush()
         return cred
+
+    @staticmethod
+    async def get_credential_record(db: AsyncSession, organization_id: uuid.UUID, environment: str):
+        return (await db.execute(select(FiscalCredential).where(
+            FiscalCredential.organization_id == organization_id,
+            FiscalCredential.environment == environment,
+        ))).scalar_one_or_none()
 
     @classmethod
     async def get_decrypted_credentials(
